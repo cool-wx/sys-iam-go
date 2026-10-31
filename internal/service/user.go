@@ -61,17 +61,50 @@ func (s *UserService) Create(ctx context.Context, req *dto.UserCreateReq) (*dto.
 	return dto.ToUserResp(u), nil
 }
 
-// Update 更新用户（编译存根：RED 阶段未实现真实写路径）。
+// Update 更新用户（部分更新，ENG-05）：遍历 UpdateUserReq 全指针字段，仅非 nil
+// 者进更新 map（nil=未提供不写库；空串=显式清空照写），列名对齐 DDL snake_case；
+// 请求体之外的字段不可能进 map（白名单天然收敛，T-1-10）。落库后回读返回最新契约。
+// 审计（update_time/update_by）由 repo.Patch 显式并入，不接受客户端同名键（ENG-02）。
 func (s *UserService) Update(ctx context.Context, id int64, req *dto.UpdateUserReq) (*dto.UserResp, error) {
-	_ = ctx
-	_ = id
-	_ = req
-	return nil, errcode.ErrNotFound
+	cols := map[string]any{}
+	if req.RealName != nil {
+		cols["real_name"] = *req.RealName
+	}
+	if req.Phone != nil {
+		cols["phone"] = *req.Phone
+	}
+	if req.Email != nil {
+		cols["email"] = *req.Email
+	}
+	if req.Avatar != nil {
+		cols["avatar"] = *req.Avatar
+	}
+	if req.DeptID != nil {
+		cols["dept_id"] = int64(*req.DeptID)
+	}
+	if req.DeptName != nil {
+		cols["dept_name"] = *req.DeptName
+	}
+	if req.Gender != nil {
+		cols["gender"] = int8(*req.Gender)
+	}
+	if req.Builtin != nil {
+		cols["builtin"] = *req.Builtin
+	}
+	if req.Remark != nil {
+		cols["remark"] = *req.Remark
+	}
+	if err := s.repo.Patch(ctx, id, cols); err != nil {
+		return nil, err
+	}
+	return s.Get(ctx, id)
 }
 
-// Get 用户详情（编译存根：RED 阶段未实现）。
+// Get 用户详情：按主键查询后 PO→DTO（未命中 404/10300）。
 func (s *UserService) Get(ctx context.Context, id int64) (*dto.UserResp, error) {
-	_ = ctx
-	_ = id
-	return nil, errcode.ErrNotFound
+	u, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return dto.ToUserResp(u), nil
 }
