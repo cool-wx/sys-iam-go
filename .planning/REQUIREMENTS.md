@@ -143,13 +143,66 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (待 roadmap 创建时填充) | | |
+| ENG-01 | Phase 1 | Pending |
+| ENG-02 | Phase 1 | Pending |
+| ENG-03 | Phase 1 | Pending |
+| ENG-04 | Phase 1 | Pending |
+| ENG-05 | Phase 1 | Pending |
+| ENG-06 | Phase 1 | Pending |
+| ENG-07 | Phase 1 | Pending |
+| ENG-08 | Phase 1 | Pending |
+| AUTH-01 | Phase 2 | Pending |
+| AUTH-02 | Phase 2 | Pending |
+| AUTH-03 | Phase 2 | Pending |
+| AUTH-04 | Phase 2 | Pending |
+| AUTH-05 | Phase 2 | Pending |
+| AUTH-06 | Phase 2 | Pending |
+| USER-01 | Phase 2 | Pending |
+| USER-02 | Phase 2 | Pending |
+| USER-03 | Phase 2 | Pending |
+| USER-04 | Phase 2 | Pending |
+| USER-05 | Phase 2 | Pending |
+| USER-06 | Phase 2 | Pending |
+| USER-07 | Phase 2 | Pending |
+| ROLE-01 | Phase 2 | Pending |
+| ROLE-02 | Phase 2 | Pending |
+| ROLE-03 | Phase 2 | Pending |
+| MENU-01 | Phase 2 | Pending |
+| MENU-02 | Phase 2 | Pending |
+| DEPT-01 | Phase 2 | Pending |
+| DEPT-02 | Phase 2 | Pending |
+| AKEY-01 | Phase 2 | Pending |
+| AKEY-02 | Phase 2 | Pending |
+| PERM-01 | Phase 3 | Pending |
+| PERM-02 | Phase 3 | Pending |
+| PERM-03 | Phase 3 | Pending |
+| PERM-04 | Phase 3 | Pending |
+| PERM-05 | Phase 3 | Pending |
+| PERM-06 | Phase 3 | Pending |
+| DICT-01 | Phase 4 | Pending |
+| DICT-02 | Phase 4 | Pending |
+| DICT-03 | Phase 4 | Pending |
+| CONF-01 | Phase 4 | Pending |
+| FILE-01 | Phase 4 | Pending |
+| FILE-02 | Phase 4 | Pending |
+| FILE-03 | Phase 4 | Pending |
+| FILE-04 | Phase 4 | Pending |
+| FILE-05 | Phase 4 | Pending |
+| OLOG-01 | Phase 4 | Pending |
+| OLOG-02 | Phase 4 | Pending |
+| OLOG-03 | Phase 4 | Pending |
+| SHFT-01 | Phase 4 | Pending |
+| SHFT-02 | Phase 4 | Pending |
+| FAUL-01 | Phase 4 | Pending |
+| FAUL-02 | Phase 4 | Pending |
+| SYNC-01 | Phase 5 | Pending |
+| SYNC-02 | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 54 total
-- Mapped to phases: 0
-- Unmapped: 54 ⚠️ (roadmap 未创建，正常状态)
+- Mapped to phases: 54
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-10-31*
-*Last updated: 2026-10-31 after initial definition*
+*Last updated: 2026-10-31 after roadmap creation (traceability mapped to 5 phases)*
