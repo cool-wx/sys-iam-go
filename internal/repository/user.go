@@ -55,6 +55,28 @@ func (r *UserRepo) Patch(ctx context.Context, id int64, cols map[string]any) err
 	return nil
 }
 
+// List 分页查询：Count 与记录查询经同一闭包构造（Phase 1 无过滤条件，条件集
+// 天然一致，防 total 漂移，P15）；排序 create_time DESC, id DESC——稳定 tiebreaker
+// 保证同秒插入时翻页不漂移；排序串为代码常量，无 ORDER 注入面（T-1-10）。
+// page/size 已由 paging.Parse 钳位（≥1），Offset 恒非负（P8）。
+func (r *UserRepo) List(ctx context.Context, page, size int) ([]po.UserPO, int64, error) {
+	q := func() *gorm.DB {
+		return r.db.WithContext(ctx).Model(&po.UserPO{})
+	}
+	var total int64
+	if err := q().Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var users []po.UserPO
+	err := q().Offset((page - 1) * size).Limit(size).
+		Order("create_time DESC, id DESC").
+		Find(&users).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	return users, total, nil
+}
+
 // FindByID 按主键查询；未命中返回 ErrNotFound（10300）。
 func (r *UserRepo) FindByID(ctx context.Context, id int64) (*po.UserPO, error) {
 	var u po.UserPO

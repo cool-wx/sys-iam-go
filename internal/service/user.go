@@ -101,12 +101,18 @@ func (s *UserService) Update(ctx context.Context, id int64, req *dto.UpdateUserR
 	return s.Get(ctx, id)
 }
 
-// List 用户列表（编译存根：RED 阶段未实现真实查询）。
+// List 用户列表：repo 分页查询 → PO→DTO 转换 → paging.PageData envelope
+// （排序与钳位由 repo/paging 承担，P15）。
 func (s *UserService) List(ctx context.Context, page, size int) (*paging.PageData[dto.UserResp], error) {
-	_ = ctx
-	_ = page
-	_ = size
-	return &paging.PageData[dto.UserResp]{}, nil
+	users, total, err := s.repo.List(ctx, page, size)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]dto.UserResp, 0, len(users))
+	for i := range users {
+		items = append(items, *dto.ToUserResp(&users[i]))
+	}
+	return &paging.PageData[dto.UserResp]{Items: items, Total: total, Page: page, Size: size}, nil
 }
 
 // Get 用户详情：按主键查询后 PO→DTO（未命中 404/10300）。
