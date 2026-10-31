@@ -49,3 +49,32 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	}
 	resp.OK(c, nil)
 }
+
+// ApikeyLogin 处理 POST /api/v1/auth/apikey-login（pub 白名单第四路径）：
+// 绑定校验 → service → envelope 出口。
+func (h *AuthHandler) ApikeyLogin(c *gin.Context) {
+	var req dto.ApiKeyLoginReq
+	if !bindJSON(c, &req) {
+		return
+	}
+	data, err := h.svc.ApikeyLogin(c.Request.Context(), &req)
+	if err != nil {
+		resp.Fail(c, err)
+		return
+	}
+	resp.OK(c, data)
+}
+
+// Kickout 处理 POST /api/v1/auth/kickout（pri 组）：解析目标 userId → service →
+// envelope。管理面语义与源一致（Phase 3 requirePerm 收口，T-2-07 accept）。
+func (h *AuthHandler) Kickout(c *gin.Context) {
+	var req dto.KickoutReq
+	if !bindJSON(c, &req) {
+		return
+	}
+	if err := h.svc.Kickout(c.Request.Context(), int64(*req.UserID)); err != nil {
+		resp.Fail(c, err)
+		return
+	}
+	resp.OK(c, nil)
+}

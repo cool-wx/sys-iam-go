@@ -79,8 +79,9 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 
 	userRepo := repository.NewUserRepo(db)
 	relationRepo := repository.NewRelationRepo(db)
+	apiKeyRepo := repository.NewApiKeyRepo(db)
 	userSvc := service.NewUserService(userRepo)
-	authSvc := service.NewAuthService(userRepo, relationRepo, sessionMgr)
+	authSvc := service.NewAuthService(userRepo, relationRepo, apiKeyRepo, sessionMgr)
 	userHandler := handler.NewUserHandler(userSvc)
 	authHandler := handler.NewAuthHandler(authSvc)
 
