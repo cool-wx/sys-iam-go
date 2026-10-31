@@ -33,8 +33,14 @@ func (r *UserRepo) Create(ctx context.Context, u *po.UserPO) error {
 // 调用方构造的 map 键，请求体额外键不可能进入，T-1-10）；恒带 Where("id = ?") 防
 // 全表更新（T-1-08）。update_time 与审计操作人列在此显式并入 map——GORM 对
 // Updates(map) 不会把钩子改动的结构体字段写进 SET 子句（已知语义坑），显式并入
-// 保证确定性。绝不在更新路径调用 Save（Pitfall 3）。RowsAffected==0 → ErrNotFound
-// （防"静默无效果"）。ctx 含 identity 时写入 update_by 两列，否则仅刷 update_time。
+// 保证确定性。绝不在更新路径调用 Save（Pitfall 3）。ctx 含 identity 时写入
+// update_by 两列，否则仅刷 update_time。
+//
+// 存在性判定不以 RowsAffected 为准（CR-01）：go-sql-driver 默认
+// clientFoundRows=false，UPDATE 返回的是实际变更行数而非匹配行数；update_time 为
+// 秒精度 datetime，同秒内重复提交相同内容（幂等重试/双击保存/PUT {}）时 SET 值
+// 全部与现值相等 → 0 行变更但行存在。故 RowsAffected==0 时回读 Count 二次确认，
+// 仅当行确实不存在才返回 ErrNotFound。
 func (r *UserRepo) Patch(ctx context.Context, id int64, cols map[string]any) error {
 	if cols == nil {
 		cols = map[string]any{}
@@ -50,7 +56,14 @@ func (r *UserRepo) Patch(ctx context.Context, id int64, cols map[string]any) err
 		return res.Error
 	}
 	if res.RowsAffected == 0 {
-		return errcode.ErrNotFound
+		// 0 变更 ≠ 不存在：需 Count 确认行是否存在（见函数注释 CR-01）
+		var n int64
+		if err := r.db.WithContext(ctx).Model(&po.UserPO{}).Where("id = ?", id).Count(&n).Error; err != nil {
+			return err
+		}
+		if n == 0 {
+			return errcode.ErrNotFound
+		}
 	}
 	return nil
 }

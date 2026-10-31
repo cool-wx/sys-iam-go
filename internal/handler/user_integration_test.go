@@ -340,6 +340,41 @@ func TestUpdateUserNotFound(t *testing.T) {
 	assert.Equal(t, 10300, envelope.Code, "body=%s", body)
 }
 
+// TestUpdateUserSameSecondIdempotentRetry 同秒零变更更新回归（CR-01）：同一秒内对
+// 已存在用户连续两次提交完全相同内容（幂等重试/双击保存）——第二次 SET 值全相同
+// 且 update_time 秒精度截断同值 → affected=0，必须返回 200 而非 404（0 变更 ≠
+// 不存在）。跨过秒边界时 update_time 变化 → affected=1，同样 200：本测试不会因
+// 时序假失败，只在"行存在却报 404"的回归上失败。
+func TestUpdateUserSameSecondIdempotentRetry(t *testing.T) {
+	ts, _ := newTestApp(t)
+
+	id := createRawUser(t, ts, `{"username":"same-second-retry","password":"pw","realName":"初名"}`)
+
+	status, body := doRequest(t, "PUT", ts.URL+"/api/v1/users/"+id, `{"realName":"同秒重试值"}`)
+	require.Equal(t, http.StatusOK, status, "首次更新应 200: body=%s", body)
+
+	status, body = doRequest(t, "PUT", ts.URL+"/api/v1/users/"+id, `{"realName":"同秒重试值"}`)
+	require.Equal(t, http.StatusOK, status, "同秒零变更重复更新必须 200（行存在，CR-01）: body=%s", body)
+	var envelope struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(body, &envelope), "body=%s", body)
+	assert.Equal(t, 0, envelope.Code, "body=%s", body)
+	assert.NotEqual(t, 10300, envelope.Code, "行存在时不得返回 10300 数据不存在")
+
+	// 行确实还在且值为提交值：GET 可查
+	status, body = doRequest(t, "GET", ts.URL+"/api/v1/users/"+id, "")
+	require.Equal(t, http.StatusOK, status, "重复更新后行必须仍可查: body=%s", body)
+	var getEnvelope struct {
+		Data struct {
+			RealName string `json:"realName"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(body, &getEnvelope), "body=%s", body)
+	assert.Equal(t, "同秒重试值", getEnvelope.Data.RealName)
+}
+
 // TestGetUserInvalidId GET 非数字 :id：HTTP 400 + envelope code=10400。
 func TestGetUserInvalidId(t *testing.T) {
 	ts, _ := newTestApp(t)
