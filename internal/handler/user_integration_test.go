@@ -461,6 +461,20 @@ func TestListUsersEdgeParams(t *testing.T) {
 	require.NotNil(t, envelope2.Data.Items, "超界页码 items 必须是空数组 [] 而非 null")
 	assert.Empty(t, envelope2.Data.Items)
 	assert.Contains(t, string(body), `"items":[]`, "空列表应序列化为 [] 而非 null（Anti-Pattern：items:null）")
+
+	// WR-03 回归：int64 极值页码——(page-1)*size 溢出为负会被 GORM 静默省略
+	// OFFSET 子句、静默返回第 1 页数据；钳位 maxPage 后必须空页且回显钳位值
+	status, body = doRequest(t, "GET", ts.URL+"/api/v1/users?page=9223372036854775807", "")
+	require.Equal(t, http.StatusOK, status, "int64 极值页码不应报错: body=%s", body)
+	var envelope3 struct {
+		Data struct {
+			Items []json.RawMessage `json:"items"`
+			Page  int               `json:"page"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(body, &envelope3), "body=%s", body)
+	assert.Empty(t, envelope3.Data.Items, "极值页码必须返回空页，不得静默回退第 1 页数据: body=%s", body)
+	assert.Equal(t, 1000000, envelope3.Data.Page, "极值页码回显应为钳位值 1000000: body=%s", body)
 }
 
 // TestCreateUserDuplicateUsername 重复 POST 同 username：uk_username 唯一索引

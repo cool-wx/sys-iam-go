@@ -9,19 +9,26 @@ import (
 )
 
 // 钳位常量：缺省页码 1 / 页大小 15（源 PageHelper 缺省值）；页大小上限 100
-// （T-1-04 DoS 防护，配合连接池 MaxOpenConns 兜底）；页码无上限（超界自然空页）。
+// （T-1-04 DoS 防护，配合连接池 MaxOpenConns 兜底）；页码上限 maxPage——极端大
+// 页码使 (page-1)*size 有符号溢出为负，GORM 对非正 Offset 静默省略 OFFSET 子句，
+// 会静默返回第 1 页数据（WR-03），故钳位到固定上限（其上自然空页）。
 const (
 	defaultPage = 1
 	defaultSize = 15
 	maxSize     = 100
+	maxPage     = 1_000_000
 )
 
-// Parse 钳位分页参数：缺省/空串/解析失败/<1 → 页码 1、页大小 15；页大小 >100 → 100。
+// Parse 钳位分页参数：缺省/空串/解析失败/<1 → 页码 1、页大小 15；页大小 >100 →
+// 100；页码 >maxPage → maxPage（防 (page-1)*size 溢出静默回退第 1 页，WR-03）。
 func Parse(page, size string) (pageOut, sizeOut int) {
 	pageOut = clamp(page, defaultPage)
 	sizeOut = clamp(size, defaultSize)
 	if sizeOut > maxSize {
 		sizeOut = maxSize
+	}
+	if pageOut > maxPage {
+		pageOut = maxPage
 	}
 	return pageOut, sizeOut
 }

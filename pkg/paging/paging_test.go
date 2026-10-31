@@ -23,6 +23,10 @@ func TestParseClamp(t *testing.T) {
 		{"size超上限", "2", "200", 2, 100},
 		{"非法输入", "abc", "x", 1, 15},
 		{"合法原样", "3", "20", 3, 20},
+		// WR-03 回归：int64 极值/超上限页码必须钳位 maxPage——否则 (page-1)*size
+		// 有符号溢出为负，GORM 静默省略 OFFSET 子句，静默回退第 1 页数据
+		{"int64极值页码", "9223372036854775807", "20", maxPage, 20},
+		{"页码刚超上限", "1000001", "15", maxPage, 15},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

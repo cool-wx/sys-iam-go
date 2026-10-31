@@ -71,7 +71,8 @@ func (r *UserRepo) Patch(ctx context.Context, id int64, cols map[string]any) err
 // List 分页查询：Count 与记录查询经同一闭包构造（Phase 1 无过滤条件，条件集
 // 天然一致，防 total 漂移，P15）；排序 create_time DESC, id DESC——稳定 tiebreaker
 // 保证同秒插入时翻页不漂移；排序串为代码常量，无 ORDER 注入面（T-1-10）。
-// page/size 已由 paging.Parse 钳位（≥1），Offset 恒非负（P8）。
+// page/size 已由 paging.Parse 钳位（≥1 且 page ≤ maxPage）；Offset 计算后仍防负
+// （int 溢出双保险，WR-03，P8）。
 func (r *UserRepo) List(ctx context.Context, page, size int) ([]po.UserPO, int64, error) {
 	q := func() *gorm.DB {
 		return r.db.WithContext(ctx).Model(&po.UserPO{})
@@ -80,8 +81,15 @@ func (r *UserRepo) List(ctx context.Context, page, size int) ([]po.UserPO, int64
 	if err := q().Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
+	offset := (page - 1) * size
+	if offset < 0 {
+		// int 溢出保护（WR-03，双保险）：GORM clause.Limit 仅在 Offset>0 时写
+		// OFFSET 子句，溢出为负会被静默省略 → 静默回退第 1 页数据。钳位后正常
+		// 不会触发，防御绕过 paging.Parse 的直接调用。
+		offset = 0
+	}
 	var users []po.UserPO
-	err := q().Offset((page - 1) * size).Limit(size).
+	err := q().Offset(offset).Limit(size).
 		Order("create_time DESC, id DESC").
 		Find(&users).Error
 	if err != nil {
