@@ -23,6 +23,8 @@ func newRouter(h *health.State, userHandler *handler.UserHandler, logger *slog.L
 	pub.GET("/healthz", h.Liveness)
 	pub.GET("/readyz", h.Readiness)
 	pub.POST("/api/v1/users", userHandler.Create)
+	pub.PUT("/api/v1/users/:id", userHandler.Update)
+	pub.GET("/api/v1/users/:id", userHandler.Get)
 
 	return engine
 }

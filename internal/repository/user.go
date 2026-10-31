@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/cool-wx/sys-iam-go/internal/model/po"
+	"github.com/cool-wx/sys-iam-go/pkg/errcode"
 )
 
 // UserRepo sys_user 数据访问。
@@ -23,4 +24,19 @@ func NewUserRepo(db *gorm.DB) *UserRepo {
 // 参数化由 GORM 占位符保证，不拼 SQL 字符串（T-1-03）。
 func (r *UserRepo) Create(ctx context.Context, u *po.UserPO) error {
 	return r.db.WithContext(ctx).Create(u).Error
+}
+
+// Patch 显式列更新（编译存根：RED 阶段未实现真实写路径）。
+func (r *UserRepo) Patch(ctx context.Context, id int64, cols map[string]any) error {
+	_ = ctx
+	_ = id
+	_, _ = cols["update_time"]
+	return nil
+}
+
+// FindByID 按主键查询（编译存根：RED 阶段未实现）。
+func (r *UserRepo) FindByID(ctx context.Context, id int64) (*po.UserPO, error) {
+	_ = ctx
+	_ = id
+	return nil, errcode.ErrNotFound
 }

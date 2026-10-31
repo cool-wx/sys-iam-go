@@ -21,6 +21,22 @@ type UserCreateReq struct {
 	DeptName *string       `json:"deptName"`
 }
 
+// UpdateUserReq 更新用户请求：全指针字段，nil=未提供（不写库），空串=显式清空。
+// 不得定义任何审计字段键（ENG-02 禁令：update_by/update_time 只由服务端填充，
+// 客户端不可伪造）。可更新列集合收敛于本结构键集——请求体任意额外 JSON 键被
+// 忽略且永远不会进 UPDATE 语句（T-1-10 白名单）。
+type UpdateUserReq struct {
+	RealName *string       `json:"realName"`
+	Phone    *string       `json:"phone"`
+	Email    *string       `json:"email"`
+	Avatar   *string       `json:"avatar"`
+	Gender   *types.Gender `json:"gender"`
+	DeptID   *ids.ID       `json:"deptId"`
+	DeptName *string       `json:"deptName"`
+	Builtin  *bool         `json:"builtin"`
+	Remark   *string       `json:"remark"`
+}
+
 // UserResp 用户响应契约。
 // 不定义 password/extToken 键（源 @JsonProperty WRITE_ONLY 语义，永不序列化出网）；
 // 全部键无 omitempty——未赋值字段以 null 键输出而非键缺失（源 JacksonConfig 契约）。

@@ -60,3 +60,18 @@ func (s *UserService) Create(ctx context.Context, req *dto.UserCreateReq) (*dto.
 	}
 	return dto.ToUserResp(u), nil
 }
+
+// Update 更新用户（编译存根：RED 阶段未实现真实写路径）。
+func (s *UserService) Update(ctx context.Context, id int64, req *dto.UpdateUserReq) (*dto.UserResp, error) {
+	_ = ctx
+	_ = id
+	_ = req
+	return nil, errcode.ErrNotFound
+}
+
+// Get 用户详情（编译存根：RED 阶段未实现）。
+func (s *UserService) Get(ctx context.Context, id int64) (*dto.UserResp, error) {
+	_ = ctx
+	_ = id
+	return nil, errcode.ErrNotFound
+}
