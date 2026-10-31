@@ -82,20 +82,24 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	apiKeyRepo := repository.NewApiKeyRepo(db)
 	menuRepo := repository.NewMenuRepo(db)
 	deptRepo := repository.NewDeptRepo(db)
+	roleRepo := repository.NewRoleRepo(db)
 	userSvc := service.NewUserService(userRepo)
 	authSvc := service.NewAuthService(userRepo, relationRepo, apiKeyRepo, sessionMgr)
 	menuSvc := service.NewMenuService(menuRepo)
 	deptSvc := service.NewDeptService(deptRepo)
+	roleSvc := service.NewRoleService(db, roleRepo, menuRepo, relationRepo)
 	userHandler := handler.NewUserHandler(userSvc)
 	authHandler := handler.NewAuthHandler(authSvc)
 	menuHandler := handler.NewMenuHandler(menuSvc)
 	deptHandler := handler.NewDeptHandler(deptSvc)
+	roleHandler := handler.NewRoleHandler(roleSvc)
 
 	engine := newRouter(h, handlers{
 		Auth:  authHandler,
 		Users: userHandler,
 		Menus: menuHandler,
 		Depts: deptHandler,
+		Roles: roleHandler,
 	}, middleware.Auth(sessionMgr), logger)
 
 	return &App{

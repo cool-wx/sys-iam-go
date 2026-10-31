@@ -16,6 +16,7 @@ type handlers struct {
 	Users *handler.UserHandler
 	Menus *handler.MenuHandler
 	Depts *handler.DeptHandler
+	Roles *handler.RoleHandler
 }
 
 // newRouter 装配路由：四中间件全局链（RequestID→AccessLog→Recovery→BodyLimit）+
@@ -23,7 +24,7 @@ type handlers struct {
 //   - pub 组（免 token）：/healthz、/readyz、POST /api/v1/auth/login、
 //     POST /api/v1/auth/apikey-login（白名单四路径齐备）；
 //   - pri 组（authMw 全量校验）：POST /api/v1/auth/logout、POST /api/v1/auth/kickout
-//     + 既有 users 四路由 + menus/depts 全套业务路由（02-02 D-11/D-13：复数资源
+//   - 既有 users 四路由 + menus/depts 全套业务路由（02-02 D-11/D-13：复数资源
 //     路由 + 树端点独立；gin 静态段 tree 与 :id 参数段共存，静态优先）。
 func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, logger *slog.Logger) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
@@ -62,6 +63,15 @@ func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, logger *slo
 	pri.GET("/api/v1/depts/:id", hs.Depts.Get)
 	pri.GET("/api/v1/depts", hs.Depts.List)
 	pri.DELETE("/api/v1/depts/:id", hs.Depts.Delete)
+
+	// 角色域（ROLE-01/02/03）：CRUD + 角色菜单分配子资源（全量替换语义）
+	pri.POST("/api/v1/roles", hs.Roles.Create)
+	pri.PUT("/api/v1/roles/:id", hs.Roles.Update)
+	pri.GET("/api/v1/roles/:id", hs.Roles.Get)
+	pri.GET("/api/v1/roles", hs.Roles.List)
+	pri.DELETE("/api/v1/roles/:id", hs.Roles.Delete)
+	pri.GET("/api/v1/roles/:id/menus", hs.Roles.GetMenus)
+	pri.PUT("/api/v1/roles/:id/menus", hs.Roles.AssignMenus)
 
 	return engine
 }

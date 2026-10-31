@@ -22,6 +22,9 @@ func TestHTTPStatusMapping(t *testing.T) {
 		{errcode.CodeInvalidParam, 400},
 		{errcode.CodeValidation, 400},
 		{errcode.CodeBadCredentials, 401},
+		// Phase 2 builtin 冲突段（D-14）：409
+		{errcode.CodeBuiltinUser, 409},
+		{errcode.CodeBuiltinRole, 409},
 	}
 	for _, tc := range cases {
 		e := errcode.New(tc.code, "任意文案")

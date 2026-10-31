@@ -9,16 +9,16 @@ import (
 // MenuCreateReq 创建菜单请求。指针字段 nil=未提供；name/type 必填由 binding 校验
 // 拦截。不得定义任何审计字段键（ENG-02 禁止）；parentId 传 0 与不传同义（根）。
 type MenuCreateReq struct {
-	Name       *string          `json:"name" binding:"required"`
-	Type       *types.MenuType  `json:"type" binding:"required"`
-	ParentID   *ids.ID          `json:"parentId"`
-	Path       *string          `json:"path"`
-	Component  *string          `json:"component"`
-	Permission *string          `json:"permission"`
-	Icon       *string          `json:"icon"`
-	Sort       *int             `json:"sort"`
-	Visible    *bool            `json:"visible"`
-	Remark     *string          `json:"remark"`
+	Name       *string         `json:"name" binding:"required"`
+	Type       *types.MenuType `json:"type" binding:"required"`
+	ParentID   *ids.ID         `json:"parentId"`
+	Path       *string         `json:"path"`
+	Component  *string         `json:"component"`
+	Permission *string         `json:"permission"`
+	Icon       *string         `json:"icon"`
+	Sort       *int            `json:"sort"`
+	Visible    *bool           `json:"visible"`
+	Remark     *string         `json:"remark"`
 }
 
 // MenuUpdateReq 更新菜单请求：全指针字段，nil=未提供（不写库），空串=显式清空。
@@ -26,17 +26,17 @@ type MenuCreateReq struct {
 // 语义）；不显式传则不动父。白名单收敛于本结构键集（T-1-10），status 契约经
 // UsageStatus（未知兜底 ENABLED 落库）。
 type MenuUpdateReq struct {
-	Name       *string             `json:"name"`
-	Type       *types.MenuType     `json:"type"`
-	ParentID   *ids.ID             `json:"parentId"`
-	Path       *string             `json:"path"`
-	Component  *string             `json:"component"`
-	Permission *string             `json:"permission"`
-	Icon       *string             `json:"icon"`
-	Sort       *int                `json:"sort"`
-	Visible    *bool               `json:"visible"`
-	Status     *types.UsageStatus  `json:"status"`
-	Remark     *string             `json:"remark"`
+	Name       *string            `json:"name"`
+	Type       *types.MenuType    `json:"type"`
+	ParentID   *ids.ID            `json:"parentId"`
+	Path       *string            `json:"path"`
+	Component  *string            `json:"component"`
+	Permission *string            `json:"permission"`
+	Icon       *string            `json:"icon"`
+	Sort       *int               `json:"sort"`
+	Visible    *bool              `json:"visible"`
+	Status     *types.UsageStatus `json:"status"`
+	Remark     *string            `json:"remark"`
 }
 
 // MenuResp 菜单响应契约。

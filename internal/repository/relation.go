@@ -5,6 +5,8 @@ import (
 	"context"
 
 	"gorm.io/gorm"
+
+	"github.com/cool-wx/sys-iam-go/internal/model/po"
 )
 
 // RoleRef 角色引用（JOIN 投影）：登录会话 roles 载荷与用户详情角色装配共用。
@@ -55,4 +57,41 @@ func (r *RelationRepo) FindRolesByUserIDs(ctx context.Context, userIDs []int64) 
 		})
 	}
 	return out, nil
+}
+
+// FindMenuIDsByRoleID 返回角色已分配的 menuId 列表（源 getRoleMenuIds 等价）；
+// 未分配返回空切片（恒非 nil）。id 升序输出保证稳定。
+func (r *RelationRepo) FindMenuIDsByRoleID(ctx context.Context, roleID int64) (menuIDs []int64, err error) {
+	err = r.db.WithContext(ctx).Model(&po.RoleMenuPO{}).
+		Where("role_id = ?", roleID).
+		Order("menu_id ASC").
+		Pluck("menu_id", &menuIDs).Error
+	if err != nil {
+		return nil, err
+	}
+	if menuIDs == nil {
+		menuIDs = make([]int64, 0)
+	}
+	return menuIDs, nil
+}
+
+// DeleteRoleMenus 删除角色的全部菜单关联（assignMenus 全删重建的前半步 /
+// role 删除三连删的第二步）；roleID 经参数化占位符传入（T-1-03）。
+func (r *RelationRepo) DeleteRoleMenus(ctx context.Context, roleID int64) (err error) {
+	return r.db.WithContext(ctx).Where("role_id = ?", roleID).Delete(&po.RoleMenuPO{}).Error
+}
+
+// DeleteUserRolesByRoleID 删除角色在 sys_user_role 的全部关联
+// （role 删除三连删的第一步，源 RoleApplicationService.removeById 顺序）。
+func (r *RelationRepo) DeleteUserRolesByRoleID(ctx context.Context, roleID int64) (err error) {
+	return r.db.WithContext(ctx).Where("role_id = ?", roleID).Delete(&po.UserRolePO{}).Error
+}
+
+// BatchCreateRoleMenus 批量插入角色-菜单关联（assignMenus 全删重建的后半步）；
+// 行内 role_name/menu_name 冗余列由 service 层装配（源 RoleMenu.create 语义）。
+func (r *RelationRepo) BatchCreateRoleMenus(ctx context.Context, rows []po.RoleMenuPO) (err error) {
+	if len(rows) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).CreateInBatches(rows, 100).Error
 }

@@ -62,7 +62,7 @@ func TestBuildEmptyListReturnsEmptyNonNil(t *testing.T) {
 // 一次（Children 归一化点），根节点集合只含真根。
 func TestBuildTwoGenerations(t *testing.T) {
 	nodes := []node{
-		{ID: 1},                // 根
+		{ID: 1},                     // 根
 		{ID: 2, ParentID: pidOf(1)}, // 子
 		{ID: 3, ParentID: pidOf(2)}, // 孙
 	}
@@ -105,8 +105,8 @@ func TestBuildZeroParentPromotedToRoot(t *testing.T) {
 // 实体死代码的"孤儿丢弃"语义在此被排除）。真根与孤儿同现于根层。
 func TestBuildOrphanParentPromotedToRoot(t *testing.T) {
 	nodes := []node{
-		{ID: 1},                     // 真根
-		{ID: 2, ParentID: pidOf(1)}, // 正常子
+		{ID: 1},                       // 真根
+		{ID: 2, ParentID: pidOf(1)},   // 正常子
 		{ID: 9, ParentID: pidOf(999)}, // 孤儿：999 不存在
 	}
 	roots := build(nodes)
@@ -125,7 +125,7 @@ func TestBuildOrphanParentPromotedToRoot(t *testing.T) {
 // （与源一致——环即脏数据，源 buildTree 同样将其排除在 roots 之外）。
 func TestBuildCycleDoesNotHang(t *testing.T) {
 	nodes := []node{
-		{ID: 1},                      // 真根
+		{ID: 1},                       // 真根
 		{ID: 10, ParentID: pidOf(11)}, // 环 A
 		{ID: 11, ParentID: pidOf(10)}, // 环 B
 	}

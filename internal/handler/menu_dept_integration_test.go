@@ -148,9 +148,16 @@ func TestMenuCRUD(t *testing.T) {
 	status, body = doAuthRequest(t, token, "DELETE", ts.URL+"/api/v1/menus/"+rootID, "")
 	require.Equal(t, http.StatusOK, status, "删除带子节点的菜单仍必须成功（源缺口按源保留）: body=%s", body)
 
-	// --- 删除后 get：404 ---
+	// --- 删除后 get：404 + 域消息「菜单不存在: {id}」（源消息原文，code/HTTP 契约同 Phase 1）---
 	status, body = doAuthRequest(t, token, "GET", ts.URL+"/api/v1/menus/"+rootID, "")
 	require.Equal(t, http.StatusNotFound, status, "删除后 get 应 404: body=%s", body)
+	var menuNfEnv struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(body, &menuNfEnv))
+	assert.Equal(t, 10300, menuNfEnv.Code)
+	assert.Contains(t, menuNfEnv.Message, "菜单不存在: "+rootID, "404 消息应为域消息原文: body=%s", body)
 
 	// --- get 不存在的 id：404 ---
 	status, body = doAuthRequest(t, token, "GET", ts.URL+"/api/v1/menus/99002", "")
@@ -265,9 +272,16 @@ func TestDeptCRUD(t *testing.T) {
 	status, body = doAuthRequest(t, token, "DELETE", ts.URL+"/api/v1/depts/"+rootID, "")
 	require.Equal(t, http.StatusOK, status, "删除带子节点的部门仍必须成功（源缺口按源保留）: body=%s", body)
 
-	// --- 删除后 get 404 + get 不存在 id 404 ---
+	// --- 删除后 get 404（域消息「部门不存在: {id}」）+ get 不存在 id 404 ---
 	status, body = doAuthRequest(t, token, "GET", ts.URL+"/api/v1/depts/"+rootID, "")
 	require.Equal(t, http.StatusNotFound, status, "删除后 get 应 404: body=%s", body)
+	var deptNfEnv struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(body, &deptNfEnv))
+	assert.Equal(t, 10300, deptNfEnv.Code)
+	assert.Contains(t, deptNfEnv.Message, "部门不存在: "+rootID, "404 消息应为域消息原文: body=%s", body)
 	status, body = doAuthRequest(t, token, "GET", ts.URL+"/api/v1/depts/99002", "")
 	require.Equal(t, http.StatusNotFound, status, "body=%s", body)
 }

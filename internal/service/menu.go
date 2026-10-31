@@ -120,15 +120,22 @@ func (s *MenuService) Update(ctx context.Context, id int64, req *dto.MenuUpdateR
 		cols["remark"] = *req.Remark
 	}
 	if err := s.repo.Patch(ctx, id, cols); err != nil {
+		if errors.Is(err, errcode.ErrNotFound) {
+			return nil, errcode.New(errcode.CodeNotFound, fmt.Sprintf("菜单不存在: %d", id))
+		}
 		return nil, err
 	}
 	return s.Get(ctx, id)
 }
 
-// Get 菜单详情：按主键查询后 PO→DTO（未命中 404/10300）。
+// Get 菜单详情：未命中译为 404/10300「菜单不存在: {id}」（源 editMenu 消息原文；
+// code/HTTP 契约与 Phase 1 一致）。
 func (s *MenuService) Get(ctx context.Context, id int64) (*dto.MenuResp, error) {
 	m, err := s.repo.FindByID(ctx, id)
 	if err != nil {
+		if errors.Is(err, errcode.ErrNotFound) {
+			return nil, errcode.New(errcode.CodeNotFound, fmt.Sprintf("菜单不存在: %d", id))
+		}
 		return nil, err
 	}
 	return dto.ToMenuResp(m), nil

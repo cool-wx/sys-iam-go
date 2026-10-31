@@ -12,11 +12,14 @@ const (
 	CodeBadCredentials  = 10501 // 用户名或密码错误
 	// Phase 2 认证增量：全部 HTTP 401（源消息可区分，独立错误码保持 errcode 语义
 	// 清晰——02-RESEARCH Open Question 3 决议）。
-	CodeUserDisabled      = 10502 // 用户已被禁用
-	CodeApiKeyInvalid     = 10503 // API Key 无效或已过期
-	CodeApiKeyNoUser      = 10504 // API Key 未关联用户
-	CodeApiKeyUserMissing = 10505 // API Key 关联用户不存在
+	CodeUserDisabled       = 10502 // 用户已被禁用
+	CodeApiKeyInvalid      = 10503 // API Key 无效或已过期
+	CodeApiKeyNoUser       = 10504 // API Key 未关联用户
+	CodeApiKeyUserMissing  = 10505 // API Key 关联用户不存在
 	CodeApiKeyUserDisabled = 10506 // API Key 关联用户已被禁用
+	// Phase 2 builtin 冲突段：HTTP 409（D-14 builtin 守卫统一语义——USER-07/ROLE-02）。
+	CodeBuiltinUser = 10601 // 系统内置用户不可删除（02-03 User 域复用）
+	CodeBuiltinRole = 10602 // 系统内置角色不可删除
 )
 
 // 分段错误单例（消息文案为出网固定文案）。
@@ -30,6 +33,8 @@ var (
 	ErrBadCredentials  = New(CodeBadCredentials, "用户名或密码错误")
 	ErrUserDisabled    = New(CodeUserDisabled, "用户已被禁用")
 	ErrApiKeyInvalid   = New(CodeApiKeyInvalid, "API Key 无效或已过期")
+	ErrBuiltinUser     = New(CodeBuiltinUser, "系统内置用户不可删除")
+	ErrBuiltinRole     = New(CodeBuiltinRole, "系统内置角色不可删除")
 )
 
 // Error 业务错误类型：经调用链传播，由 pkg/resp 统一出口写出。
@@ -59,6 +64,8 @@ func (e *Error) HTTPStatus() int {
 		return 401
 	case CodeForbidden:
 		return 403
+	case CodeBuiltinUser, CodeBuiltinRole:
+		return 409
 	case CodeNotFound:
 		return 404
 	case CodeInvalidParam, CodeValidation:
