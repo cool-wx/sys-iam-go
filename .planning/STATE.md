@@ -1,18 +1,18 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 2
+current_phase: 02
 current_phase_name: 认证会话与 RBAC 主链路
 status: executing
-stopped_at: Phase 1 complete, ready to plan Phase 2
-last_updated: "2026-10-31T13:11:38.535Z"
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-10-31T14:01:16.229Z"
 last_activity: 2026-10-31
-last_activity_desc: Phase 1 complete, transitioned to Phase 2
-state_head: 08fe42998e1e42bf6454d8c5de8f3da68491d799
+last_activity_desc: Phase 02 execution started
+state_head: ca0b550510f0496218e4835181bd6603a48b24b8
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 6
-  completed_plans: 3
+  completed_plans: 4
   percent: 20
 ---
 
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-10-31, Phase 1 transition)
 
 ## Current Position
 
-Phase: 2 (认证会话与 RBAC 主链路) — READY TO EXECUTE
-Plan: Not started
+Phase: 02 (认证会话与 RBAC 主链路) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-10-31 — Phase 1 complete, transitioned to Phase 2
+Last activity: 2026-10-31 — Phase 02 execution started
 
 Progress: [██░░░░░░░░] 20%
 
@@ -59,6 +59,7 @@ Progress: [██░░░░░░░░] 20%
 | Phase 01 P01 | 27min | 2 tasks | 32 files |
 | Phase 01 P02 | 20min | 2 tasks | 13 files |
 | Phase 01 P03 | 17min | 2 tasks | 5 files |
+| Phase 02 P02-01 | 43min | 2 tasks | 33 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,8 @@ Recent decisions affecting current work:
 - [Phase 01]: 01-03: 验证脚本镜像离线自适应（IAM_TEST_MYSQL_IMAGE>本地 mysql:8.4.x 探测>mysql:8.4 兜底）与 systemd-analyze verify 需按部署第一步放置 /opt/sys-iam-go 后校验（exit 0，校验后清理）
 - [Phase 01 UAT]: ROADMAP Phase 1 goal 回写用户故事格式（优于 override）；ENG-07 缺失取舍认可；systemd 不加 User=（现场账号未定）；arm64 以 qemu-aarch64 binfmt 全链路实证（boot/探活/POST/SIGTERM），真机首启留现场部署清单
 - [Phase 01 安全]: 11 项威胁 L1 全 CLOSED（asvs=1 短路），01-SECURITY.md 落盘 threats_open=0
+- [Phase 02]: [Phase 02] 02-01: Redis key 三前缀（iam:session:/iam:user-tokens:/iam:apikey-token:）为全项目契约，SessionManager 是唯一事实源；ErrSessionNotFound 包级哨兵归一 HGetAll 空 map — go-redis 对不存在 key 返回空 map+nil 而非 redis.Nil——显式归一让中间件 401/500 分支可 errors.Is 判定
+- [Phase 02]: [Phase 02] 02-01: apikeyLogin 复用分支用户已删顺延完整路径（精确 10504/10505）；并发双登录双 token 各自有效+映射最后写者赢（CONTEXT 认可的无害残留） — 源语义保真 + 竞态显式决策留档，TestConcurrentApiKeyFullLogin 直证
 
 ### Pending Todos
 
@@ -104,6 +107,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-31T20:35:00+08:00
-Stopped at: Phase 1 complete（UAT 4/4 pass + SECURITY threats_open=0 + verification=passed + 转场完成），ready to plan Phase 2——按既定路径继续 /gsd-autonomous 或 /gsd-discuss-phase 2
+Last session: 2026-10-31T14:01:16.174Z
+Stopped at: Completed 02-01-PLAN.md
 Resume file: None

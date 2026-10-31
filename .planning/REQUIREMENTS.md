@@ -9,12 +9,12 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 认证与会话（AUTH）
 
-- [ ] **AUTH-01**: 用户可用用户名+密码登录获得 token（存量 BCrypt 哈希零迁移直接验证，畸形 hash 返回登录失败而非 500）
-- [ ] **AUTH-02**: 用户可用 API Key 登录（apikeyLogin 路径）
-- [ ] **AUTH-03**: 用户登出后会话即刻失效
-- [ ] **AUTH-04**: 管理员可将指定用户踢下线（userId→token 反查索引）
-- [ ] **AUTH-05**: 会话带 TTL 与活跃续期
-- [ ] **AUTH-06**: 白名单路由（登录/健康检查）免鉴权可访问
+- [x] **AUTH-01**: 用户可用用户名+密码登录获得 token（存量 BCrypt 哈希零迁移直接验证，畸形 hash 返回登录失败而非 500）
+- [x] **AUTH-02**: 用户可用 API Key 登录（apikeyLogin 路径）
+- [x] **AUTH-03**: 用户登出后会话即刻失效
+- [x] **AUTH-04**: 管理员可将指定用户踢下线（userId→token 反查索引）
+- [x] **AUTH-05**: 会话带 TTL 与活跃续期
+- [x] **AUTH-06**: 白名单路由（登录/健康检查）免鉴权可访问
 
 ### 权限体系 Casbin（PERM）
 
@@ -151,12 +151,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENG-06 | Phase 1 | Complete |
 | ENG-07 | Phase 1 | Complete |
 | ENG-08 | Phase 1 | Complete |
-| AUTH-01 | Phase 2 | Pending |
-| AUTH-02 | Phase 2 | Pending |
-| AUTH-03 | Phase 2 | Pending |
-| AUTH-04 | Phase 2 | Pending |
-| AUTH-05 | Phase 2 | Pending |
-| AUTH-06 | Phase 2 | Pending |
+| AUTH-01 | Phase 2 | Complete |
+| AUTH-02 | Phase 2 | Complete |
+| AUTH-03 | Phase 2 | Complete |
+| AUTH-04 | Phase 2 | Complete |
+| AUTH-05 | Phase 2 | Complete |
+| AUTH-06 | Phase 2 | Complete |
 | USER-01 | Phase 2 | Pending |
 | USER-02 | Phase 2 | Pending |
 | USER-03 | Phase 2 | Pending |
