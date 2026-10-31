@@ -33,7 +33,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. 新建记录自动获得雪花 ID（DB 无自增）且 JSON 输出为字符串防 JS 精度丢失；时间输出 `yyyy-MM-dd HH:mm:ss` 无时区；null 键照常输出（禁 omitempty）；枚举读侧兼容 name|int 且未知值兜底不 500
   4. 更新接口未提交的字段保持原值（指针 DTO + 显式 Select，禁裸 Save）；create_time/update_time/create_by/update_by 自动填充且无操作人上下文时跳过操作人字段
   5. 配置全部来自本地 YAML + 环境变量（koanf，替代 Nacos）；MySQL DSN 固化 `loc=Asia/Shanghai` + parseTime（TZ=UTC 环境集成测试无 8 小时漂移）；连接池默认值显式且适合工控机
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Walking Skeleton：环境重探 + sys_user DDL + 启动链 + POST create 端到端 tracer + 横切件单元测试（Wave 1）
+- [ ] 01-02-PLAN.md — 四件套补全：update/get/list + 零值保护 + 更新审计 + pkg/paging 分页 + 完整错误面（Wave 2，依赖 01-01）
+- [ ] 01-03-PLAN.md — 交付物：Makefile 静态交叉编译矩阵 + systemd unit + SIGTERM 优雅关停双重证明（Wave 2，依赖 01-01）
 
 ### Phase 2: 认证会话与 RBAC 主链路
 **Goal**: 用户可登录并获得会话（存量密码零迁移），管理员可管理用户/角色/菜单/部门/API Key 全套 RBAC 主链路数据
