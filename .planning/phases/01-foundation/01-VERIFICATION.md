@@ -1,7 +1,7 @@
 ---
 phase: 01-foundation
 verified: 2026-10-31T20:05:00Z
-status: human_needed
+status: passed
 score: 29/29 must-haves verified
 covered_files: [".gitignore", ".planning/phases/01-foundation/01-01-PLAN.md", ".planning/phases/01-foundation/01-01-SUMMARY.md", ".planning/phases/01-foundation/01-02-PLAN.md", ".planning/phases/01-foundation/01-02-SUMMARY.md", ".planning/phases/01-foundation/01-03-PLAN.md", ".planning/phases/01-foundation/01-03-SUMMARY.md", "Makefile", "cmd/server/main.go", "configs/config.yaml", "deploy/sys-iam-go.service", "go.mod", "go.sum", "internal/app/app.go", "internal/app/router.go", "internal/app/shutdown_integration_test.go", "internal/auth/identity.go", "internal/config/config.go", "internal/config/config_test.go", "internal/handler/user.go", "internal/handler/user_integration_test.go", "internal/health/health.go", "internal/middleware/access_log.go", "internal/middleware/body_limit.go", "internal/middleware/recovery.go", "internal/middleware/requestid.go", "internal/model/dto/user.go", "internal/model/po/base.go", "internal/model/po/user.go", "internal/repository/user.go", "internal/service/user.go", "internal/service/user_integration_test.go", "internal/testutil/mysql.go", "pkg/errcode/errcode.go", "pkg/errcode/errcode_test.go", "pkg/ids/id.go", "pkg/ids/id_test.go", "pkg/paging/paging.go", "pkg/paging/paging_test.go", "pkg/resp/resp.go", "pkg/resp/resp_test.go", "pkg/types/datetime.go", "pkg/types/datetime_test.go", "pkg/types/enum.go", "pkg/types/enum_test.go", "scripts/ddl/sys_user.sql", "scripts/test-graceful-shutdown.sh"]
 covered_digest: "v4:sha256:9ac2382104d1cbfad032e6e760a25545f523329ad772f0b66ff79c1d3d25883e"
