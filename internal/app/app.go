@@ -71,11 +71,19 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		srv: &http.Server{
 			Addr:    fmt.Sprintf(":%d", cfg.Server.Port),
 			Handler: engine,
-			// 传输层超时（WR-02/T-1-04）：无 ReadHeaderTimeout 时 slowloris 慢头
-			// 连接可长期占用 fd（工控机资源有限）；IdleTimeout 回收 keep-alive
-			// 空闲连接。刻意不设 ReadTimeout/WriteTimeout——请求体尺寸由 BodyLimit
-			// 中间件约束，响应无大 payload，保留长响应兼容性。
+			// 传输层超时（WR-02/WR-05/T-1-04）：三个超时各封一段——
+			//   - ReadHeaderTimeout=10s 首道闸：封 slowloris 慢头（工控机 fd 有限，
+			//     头迟迟不完整即断）；
+			//   - ReadTimeout=30s 封整个请求（头+体）的读取总时长——体积上限
+			//     （BodyLimit 1MB）只封内存不封时间，若无此界，头在 10s 内合法发完的
+			//     客户端可按每秒 1 字节滴漏 body，连接与 goroutine 被无限期占用
+			//     （slowloris 变体）。30s 对工控机局域网极宽裕：1MB JSON 在百兆内网
+			//     <1s 传完，正常请求远触不到上界；ReadTimeout 只约束读取，不影响
+			//     响应写出；
+			//   - IdleTimeout=120s 回收 keep-alive 空闲连接。
+			// 刻意不设 WriteTimeout：响应无大 payload，保留长响应兼容性。
 			ReadHeaderTimeout: 10 * time.Second,
+			ReadTimeout:       30 * time.Second,
 			IdleTimeout:       120 * time.Second,
 		},
 	}, nil
