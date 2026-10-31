@@ -32,7 +32,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **USER-03**: 重置密码（重置为固定 123456，源系统行为）
 - [ ] **USER-04**: 用户分配/回收角色
 - [ ] **USER-05**: 用户分页查询（默认 1/15 钳位）+ 详情防 N+1 两查询装配
-- [ ] **USER-06**: 用户 Excel 导入（name+bitIndex+location 三键 upsert）
+<!-- USER-06 已删除（2026-10-31 Phase 2 研究实证）：源系统 User/Role 域无导入端点（仅 FaultInfoController:83 importExcel），三键语义属 FAUL-02；系 ROADMAP 起草错域复制，v1 不发明源系统没有的功能 -->
 - [ ] **USER-07**: builtin 内置用户删除硬拦截
 
 ### 角色管理（ROLE）
@@ -162,7 +162,6 @@ Which phases cover which requirements. Updated during roadmap creation.
 | USER-03 | Phase 2 | Pending |
 | USER-04 | Phase 2 | Pending |
 | USER-05 | Phase 2 | Pending |
-| USER-06 | Phase 2 | Pending |
 | USER-07 | Phase 2 | Pending |
 | ROLE-01 | Phase 2 | Pending |
 | ROLE-02 | Phase 2 | Pending |

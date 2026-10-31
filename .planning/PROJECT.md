@@ -24,7 +24,7 @@
 - ✓ 故障信息管理（FaultInfo）— 源系统既有
 - ✓ API Key 管理（ApiKey）— 源系统既有
 - ✓ 名称冗余同步（6 个领域事件监听器：部门/字典/菜单/角色/用户名/真名变更同步）— 源系统既有
-- ✓ 数据导入（ImportResult，用户/角色等 Excel 导入）— 源系统既有
+- ✓ 数据导入（ImportResult，故障信息 Excel 导入）— 源系统既有（仅 FaultInfo 域，2026-10-31 Phase 2 研究实证修正原"用户/角色"表述）
 - ✓ Go 工程骨架与横切地基（Gin+GORM+cmd/internal/pkg 结构、R 响应/雪花 ID/JSON 契约/审计填充/分页、静态单二进制+systemd+优雅关停）— Phase 1
 
 ### Active

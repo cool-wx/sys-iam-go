@@ -9,7 +9,7 @@
 用户可登录并获得会话（存量密码零迁移），管理员可管理用户/角色/菜单/部门/API Key 全套 RBAC 主链路数据。具体交付：
 
 - **认证与会话**：自建 token-session 管理器（crypto/rand 32B token + Redis Hash 会话 + user-tokens 反查索引），登录（密码 + API Key 两路径）、登出、踢下线、TTL 活跃续期、认证中间件与白名单
-- **五域 CRUD**：User / Role / Menu / Dept / ApiKey 全套（含用户 Excel 三键 upsert 导入、角色分配/回收、菜单树/部门树查询）
+- **五域 CRUD**：User / Role / Menu / Dept / ApiKey 全套（含角色分配/回收、菜单树/部门树查询；用户 Excel 导入已随 USER-06 删除移除——源系统 User 域无导入端点，三键语义属 Phase 4 FAUL-02）
 - **不含**：功能权限校验与数据权限（Phase 3 Casbin）、操作日志（Phase 4）、名称同步（Phase 5）
 
 需求项：AUTH-01..06、USER-01..07、ROLE-01..03、MENU-01..02、DEPT-01..02、AKEY-01..02（共 23 项）
@@ -45,18 +45,17 @@
 - builtin 守卫：HTTP 409 + 业务错误码 + 中文消息（errcode 模式延续）；USER-07（builtin 用户删除硬拦截）与 ROLE-02（builtin 角色删除守卫）统一拦截器实现
 - 认证中间件落位：Phase 1 的 pub 组白名单直通（D-02 临时态）本阶段收紧——`/api/v1/auth/login`、`/api/v1/auth/apikey-login`、`/healthz`、`/readyz` 白名单，其余路由全部要求有效 token（AUTH-06）
 
-### Excel 导入与 hash 抽样代证（Claude 自主决策，处置 STATE 待办）
+### Excel 导入作废与 hash 抽样代证（Claude 自主决策，处置 STATE 待办）
 
-- 导入契约：`POST /api/v1/users/import`（multipart xlsx）→ `{total, inserted, updated, failed, errors:[{row,reason}]}`；逐行独立 upsert，单行失败不回滚整批
-- 三键 upsert（USER-06）：name+bitIndex+location 全匹配 → UPDATE，否则 INSERT；缺键行跳过并记行级错误
-- 防线：BodyLimit 1MB（Phase 1 已有）+ 行数上限 10000 兜底 + 表头按列索引严格匹配（Pitfall 12）
-- **生产 hash 抽样代证**（STATE 待办"从生产库取 20 个 hash"生产库不可达）：以三源代证——① 开发库真实 hash（若存在）② Hutool BCrypt 生成的 `$2a$` 样本 ③ bcrypt 官方测试向量；生产抽样 20 条列入现场部署清单（与 arm64 真机首启同栏，随部署执行）
+- ~~导入契约：`POST /api/v1/users/import`（multipart xlsx）~~ **已作废（2026-10-31 研究实证）**：USER-06 系 ROADMAP 起草错域——源系统 User/Role 域无导入端点（仅 FaultInfoController:83 有 importExcel），sys_user 表无 bit_index/location 列，三键语义属 Phase 4 FAUL-02。USER-06 已从 REQUIREMENTS.md/ROADMAP.md 删除，本阶段不做任何 Excel 导入（excelize 依赖随 FAUL-02 在 Phase 4 引入）
+- ~~三键 upsert / 缺键行 / 防线~~ 随导入作废（Phase 4 FAUL-02 实现时以其 CONTEXT 为准，防线设计可参考：BodyLimit 1MB + 行数上限 + 表头按列索引严格匹配）
+- **生产 hash 抽样代证**（STATE 待办"从生产库取 20 个 hash"生产库不可达）：已由 02-RESEARCH.md 完成端到端活体代证——Go bcrypt 实测验证本库 admin 真实 Hutool `$2a$` hash（明文 admin123）成功，本库 arm64 用户的 10 字符畸形值即"畸形 hash 登录失败非 500"的天然 fixture；生产抽样 20 条仍列现场部署清单（与 arm64 真机首启同栏，随部署执行）
 
 ### Claude's Discretion
 
 - handler/service/repo 三层文件划分与测试组织方式（沿用 Phase 1 user 域模板）
 - 会话管理器内部方法签名、Redis pipeline 使用时机
-- Excel 列序常量与错误消息文案细节
+- 错误消息文案细节（登录失败/禁用/builtin 拦截等中文文案）
 - GORM 关联查询（user_role / role_menu）具体装配写法（两查询防 N+1 已定，实现自由）
 
 </decisions>

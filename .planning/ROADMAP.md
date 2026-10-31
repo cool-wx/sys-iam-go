@@ -47,12 +47,12 @@ Plans:
 **Goal**: 用户可登录并获得会话（存量密码零迁移），管理员可管理用户/角色/菜单/部门/API Key 全套 RBAC 主链路数据
 **Mode:** mvp
 **Depends on**: Phase 1
-**Requirements**: AUTH-01, AUTH-02, AUTH-03, AUTH-04, AUTH-05, AUTH-06, USER-01, USER-02, USER-03, USER-04, USER-05, USER-06, USER-07, ROLE-01, ROLE-02, ROLE-03, MENU-01, MENU-02, DEPT-01, DEPT-02, AKEY-01, AKEY-02
+**Requirements**: AUTH-01, AUTH-02, AUTH-03, AUTH-04, AUTH-05, AUTH-06, USER-01, USER-02, USER-03, USER-04, USER-05, USER-07, ROLE-01, ROLE-02, ROLE-03, MENU-01, MENU-02, DEPT-01, DEPT-02, AKEY-01, AKEY-02
 **Success Criteria** (what must be TRUE):
   1. 用户用用户名+密码登录获得 token：存量 BCrypt `$2a$` 哈希零迁移直接验证通过（生产 hash 抽样验证），畸形 hash 返回登录失败而非 500；API Key 登录路径可用（含复用已有会话分支）
   2. 登出后会话即刻失效；管理员可踢指定用户下线（userId→token 反查索引）；会话带 TTL 且活跃续期将 TTL 重置为完整 timeout
   3. 白名单路由（登录/健康检查）免鉴权可达，其余无 token 请求一律被拒绝
-  4. User/Role/Menu/Dept/ApiKey 五域 CRUD 与查询全可用：用户分页默认 1/15 钳位、详情两查询装配防 N+1、builtin 用户删除硬拦截、停用用户与停用 API Key 不可登录、重置密码固定 123456、用户可分配/回收角色、角色分页条件查询、用户 Excel 导入三键 upsert
+  4. User/Role/Menu/Dept/ApiKey 五域 CRUD 与查询全可用：用户分页默认 1/15 钳位、详情两查询装配防 N+1、builtin 用户删除硬拦截、停用用户与停用 API Key 不可登录、重置密码固定 123456、用户可分配/回收角色、角色分页条件查询（用户 Excel 导入已随 USER-06 删除移除——源系统 User 域无导入端点，三键语义属 Phase 4 FAUL-02，2026-10-31 研究实证修正）
   5. 菜单树按父子层级返回；部门树保持孤儿节点提升语义（与源一致）
 **Plans**: TBD
 
