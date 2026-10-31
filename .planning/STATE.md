@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 01
 current_phase_name: 工程骨架与横切地基
 status: executing
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-10-31T08:36:14.274Z"
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-10-31T09:00:40.875Z"
 last_activity: 2026-10-31
 last_activity_desc: Phase 01 execution started
-state_head: 9d3b22a95471976464aefda95843ecee3f02760c
+state_head: 5a09e3ff68522c3d41960a74a71690e61b4ec1b1
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-10-31)
 ## Current Position
 
 Phase: 01 (工程骨架与横切地基) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-10-31 — Phase 01 execution started
 
@@ -57,6 +57,7 @@ Progress: [░░░░░░░░░░] 0%
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 01 P01 | 27min | 2 tasks | 32 files |
+| Phase 01 P02 | 20min | 2 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,10 @@ Recent decisions affecting current work:
 - [Phase 01]: 01-01: 受保护分支处置——master is-protected=true 且无 allow_default_branch_commits，按 #2924/#3819 Re-home 到 gsd/phase-01-foundation 执行（master 未动）
 - [Phase 01]: 01-01: 测试基建离线自适应——Docker Hub 不可达，mysql:8.4.x 用本地缓存探测（IAM_TEST_MYSQL_IMAGE 可覆盖），ryuk 默认禁用（TESTCONTAINERS_RYUK_DISABLED 可恢复）
 - [Phase 01]: 01-01: 环境重探——开发库 sys_user 已被并发会话补上 builtin（22 列齐备），计划内 ALTER 未执行；自动化测试全程 testcontainers 不受漂移影响
+- [Phase 01]: 01-02: 更新审计在 repo.Patch 内显式并入 map（不依赖 BeforeUpdate 钩子）——规避 GORM Updates(map) 钩子字段不落 SET 的语义坑，update_time/操作人列确定性落库
+- [Phase 01]: 01-02: PageData[T].MarshalJSON 在类型出口统一保证空列表输出 [] 非 null（ENG-01 空输入边界），所有列表域免判空
+- [Phase 01]: 01-02: repo.Patch（map 白名单+RowsAffected 判 404+恒带 Where）与 paging.Parse/PageData 确立为全库更新与列表模板
+- [Phase 01]: 01-02: 集成测试 per-test 独立容器 + 进程级雪花单例（sync.Once），TestCreateUserContract 重构复用 newTestApp 基建
 
 ### Pending Todos
 
@@ -92,6 +97,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-31T08:36:14.249Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-10-31T09:00:05.872Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None
