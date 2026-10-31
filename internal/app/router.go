@@ -25,6 +25,7 @@ func newRouter(h *health.State, userHandler *handler.UserHandler, logger *slog.L
 	pub.POST("/api/v1/users", userHandler.Create)
 	pub.PUT("/api/v1/users/:id", userHandler.Update)
 	pub.GET("/api/v1/users/:id", userHandler.Get)
+	pub.GET("/api/v1/users", userHandler.List)
 
 	return engine
 }

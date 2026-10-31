@@ -9,6 +9,7 @@ import (
 	"github.com/cool-wx/sys-iam-go/internal/model/dto"
 	"github.com/cool-wx/sys-iam-go/internal/service"
 	"github.com/cool-wx/sys-iam-go/pkg/errcode"
+	"github.com/cool-wx/sys-iam-go/pkg/paging"
 	"github.com/cool-wx/sys-iam-go/pkg/resp"
 )
 
@@ -63,6 +64,17 @@ func (h *UserHandler) Get(c *gin.Context) {
 		return
 	}
 	data, err := h.svc.Get(c.Request.Context(), id)
+	if err != nil {
+		resp.Fail(c, err)
+		return
+	}
+	resp.OK(c, data)
+}
+
+// List 处理 GET /api/v1/users：query page/size 经 paging.Parse 钳位 → service → envelope。
+func (h *UserHandler) List(c *gin.Context) {
+	page, size := paging.Parse(c.Query("page"), c.Query("size"))
+	data, err := h.svc.List(c.Request.Context(), page, size)
 	if err != nil {
 		resp.Fail(c, err)
 		return

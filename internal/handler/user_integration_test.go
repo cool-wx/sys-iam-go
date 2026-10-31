@@ -352,3 +352,122 @@ func TestGetUserInvalidId(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &envelope))
 	assert.Equal(t, 10400, envelope.Code, "body=%s", body)
 }
+
+// ---- list 路径与完整错误面集成测试（01-02 Task 2）----
+
+// TestListUsersPaging 分页 envelope 契约：GET ?page=1&size=2 → data 内
+// {items,total,page,size}，items 长度 2、total 3、items[0] 为最新行
+// （ORDER BY create_time DESC, id DESC 稳定排序，P15）。
+func TestListUsersPaging(t *testing.T) {
+	ts, _ := newTestApp(t)
+
+	// 插 3 行：前两行同秒插入，第三行跨秒——排序由 create_time DESC 主导，
+	// 前两行的先后由 id DESC tiebreaker 决定（雪花 id 单调递增，后插者大）
+	createRawUser(t, ts, `{"username":"list-a","password":"pw","realName":"用户A"}`)
+	createRawUser(t, ts, `{"username":"list-b","password":"pw","realName":"用户B"}`)
+	time.Sleep(1100 * time.Millisecond)
+	createRawUser(t, ts, `{"username":"list-c","password":"pw","realName":"用户C"}`)
+
+	status, body := doRequest(t, "GET", ts.URL+"/api/v1/users?page=1&size=2", "")
+	require.Equal(t, http.StatusOK, status, "body=%s", body)
+	var envelope struct {
+		Data struct {
+			Items []struct {
+				Username string `json:"username"`
+				RealName string `json:"realName"`
+			} `json:"items"`
+			Total int64 `json:"total"`
+			Page  int   `json:"page"`
+			Size  int   `json:"size"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(body, &envelope), "body=%s", body)
+	d := envelope.Data
+	require.Len(t, d.Items, 2, "page=1&size=2 应返回 2 行: body=%s", body)
+	assert.Equal(t, int64(3), d.Total, "total 应为 3")
+	assert.Equal(t, 1, d.Page)
+	assert.Equal(t, 2, d.Size)
+	assert.Equal(t, "list-c", d.Items[0].Username, "items[0] 应为最新插入行")
+	assert.Equal(t, "list-b", d.Items[1].Username, "同秒插入的两行按 id DESC tiebreaker 排序")
+}
+
+// TestListUsersEdgeParams 边界参数：page=0&size=-1 钳位 1/15（HTTP 200 不 500）；
+// 超界页码 page=999 → items 为空 JSON 数组而非 null（ENG-01 空输入边界）。
+func TestListUsersEdgeParams(t *testing.T) {
+	ts, _ := newTestApp(t)
+
+	createRawUser(t, ts, `{"username":"edge-user","password":"pw","realName":"边界"}`)
+
+	status, body := doRequest(t, "GET", ts.URL+"/api/v1/users?page=0&size=-1", "")
+	require.Equal(t, http.StatusOK, status, "page=0&size=-1 不应报错: body=%s", body)
+	var envelope struct {
+		Data struct {
+			Items []json.RawMessage `json:"items"`
+			Total int64             `json:"total"`
+			Page  int               `json:"page"`
+			Size  int               `json:"size"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(body, &envelope), "body=%s", body)
+	assert.Equal(t, 1, envelope.Data.Page, "page=0 应钳位为 1")
+	assert.Equal(t, 15, envelope.Data.Size, "size=-1 应钳位为 15")
+	assert.Equal(t, int64(1), envelope.Data.Total)
+	assert.NotEmpty(t, envelope.Data.Items, "应有 1 行数据")
+
+	// 超界页码
+	status, body = doRequest(t, "GET", ts.URL+"/api/v1/users?page=999", "")
+	require.Equal(t, http.StatusOK, status, "超界页码不应报错: body=%s", body)
+	var envelope2 struct {
+		Data struct {
+			Items []json.RawMessage `json:"items"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(body, &envelope2), "body=%s", body)
+	require.NotNil(t, envelope2.Data.Items, "超界页码 items 必须是空数组 [] 而非 null")
+	assert.Empty(t, envelope2.Data.Items)
+	assert.Contains(t, string(body), `"items":[]`, "空列表应序列化为 [] 而非 null（Anti-Pattern：items:null）")
+}
+
+// TestCreateUserDuplicateUsername 重复 POST 同 username：uk_username 唯一索引
+// 1062 → gorm.ErrDuplicatedKey → HTTP 400 + code 10400（P4）。
+func TestCreateUserDuplicateUsername(t *testing.T) {
+	ts, _ := newTestApp(t)
+
+	createRawUser(t, ts, `{"username":"dup-user","password":"pw","realName":"第一次"}`)
+	status, body := doRequest(t, "POST", ts.URL+"/api/v1/users", `{"username":"dup-user","password":"pw","realName":"第二次"}`)
+	require.Equal(t, http.StatusBadRequest, status, "重复 username 应 400: body=%s", body)
+	var envelope struct {
+		Code int `json:"code"`
+	}
+	require.NoError(t, json.Unmarshal(body, &envelope))
+	assert.Equal(t, 10400, envelope.Code, "重复记录应落 10400 段: body=%s", body)
+}
+
+// TestCreateUserValidation 完整错误面：缺必填 → 400 + 10401；gender=99 未知枚举
+// → 不 500（兜底 UNKNOWN 落库）；请求体携带未知额外字段 → 不 400（宽容输入，
+// 源 FAIL_ON_UNKNOWN_PROPERTIES=false 语义）。
+func TestCreateUserValidation(t *testing.T) {
+	ts, _ := newTestApp(t)
+
+	// 缺 username（required）→ 400 + 10401
+	status, body := doRequest(t, "POST", ts.URL+"/api/v1/users", `{"password":"pw","realName":"缺用户名"}`)
+	require.Equal(t, http.StatusBadRequest, status, "缺必填应 400: body=%s", body)
+	var envelope struct {
+		Code int `json:"code"`
+	}
+	require.NoError(t, json.Unmarshal(body, &envelope))
+	assert.Equal(t, 10401, envelope.Code, "binding 失败应落 10401 段: body=%s", body)
+
+	// gender=99 未知枚举 → 不 500，正常创建（枚举兜底 UNKNOWN）
+	status, body = doRequest(t, "POST", ts.URL+"/api/v1/users", `{"username":"gender-fallback","password":"pw","realName":"枚举兜底","gender":99}`)
+	require.Equal(t, http.StatusOK, status, "未知枚举值不应 500: body=%s", body)
+	var okEnvelope struct {
+		Code int `json:"code"`
+	}
+	require.NoError(t, json.Unmarshal(body, &okEnvelope))
+	assert.Equal(t, 0, okEnvelope.Code)
+
+	// body 携带未知额外字段 → 不 400（宽容输入）
+	status, body = doRequest(t, "POST", ts.URL+"/api/v1/users", `{"username":"unknown-field","password":"pw","realName":"未知字段","foo":"bar"}`)
+	require.Equal(t, http.StatusOK, status, "未知额外字段不应 400: body=%s", body)
+}

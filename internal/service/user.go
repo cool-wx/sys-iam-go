@@ -11,6 +11,7 @@ import (
 	"github.com/cool-wx/sys-iam-go/internal/model/po"
 	"github.com/cool-wx/sys-iam-go/internal/repository"
 	"github.com/cool-wx/sys-iam-go/pkg/errcode"
+	"github.com/cool-wx/sys-iam-go/pkg/paging"
 )
 
 // UserService 用户域服务。
@@ -98,6 +99,14 @@ func (s *UserService) Update(ctx context.Context, id int64, req *dto.UpdateUserR
 		return nil, err
 	}
 	return s.Get(ctx, id)
+}
+
+// List 用户列表（编译存根：RED 阶段未实现真实查询）。
+func (s *UserService) List(ctx context.Context, page, size int) (*paging.PageData[dto.UserResp], error) {
+	_ = ctx
+	_ = page
+	_ = size
+	return &paging.PageData[dto.UserResp]{}, nil
 }
 
 // Get 用户详情：按主键查询后 PO→DTO（未命中 404/10300）。
