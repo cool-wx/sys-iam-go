@@ -104,3 +104,27 @@ func TestInvalidPortRejected(t *testing.T) {
 	_, err := config.Load(filepath.Join(t.TempDir(), "absent.yaml"), false)
 	require.Error(t, err, "port 越界必须返回 error")
 }
+
+func TestInvalidPoolConfigRejected(t *testing.T) {
+	// WR-04 回归：连接池参数非法必须启动即失败——database/sql 对 n<=0 的语义是
+	// "无限制/不保留/永不回收"，0 值会静默解除 T-1-04 声明的连接池 DoS 兜底。
+	cases := []struct {
+		name string
+		env  string
+		val  string
+	}{
+		{"max_open_conns=0（无限制语义）", "IAM_MYSQL_MAX_OPEN_CONNS", "0"},
+		{"max_open_conns 负值", "IAM_MYSQL_MAX_OPEN_CONNS", "-3"},
+		{"idle>open 不一致", "IAM_MYSQL_MAX_IDLE_CONNS", "99"},
+		{"idle 负值", "IAM_MYSQL_MAX_IDLE_CONNS", "-1"},
+		{"conn_max_lifetime=0（永不回收语义）", "IAM_MYSQL_CONN_MAX_LIFETIME", "0s"},
+		{"conn_max_lifetime 负值", "IAM_MYSQL_CONN_MAX_LIFETIME", "-5m"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(tc.env, tc.val)
+			_, err := config.Load(filepath.Join(t.TempDir(), "absent.yaml"), false)
+			require.Error(t, err, "非法连接池配置（%s=%s）必须返回 error", tc.env, tc.val)
+		})
+	}
+}

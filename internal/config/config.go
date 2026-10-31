@@ -131,6 +131,16 @@ func Load(path string, explicit bool) (*Config, error) {
 	if cfg.MySQL.DSN == "" {
 		return nil, fmt.Errorf("mysql.dsn must not be empty")
 	}
+	// 连接池参数校验（WR-04/T-1-04）：database/sql 对 n<=0 的语义是"无限制连接数 /
+	// 不保留空闲连接 / 永不回收"，配置写 0、键拼错致 koanf Int() 得 0、或经失效
+	// 覆盖链传入 0，都会静默解除分页钳位注释（paging.go）声明的连接池 DoS 兜底
+	// ——启动即 fail fast。MaxIdleConns=0 合法（仅表示不缓存空闲连接）。
+	if cfg.MySQL.MaxOpenConns <= 0 || cfg.MySQL.MaxIdleConns < 0 || cfg.MySQL.MaxIdleConns > cfg.MySQL.MaxOpenConns {
+		return nil, fmt.Errorf("invalid mysql pool config (max_open_conns=%d max_idle_conns=%d)", cfg.MySQL.MaxOpenConns, cfg.MySQL.MaxIdleConns)
+	}
+	if cfg.MySQL.ConnMaxLifetime <= 0 {
+		return nil, fmt.Errorf("invalid mysql.conn_max_lifetime %s (must be > 0)", cfg.MySQL.ConnMaxLifetime)
+	}
 	return cfg, nil
 }
 
