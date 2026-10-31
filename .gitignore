@@ -1,0 +1,2 @@
+# 构建产物不入库（make build / build-arm64 输出）
+bin/
