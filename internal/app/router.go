@@ -10,7 +10,7 @@ import (
 	"github.com/cool-wx/sys-iam-go/internal/middleware"
 )
 
-// newRouter 装配路由：三中间件全局链（RequestID→AccessLog→Recovery，顺序固定）+
+// newRouter 装配路由：四中间件全局链（RequestID→AccessLog→Recovery→BodyLimit）+
 // public 组（Phase 1 全白名单直通，D-02 临时态；Phase 2 加 Auth 中间件时收紧）。
 func newRouter(h *health.State, userHandler *handler.UserHandler, logger *slog.Logger) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
@@ -18,6 +18,7 @@ func newRouter(h *health.State, userHandler *handler.UserHandler, logger *slog.L
 	engine.Use(middleware.RequestID())
 	engine.Use(middleware.AccessLog(logger))
 	engine.Use(middleware.Recovery(logger))
+	engine.Use(middleware.BodyLimit()) // 请求体 1MB 上限（WR-02/T-1-04 DoS 防护）
 
 	pub := engine.Group("/")
 	pub.GET("/healthz", h.Liveness)

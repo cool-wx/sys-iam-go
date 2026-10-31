@@ -71,6 +71,12 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		srv: &http.Server{
 			Addr:    fmt.Sprintf(":%d", cfg.Server.Port),
 			Handler: engine,
+			// 传输层超时（WR-02/T-1-04）：无 ReadHeaderTimeout 时 slowloris 慢头
+			// 连接可长期占用 fd（工控机资源有限）；IdleTimeout 回收 keep-alive
+			// 空闲连接。刻意不设 ReadTimeout/WriteTimeout——请求体尺寸由 BodyLimit
+			// 中间件约束，响应无大 payload，保留长响应兼容性。
+			ReadHeaderTimeout: 10 * time.Second,
+			IdleTimeout:       120 * time.Second,
 		},
 	}, nil
 }

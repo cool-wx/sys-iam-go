@@ -506,3 +506,27 @@ func TestCreateUserValidation(t *testing.T) {
 	status, body = doRequest(t, "POST", ts.URL+"/api/v1/users", `{"username":"unknown-field","password":"pw","realName":"未知字段","foo":"bar"}`)
 	require.Equal(t, http.StatusOK, status, "未知额外字段不应 400: body=%s", body)
 }
+
+// TestCreateUserBodyTooLarge 请求体超 1MB 上限（WR-02/BodyLimit）：超限读取错误
+// 必须收敛为固定文案 10401 envelope——不 500、不回显底层错误原文（T-1-01）；
+// 传输层由 MaxBytesReader 标记 requestTooLarge（响应后关连，413 语义）。
+func TestCreateUserBodyTooLarge(t *testing.T) {
+	ts, _ := newTestApp(t)
+
+	// ~1.5MB UTF-8 body，超过 1MB 上限
+	big := `{"username":"body-too-large","password":"pw","realName":"` + strings.Repeat("超", 1<<19) + `"}`
+	status, body := doRequest(t, "POST", ts.URL+"/api/v1/users", big)
+	require.Equal(t, http.StatusBadRequest, status, "超限 body 应收敛为 envelope 而非 500: len=%d body=%s", len(big), body)
+	var envelope struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(body, &envelope), "body=%s", body)
+	assert.Equal(t, 10401, envelope.Code, "超限应落 10401 段: body=%s", body)
+	assert.Contains(t, envelope.Message, "1MB", "应为固定超限文案: body=%s", body)
+	assert.NotContains(t, envelope.Message, "http:", "不得回显底层错误原文（T-1-01）: body=%s", body)
+
+	// 超限请求不落库、不污染连接：同名正常小请求仍可成功创建
+	status, body = doRequest(t, "POST", ts.URL+"/api/v1/users", `{"username":"body-too-large","password":"pw","realName":"正常"}`)
+	assert.Equal(t, http.StatusOK, status, "超限请求后正常请求必须仍可用: body=%s", body)
+}

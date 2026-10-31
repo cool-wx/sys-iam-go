@@ -2,6 +2,8 @@
 package handler
 
 import (
+	"errors"
+	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -23,11 +25,26 @@ func NewUserHandler(svc *service.UserService) *UserHandler {
 	return &UserHandler{svc: svc}
 }
 
+// bindJSON 绑定 JSON 请求体。请求体超限（BodyLimit 中间件的 MaxBytesReader，
+// WR-02）时收敛为固定文案 10401 envelope——不回显底层错误原文（T-1-01 纪律）；
+// 其余校验失败维持既有文案。返回 false 表示响应已写出，调用方直接 return。
+func bindJSON(c *gin.Context, obj any) bool {
+	if err := c.ShouldBindJSON(obj); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			resp.Fail(c, errcode.New(errcode.CodeValidation, "请求体超过 1MB 上限"))
+			return false
+		}
+		resp.Fail(c, errcode.New(errcode.CodeValidation, "参数校验失败: "+err.Error()))
+		return false
+	}
+	return true
+}
+
 // Create 处理 POST /api/v1/users：绑定校验 → service → envelope 出口。
 func (h *UserHandler) Create(c *gin.Context) {
 	var req dto.UserCreateReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		resp.Fail(c, errcode.New(errcode.CodeValidation, "参数校验失败: "+err.Error()))
+	if !bindJSON(c, &req) {
 		return
 	}
 	data, err := h.svc.Create(c.Request.Context(), &req)
@@ -45,8 +62,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 		return
 	}
 	var req dto.UpdateUserReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		resp.Fail(c, errcode.New(errcode.CodeValidation, "参数校验失败: "+err.Error()))
+	if !bindJSON(c, &req) {
 		return
 	}
 	data, err := h.svc.Update(c.Request.Context(), id, &req)
