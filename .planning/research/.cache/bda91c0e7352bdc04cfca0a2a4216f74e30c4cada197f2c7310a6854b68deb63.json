@@ -1,0 +1,1 @@
+{"content":"Logging consensus 2025/2026: slog (stdlib log/slog since Go 1.21) is the default recommendation - zero dependency, structured, pluggable handlers. zap/zerolog only when profiling shows logging bottleneck. slog bridges exist for both.","source":"web","provider":"websearch","confidence":"MEDIUM","fetched_at":"2026-10-31T05:36:01.932Z","ttl":86400000,"kind":"web"}
