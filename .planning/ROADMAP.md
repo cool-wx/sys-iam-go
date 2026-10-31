@@ -36,7 +36,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
 
 Plans:
+**Wave 1**
 - [ ] 01-01-PLAN.md — Walking Skeleton：环境重探 + sys_user DDL + 启动链 + POST create 端到端 tracer + 横切件单元测试（Wave 1）
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 01-02-PLAN.md — 四件套补全：update/get/list + 零值保护 + 更新审计 + pkg/paging 分页 + 完整错误面（Wave 2，依赖 01-01）
 - [ ] 01-03-PLAN.md — 交付物：Makefile 静态交叉编译矩阵 + systemd unit + SIGTERM 优雅关停双重证明（Wave 2，依赖 01-01）
 

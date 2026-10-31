@@ -23,7 +23,7 @@
 - **D-03:** 本机 `sysiam-mysql` 容器（mysql:8.4，库 `sys_iam`）实测为**空库（0 表）**，无存量 schema 可核对；rnacos 配置总数为 0，无 DDL 落点。权威 schema 来源定为**源 PO 确定性推导**：`@TableName`/`@TableField` 注解 + MyBatis-Plus 驼峰→下划线规则映射（规则推导，非猜测）— **Reversibility:** one-way — 建表后列名即事实契约，后续改动需 DDL 迁移且波及全部 GORM 模型
   - **D-03 修订条目（2026-10-31 研究会话实测追加，原决策文字不改）：** 上述定案前提"sys_iam 空库（0 表）"已过时——同日研究会话实测库内已导入 15 表 DDL（sys_user 逐字 DDL 见 01-RESEARCH.md §Schema 现状突变）。权威 schema 来源据此**升级为"实测真实 DDL + builtin 补列"**（导入 DDL 缺 builtin 列，源 PO `User.java:62-64` 证实该列存在；本地空表 ALTER 补列零风险）。此为同一决策门内"实测优于推导"的来源升级（更保守），非决策推翻；one-way 定性与 Claude's Discretion 授权范围均不变。执行落点：01-01-PLAN.md Task 1 第 2 步（DDL 脚本 = 实测 21 列 + builtin = 22 列）。
 - **D-04:** Phase 1 仅建 `sys_user` 一张表（推导 DDL 导入本机 sysiam-mysql），四件套读写实测即完成列映射校准；其余 12 实体 DDL 在各自域的 Phase 落地时同法建表，缩小单次推导误差面
-- **D-05:** 生产库存量 BCrypt hash 抽样验证（REQUIREMENTS AUTH-01 验收项）保持开放 —— 本机无生产库，Phase 2 验收时向用户索取生产库 dump 或抽样 hash；BCrypt `$2a$` 格式兼容性已经研究多源交叉验证，风险低
+- **D-05 [informational]:** 生产库存量 BCrypt hash 抽样验证（REQUIREMENTS AUTH-01 验收项）保持开放 —— 本机无生产库，Phase 2 验收时向用户索取生产库 dump 或抽样 hash；BCrypt `$2a$` 格式兼容性已经研究多源交叉验证，风险低（属延后备忘而非本 phase 实现项，见 `<deferred>`；亦见 D-03 修订条目——开发库 DDL 已实测导入）
 
 ### 配置与部署形态（Claude 自主决策）
 - **D-06:** 配置组织为**单一 `config.yaml` + 环境变量覆盖**（koanf，前缀 `IAM_`，如 `IAM_MYSQL_DSN`），不按环境拆分多文件 —— 工控机单机无多环境复杂度，环境差异全走环境变量
