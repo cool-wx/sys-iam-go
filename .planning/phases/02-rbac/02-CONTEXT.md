@@ -23,33 +23,33 @@
 
 ### 认证契约（Claude 自主决策，研究文档支撑）
 
-- `POST /api/v1/auth/login {username,password}` → `{token, user}`；password/extToken 等敏感字段绝不回传
-- 登录失败统一报"用户名或密码错误"，不区分用户不存在/密码错误（防用户枚举，源语义 FEATURES.md:22）；禁用用户报"用户已被禁用"；畸形 hash 返回登录失败而非 500（PITFALLS.md Pitfall 7）
-- apikeyLogin 沿源语义（FEATURES.md:23）：按 key+ENABLED+未过期查 ApiKey → 关联用户登录；关联用户已有有效会话则复用同一 token（Redis 维护 apiKey→token 映射）
-- token 传递：`Authorization: Bearer <token>` 标准方式；X-API-Key header 方式不实现（研究反特性清单 FEATURES.md:219——源仅定义常量无消费方）
-- 无账号锁定、无密码强度规则、无验证码、无刷新令牌双机制（源系统均无，不发明）
+- **D-01:** `POST /api/v1/auth/login {username,password}` → `{token, user}`；password/extToken 等敏感字段绝不回传
+- **D-02:** 登录失败统一报"用户名或密码错误"，不区分用户不存在/密码错误（防用户枚举，源语义 FEATURES.md:22）；禁用用户报"用户已被禁用"；畸形 hash 返回登录失败而非 500（PITFALLS.md Pitfall 7）
+- **D-03:** apikeyLogin 沿源语义（FEATURES.md:23）：按 key+ENABLED+未过期查 ApiKey → 关联用户登录；关联用户已有有效会话则复用同一 token（Redis 维护 apiKey→token 映射）
+- **D-04:** token 传递：`Authorization: Bearer <token>` 标准方式；X-API-Key header 方式不实现（研究反特性清单 FEATURES.md:219——源仅定义常量无消费方）
+- **D-05:** 无账号锁定、无密码强度规则、无验证码、无刷新令牌双机制（源系统均无，不发明）
 
 ### 会话参数与生命周期（Claude 自主决策，处置 Nacos 缺口）
 
-- **timeout 缺省 30d**：源 Nacos craft-satoken.yaml 实际值不可得（STATE 待办），以 Sa-Token 官方默认值（30 天）为最接近代理；落地为 `auth.session.timeout` 配置项 + `IAM_AUTH_SESSION_TIMEOUT` env 覆盖，现场可校正——缺口在 PLAN 中文档化
-- 活跃续期：认证中间件每次校验命中后 `EXPIRE` 重置 TTL 为完整 timeout（滚动会话，AUTH-05）；不实现 idle+absolute 双超时（源未启用 active-timeout 窗口语义）
-- 并发会话：允许多端多 token 并存（Sa-Token 默认，与源一致）；`iam:user-tokens:{userId}` Set 容纳多 token
-- **停用用户/重置密码 → 存量会话立即踢下线**（DEL session + SREM 索引）：比源行为更严格——停用用户持旧 token 继续操作是安全洞，且索引天然支持；此为有意的安全增强而非语义漂移
-- 会话 Hash 载荷：userId / userName / realName / roles（角色码列表，供 Phase 3 起点与 displayName 用）；permissions 快照不放（Phase 3 Casbin 即时生效语义取代登录快照——PROJECT.md 决策）
+- **D-06:** timeout 缺省 30d：源 Nacos craft-satoken.yaml 实际值不可得（STATE 待办），以 Sa-Token 官方默认值（30 天）为最接近代理；落地为 `auth.session.timeout` 配置项 + `IAM_AUTH_SESSION_TIMEOUT` env 覆盖，现场可校正——缺口在 PLAN 中文档化
+- **D-07:** 活跃续期：认证中间件每次校验命中后 `EXPIRE` 重置 TTL 为完整 timeout（滚动会话，AUTH-05）；不实现 idle+absolute 双超时（源未启用 active-timeout 窗口语义）
+- **D-08:** 并发会话：允许多端多 token 并存（Sa-Token 默认，与源一致）；`iam:user-tokens:{userId}` Set 容纳多 token
+- **D-09:** 停用用户/重置密码 → 存量会话立即踢下线（DEL session + SREM 索引）：比源行为更严格——停用用户持旧 token 继续操作是安全洞，且索引天然支持；此为有意的安全增强而非语义漂移
+- **D-10:** 会话 Hash 载荷：userId / userName / realName / roles（角色码列表，供 Phase 3 起点与 displayName 用）；permissions 快照不放（Phase 3 Casbin 即时生效语义取代登录快照——PROJECT.md 决策）
 
 ### 五域 REST 契约与守卫（Claude 自主决策，延续 Phase 1 模式）
 
-- 路由复数资源：`/api/v1/{auth,users,roles,menus,depts,api-keys}`，延续 Phase 1 `/api/v1/users` 既有形态
-- 用户角色分配独立子资源：`PUT /api/v1/users/:id/roles`（全量替换语义）+ `GET /api/v1/users/:id/roles` 查询（USER-04）
-- 树接口独立端点：`GET /api/v1/menus/tree`、`GET /api/v1/depts/tree`；孤儿节点提升为根（DEPT-02 源语义，菜单树复用同一构建器——parentId 为 null/0 或指向不存在节点均挂根，FEATURES.md:26）
-- builtin 守卫：HTTP 409 + 业务错误码 + 中文消息（errcode 模式延续）；USER-07（builtin 用户删除硬拦截）与 ROLE-02（builtin 角色删除守卫）统一拦截器实现
-- 认证中间件落位：Phase 1 的 pub 组白名单直通（D-02 临时态）本阶段收紧——`/api/v1/auth/login`、`/api/v1/auth/apikey-login`、`/healthz`、`/readyz` 白名单，其余路由全部要求有效 token（AUTH-06）
+- **D-11:** 路由复数资源：`/api/v1/{auth,users,roles,menus,depts,api-keys}`，延续 Phase 1 `/api/v1/users` 既有形态
+- **D-12:** 用户角色分配独立子资源：`PUT /api/v1/users/:id/roles`（全量替换语义）+ `GET /api/v1/users/:id/roles` 查询（USER-04）
+- **D-13:** 树接口独立端点：`GET /api/v1/menus/tree`、`GET /api/v1/depts/tree`；孤儿节点提升为根（DEPT-02 源语义，菜单树复用同一构建器——parentId 为 null/0 或指向不存在节点均挂根，FEATURES.md:26）
+- **D-14:** builtin 守卫：HTTP 409 + 业务错误码 + 中文消息（errcode 模式延续）；USER-07（builtin 用户删除硬拦截）与 ROLE-02（builtin 角色删除守卫）统一拦截器实现
+- **D-15:** 认证中间件落位：Phase 1 的 pub 组白名单直通（D-02 临时态）本阶段收紧——`/api/v1/auth/login`、`/api/v1/auth/apikey-login`、`/healthz`、`/readyz` 白名单，其余路由全部要求有效 token（AUTH-06）
 
 ### Excel 导入作废与 hash 抽样代证（Claude 自主决策，处置 STATE 待办）
 
-- ~~导入契约：`POST /api/v1/users/import`（multipart xlsx）~~ **已作废（2026-10-31 研究实证）**：USER-06 系 ROADMAP 起草错域——源系统 User/Role 域无导入端点（仅 FaultInfoController:83 有 importExcel），sys_user 表无 bit_index/location 列，三键语义属 Phase 4 FAUL-02。USER-06 已从 REQUIREMENTS.md/ROADMAP.md 删除，本阶段不做任何 Excel 导入（excelize 依赖随 FAUL-02 在 Phase 4 引入）
-- ~~三键 upsert / 缺键行 / 防线~~ 随导入作废（Phase 4 FAUL-02 实现时以其 CONTEXT 为准，防线设计可参考：BodyLimit 1MB + 行数上限 + 表头按列索引严格匹配）
-- **生产 hash 抽样代证**（STATE 待办"从生产库取 20 个 hash"生产库不可达）：已由 02-RESEARCH.md 完成端到端活体代证——Go bcrypt 实测验证本库 admin 真实 Hutool `$2a$` hash（明文 admin123）成功，本库 arm64 用户的 10 字符畸形值即"畸形 hash 登录失败非 500"的天然 fixture；生产抽样 20 条仍列现场部署清单（与 arm64 真机首启同栏，随部署执行）
+- **[informational]:** ~~导入契约：`POST /api/v1/users/import`（multipart xlsx）~~ 已作废（2026-10-31 研究实证）：USER-06 系 ROADMAP 起草错域——源系统 User/Role 域无导入端点（仅 FaultInfoController:83 有 importExcel），sys_user 表无 bit_index/location 列，三键语义属 Phase 4 FAUL-02。USER-06 已从 REQUIREMENTS.md/ROADMAP.md 删除，本阶段不做任何 Excel 导入（excelize 依赖随 FAUL-02 在 Phase 4 引入）
+- **[informational]:** ~~三键 upsert / 缺键行 / 防线~~ 随导入作废（Phase 4 FAUL-02 实现时以其 CONTEXT 为准，防线设计可参考：BodyLimit 1MB + 行数上限 + 表头按列索引严格匹配）
+- **D-16:** 生产 hash 抽样代证（STATE 待办"从生产库取 20 个 hash"生产库不可达）：已由 02-RESEARCH.md 完成端到端活体代证——Go bcrypt 实测验证本库 admin 真实 Hutool `$2a$` hash（明文 admin123）成功，本库 arm64 用户的 10 字符畸形值即"畸形 hash 登录失败非 500"的天然 fixture；生产抽样 20 条仍列现场部署清单（与 arm64 真机首启同栏，随部署执行）
 
 ### Claude's Discretion
 
