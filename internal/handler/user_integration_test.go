@@ -33,45 +33,15 @@ import (
 // 覆盖：envelope 三键、雪花 ID 字符串化且 >2^53、时间无时区格式（TZ=UTC 无 8h 漂移）、
 // openid null 键保留、password/extToken 永不出网、DB 行审计列为 NULL、健康端点。
 func TestCreateUserContract(t *testing.T) {
-	ctx := context.Background()
-	dsn, stopContainer, err := testutil.RunMySQL(ctx)
-	require.NoError(t, err, "mysql testcontainer 启动与 DDL 引导失败")
-
-	cfg := &config.Config{
-		Server:    config.ServerConfig{Port: 0},
-		MySQL:     config.MySQLConfig{DSN: dsn, MaxOpenConns: 5, MaxIdleConns: 2, ConnMaxLifetime: time.Minute},
-		Snowflake: config.SnowflakeConfig{Node: 1},
-		Log:       config.LogConfig{Level: "error"},
-	}
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	application, err := app.New(cfg, logger)
-	require.NoError(t, err, "app 装配失败")
-
-	// 雪花节点装配（等价真实 main 路径）
-	node, err := ids.NewNode(1)
-	require.NoError(t, err)
-	ids.SetDefault(node)
-
-	ts := httptest.NewServer(application.Engine())
-
-	t.Cleanup(func() {
-		// 顺序：关测试 HTTP → 关应用连接池 → 终止容器
-		ts.Close()
-		application.Stop()
-		stopContainer()
-	})
+	ts, dsn := newTestApp(t)
 
 	// --- create 请求 ---
 	const username = "gsd_contract_user"
 	reqBody := `{"username":"` + username + `","password":"pw-123456","realName":"契约验证用户","gender":"MALE","deptId":"100","deptName":"总部"}`
-	resp, err := http.Post(ts.URL+"/api/v1/users", "application/json", strings.NewReader(reqBody))
-	require.NoError(t, err, "POST /api/v1/users 失败")
-	defer resp.Body.Close()
-	bodyBytes, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	statusCode, bodyBytes := doRequest(t, "POST", ts.URL+"/api/v1/users", reqBody)
 	body := string(bodyBytes)
 
-	require.Equal(t, http.StatusOK, resp.StatusCode, "HTTP 状态: body=%s", body)
+	require.Equal(t, http.StatusOK, statusCode, "HTTP 状态: body=%s", body)
 
 	// envelope 三键：code 恒数字 0、message 恒字符串 "ok"、data 键存在
 	var envelope struct {
