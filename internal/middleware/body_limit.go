@@ -6,9 +6,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// maxBodyBytes 请求体大小上限：1MB（按当前用户域 JSON 契约字段裕量设定；后续
-// 大 payload 域如 Excel 导入应另设独立上限，不复用全局值）。
-const maxBodyBytes int64 = 1 << 20
+// MaxBodyMB 全局请求体上限（MB 数，MiB 语义）——单一事实源（IN-10）：字节上限
+// maxBodyBytes 与 handler 超限文案均由它派生，调整上限只改这一处，用户可见文案
+// 不会与真实上限漂移。按当前用户域 JSON 契约字段裕量设定；后续大 payload 域如
+// Excel 导入应另设独立上限，不复用全局值。
+const MaxBodyMB int64 = 1
+
+// maxBodyBytes 请求体大小上限（字节）：由 MaxBodyMB 派生（编译期常量运算）。
+const maxBodyBytes int64 = MaxBodyMB << 20
 
 // BodyLimit 请求体大小上限中间件（WR-02/T-1-04 DoS 防护）：经 http.MaxBytesReader
 // 包裹请求体，超限后读取返回 *http.MaxBytesError，由 handler.bindJSON 收敛为固定

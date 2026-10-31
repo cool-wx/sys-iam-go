@@ -3,11 +3,13 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/cool-wx/sys-iam-go/internal/middleware"
 	"github.com/cool-wx/sys-iam-go/internal/model/dto"
 	"github.com/cool-wx/sys-iam-go/internal/service"
 	"github.com/cool-wx/sys-iam-go/pkg/errcode"
@@ -32,7 +34,10 @@ func bindJSON(c *gin.Context, obj any) bool {
 	if err := c.ShouldBindJSON(obj); err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			resp.Fail(c, errcode.New(errcode.CodeValidation, "请求体超过 1MB 上限"))
+			// 文案由 middleware.MaxBodyMB 生成（单一事实源，IN-10）——上限调整时
+			// 文案随之更新，不会过期失真。
+			resp.Fail(c, errcode.New(errcode.CodeValidation,
+				fmt.Sprintf("请求体超过 %dMB 上限", middleware.MaxBodyMB)))
 			return false
 		}
 		resp.Fail(c, errcode.New(errcode.CodeValidation, "参数校验失败: "+err.Error()))
