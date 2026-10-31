@@ -102,9 +102,9 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **ENG-03**: 雪花 ID 应用层生成（DB 无自增）+ int64 JSON 字符串化防精度丢失
 - [x] **ENG-04**: JSON 契约：时间 `yyyy-MM-dd HH:mm:ss` 无时区、null 键照常输出（禁 omitempty）、枚举读侧兼容 name|int 且未知值兜底
 - [x] **ENG-05**: GORM 写路径零值保护（指针 DTO + 显式 Select 更新，禁裸 Save，防静默清空数据）
-- [ ] **ENG-06**: /healthz /readyz 健康检查 + 优雅关停（SIGTERM 15s 排空）
+- [x] **ENG-06**: /healthz /readyz 健康检查 + 优雅关停（SIGTERM 15s 排空）
 - [x] **ENG-07**: 配置本地 YAML + 环境变量（koanf，替代 Nacos）
-- [ ] **ENG-08**: 单二进制交叉编译（CGO_ENABLED=0 纯静态）+ systemd unit 文件
+- [x] **ENG-08**: 单二进制交叉编译（CGO_ENABLED=0 纯静态）+ systemd unit 文件
 
 ## v2 Requirements
 
@@ -148,9 +148,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENG-03 | Phase 1 | Complete |
 | ENG-04 | Phase 1 | Complete |
 | ENG-05 | Phase 1 | Complete |
-| ENG-06 | Phase 1 | Pending |
+| ENG-06 | Phase 1 | Complete |
 | ENG-07 | Phase 1 | Complete |
-| ENG-08 | Phase 1 | Pending |
+| ENG-08 | Phase 1 | Complete |
 | AUTH-01 | Phase 2 | Pending |
 | AUTH-02 | Phase 2 | Pending |
 | AUTH-03 | Phase 2 | Pending |

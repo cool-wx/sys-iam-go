@@ -2,17 +2,17 @@
 gsd_state_version: "1.0"
 current_phase: 01
 current_phase_name: 工程骨架与横切地基
-status: executing
-stopped_at: Completed 01-02-PLAN.md
-last_updated: "2026-10-31T09:00:40.875Z"
+status: verifying
+stopped_at: Completed 01-03-PLAN.md (phase 01 all 3 plans done)
+last_updated: "2026-10-31T09:20:50.220Z"
 last_activity: 2026-10-31
 last_activity_desc: Phase 01 execution started
-state_head: 5a09e3ff68522c3d41960a74a71690e61b4ec1b1
+state_head: 630e1c2429d721da59160e1581d15c2049e0710c
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 3
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-31)
 
 Phase: 01 (工程骨架与横切地基) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-10-31 — Phase 01 execution started
 
 Progress: [░░░░░░░░░░] 0%
@@ -58,6 +58,7 @@ Progress: [░░░░░░░░░░] 0%
 |------|----------|-------|-------|
 | Phase 01 P01 | 27min | 2 tasks | 32 files |
 | Phase 01 P02 | 20min | 2 tasks | 13 files |
+| Phase 01 P03 | 17min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -76,6 +77,10 @@ Recent decisions affecting current work:
 - [Phase 01]: 01-02: PageData[T].MarshalJSON 在类型出口统一保证空列表输出 [] 非 null（ENG-01 空输入边界），所有列表域免判空
 - [Phase 01]: 01-02: repo.Patch（map 白名单+RowsAffected 判 404+恒带 Where）与 paging.Parse/PageData 确立为全库更新与列表模板
 - [Phase 01]: 01-02: 集成测试 per-test 独立容器 + 进程级雪花单例（sync.Once），TestCreateUserContract 重构复用 newTestApp 基建
+- [Phase 01]: 01-03: systemd unit 不配 ExecStop——Type=simple 默认 KillSignal=SIGTERM 由进程内 NotifyContext→SetNotReady→Shutdown(15s) 完成，与 D-09 意图语义等价（脚本实证 exit 0）
+- [Phase 01]: 01-03: 摘流 503 断言重设计——Go Shutdown 并发关 idle 连接/停 accept 使排空窗口 503 外部观察仅微秒级竞态，改为摘流单步直证（真 handler 200→503）+ 排空窗口'永不 200'强断言（严格强于单点 503）
+- [Phase 01]: 01-03: make verify-static 为出厂门（T-1-09）——file 输出缺 statically linked 即非 0 退出（负路径已验证）；CGO_ENABLED=0 显式进每条构建命令，双架构产物 amd64 22.9MB/arm64 21.1MB
+- [Phase 01]: 01-03: 验证脚本镜像离线自适应（IAM_TEST_MYSQL_IMAGE>本地 mysql:8.4.x 探测>mysql:8.4 兜底）与 systemd-analyze verify 需按部署第一步放置 /opt/sys-iam-go 后校验（exit 0，校验后清理）
 
 ### Pending Todos
 
@@ -97,6 +102,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-31T09:00:05.872Z
-Stopped at: Completed 01-02-PLAN.md
+Last session: 2026-10-31T09:20:50.193Z
+Stopped at: Completed 01-03-PLAN.md (phase 01 all 3 plans done)
 Resume file: None
