@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: 认证会话与 RBAC 主链路
 status: executing
-stopped_at: Completed 02-01-PLAN.md
-last_updated: "2026-10-31T14:01:16.229Z"
+stopped_at: Completed 02-02-PLAN.md
+last_updated: "2026-10-31T14:42:41.343Z"
 last_activity: 2026-10-31
 last_activity_desc: Phase 02 execution started
-state_head: ca0b550510f0496218e4835181bd6603a48b24b8
+state_head: 1b10844985eb845b7fc6b27e0ff11f6a52be5346
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 6
-  completed_plans: 4
+  completed_plans: 5
   percent: 20
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-10-31, Phase 1 transition)
 ## Current Position
 
 Phase: 02 (认证会话与 RBAC 主链路) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-10-31 — Phase 02 execution started
 
@@ -60,6 +60,7 @@ Progress: [██░░░░░░░░] 20%
 | Phase 01 P02 | 20min | 2 tasks | 13 files |
 | Phase 01 P03 | 17min | 2 tasks | 5 files |
 | Phase 02 P02-01 | 43min | 2 tasks | 33 files |
+| Phase 02 P02-02 | 35min | 2 tasks | 25 files |
 
 ## Accumulated Context
 
@@ -86,6 +87,9 @@ Recent decisions affecting current work:
 - [Phase 01 安全]: 11 项威胁 L1 全 CLOSED（asvs=1 短路），01-SECURITY.md 落盘 threats_open=0
 - [Phase 02]: [Phase 02] 02-01: Redis key 三前缀（iam:session:/iam:user-tokens:/iam:apikey-token:）为全项目契约，SessionManager 是唯一事实源；ErrSessionNotFound 包级哨兵归一 HGetAll 空 map — go-redis 对不存在 key 返回空 map+nil 而非 redis.Nil——显式归一让中间件 401/500 分支可 errors.Is 判定
 - [Phase 02]: [Phase 02] 02-01: apikeyLogin 复用分支用户已删顺延完整路径（精确 10504/10505）；并发双登录双 token 各自有效+映射最后写者赢（CONTEXT 认可的无害残留） — 源语义保真 + 竞态显式决策留档，TestConcurrentApiKeyFullLogin 直证
+- [Phase 02]: [Phase 02] 02-02: 环引用语义按源保真——环节点双方 parent 均命中索引不归根（不可达静默不产出），plan 行为文本「两节点均落根」判笔误；tree_test 2s 超时直证不死循环（T-2-09）
+- [Phase 02]: [Phase 02] 02-02: 多步关联写单事务模板确立——service 层 db.Transaction + repository.NewXxxRepo(tx) 复用；assignMenus 校验前置优于源"事务内先删后校验靠回滚"（T-2-11），builtin 守卫前置拦截零删除（409/10602）
+- [Phase 02]: [Phase 02] 02-02: repo.ErrNotFound 哨兵 + service 域消息翻译模式——「菜单/部门/角色不存在: {id}」（源消息原文），code 恒 10300/HTTP 404 与 Phase 1 契约一致；assignMenus 缺失消息按验收明文带方括号
 
 ### Pending Todos
 
@@ -107,6 +111,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-31T14:01:16.174Z
-Stopped at: Completed 02-01-PLAN.md
+Last session: 2026-10-31T14:42:32.355Z
+Stopped at: Completed 02-02-PLAN.md
 Resume file: None

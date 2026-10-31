@@ -37,19 +37,19 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 角色管理（ROLE）
 
-- [ ] **ROLE-01**: 角色 CRUD（物理删除）
-- [ ] **ROLE-02**: builtin 内置角色删除守卫
-- [ ] **ROLE-03**: 角色分页/条件查询
+- [x] **ROLE-01**: 角色 CRUD（物理删除）
+- [x] **ROLE-02**: builtin 内置角色删除守卫
+- [x] **ROLE-03**: 角色分页/条件查询
 
 ### 菜单管理（MENU）
 
-- [ ] **MENU-01**: 菜单 CRUD（物理删除）
-- [ ] **MENU-02**: 菜单树查询（父子层级返回）
+- [x] **MENU-01**: 菜单 CRUD（物理删除）
+- [x] **MENU-02**: 菜单树查询（父子层级返回）
 
 ### 部门管理（DEPT）
 
-- [ ] **DEPT-01**: 部门 CRUD
-- [ ] **DEPT-02**: 部门树查询（孤儿节点提升语义，与源一致）
+- [x] **DEPT-01**: 部门 CRUD
+- [x] **DEPT-02**: 部门树查询（孤儿节点提升语义，与源一致）
 
 ### 字典管理（DICT）
 
@@ -163,13 +163,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | USER-04 | Phase 2 | Pending |
 | USER-05 | Phase 2 | Pending |
 | USER-07 | Phase 2 | Pending |
-| ROLE-01 | Phase 2 | Pending |
-| ROLE-02 | Phase 2 | Pending |
-| ROLE-03 | Phase 2 | Pending |
-| MENU-01 | Phase 2 | Pending |
-| MENU-02 | Phase 2 | Pending |
-| DEPT-01 | Phase 2 | Pending |
-| DEPT-02 | Phase 2 | Pending |
+| ROLE-01 | Phase 2 | Complete |
+| ROLE-02 | Phase 2 | Complete |
+| ROLE-03 | Phase 2 | Complete |
+| MENU-01 | Phase 2 | Complete |
+| MENU-02 | Phase 2 | Complete |
+| DEPT-01 | Phase 2 | Complete |
+| DEPT-02 | Phase 2 | Complete |
 | AKEY-01 | Phase 2 | Pending |
 | AKEY-02 | Phase 2 | Pending |
 | PERM-01 | Phase 3 | Pending |
