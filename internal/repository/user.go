@@ -98,6 +98,21 @@ func (r *UserRepo) List(ctx context.Context, page, size int) ([]po.UserPO, int64
 	return users, total, nil
 }
 
+// FindByUsername 按 username 精确查询（登录六步链第一步）；未命中返回 (nil, nil)——
+// "用户不存在"与"密码错误"在 service 层统一译为 ErrBadCredentials（防枚举，T-2-01），
+// repo 层不区分这两种语义，故不做 ErrNotFound 翻译。
+func (r *UserRepo) FindByUsername(ctx context.Context, username string) (*po.UserPO, error) {
+	var u po.UserPO
+	err := r.db.WithContext(ctx).Where("username = ?", username).First(&u).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
 // FindByID 按主键查询；未命中返回 ErrNotFound（10300）。
 func (r *UserRepo) FindByID(ctx context.Context, id int64) (*po.UserPO, error) {
 	var u po.UserPO

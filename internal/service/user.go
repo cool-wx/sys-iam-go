@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
 	"github.com/cool-wx/sys-iam-go/internal/model/dto"
@@ -25,17 +26,26 @@ func NewUserService(repo *repository.UserRepo) *UserService {
 }
 
 // Create 创建用户：DTO→PO（服务端默认值 Status=1/FirstLogin=true/Builtin=false，
-// 源 User.create() 语义；password 按 D-01 边界原样入库，哈希化属 Phase 2 User 域规则），
-// 落库后 PO→DTO 返回。审计字段（双时间/四操作人/ID）由 PO 钩子服务端填充，
-// 不接受请求体任何同名客户端字段（ENG-02）。
+// 源 User.create() 语义；password bcrypt 哈希化入库——与源 Hutool BCrypt 同为标准
+// $2a$ 格式，存量哈希零迁移兼容），落库后 PO→DTO 返回。审计字段（双时间/四操作人/
+// ID）由 PO 钩子服务端填充，不接受请求体任何同名客户端字段（ENG-02）。
 func (s *UserService) Create(ctx context.Context, req *dto.UserCreateReq) (*dto.UserResp, error) {
 	u := &po.UserPO{
 		Username: req.Username,
-		Password: req.Password,
 		RealName: req.RealName,
 		Phone:    req.Phone,
 		Email:    req.Email,
 		DeptName: req.DeptName,
+	}
+	// 密码哈希化（Phase 1 预留边界，Phase 2 收口）：明文绝不落库/出网；
+	// 生成失败收敛为内部错误（不 500 裸抛，T-1-01 纪律）。
+	if req.Password != nil {
+		hash, err := bcrypt.GenerateFromPassword([]byte(*req.Password), bcrypt.DefaultCost)
+		if err != nil {
+			return nil, errcode.New(errcode.CodeInternal, "密码处理失败")
+		}
+		hashStr := string(hash)
+		u.Password = &hashStr
 	}
 	status := int8(1)
 	u.Status = &status

@@ -10,13 +10,16 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 
+	"github.com/cool-wx/sys-iam-go/internal/auth"
 	"github.com/cool-wx/sys-iam-go/internal/config"
 	"github.com/cool-wx/sys-iam-go/internal/handler"
 	"github.com/cool-wx/sys-iam-go/internal/health"
+	"github.com/cool-wx/sys-iam-go/internal/middleware"
 	"github.com/cool-wx/sys-iam-go/internal/repository"
 	"github.com/cool-wx/sys-iam-go/internal/service"
 )
@@ -24,18 +27,20 @@ import (
 // 优雅关停排空预算（P16；systemd TimeoutStopSec 须大于此值，Pattern 5）。
 const shutdownTimeout = 15 * time.Second
 
-// App 应用聚合：engine、db、health、config。
+// App 应用聚合：engine、db、rdb、health、config。
 type App struct {
 	cfg    *config.Config
 	logger *slog.Logger
 	engine *gin.Engine
 	db     *gorm.DB
+	rdb    *redis.Client
 	health *health.State
 	srv    *http.Server
 }
 
 // New 装配全部依赖：GORM 连接（绝不 AutoMigrate，schema 沿用源库）、连接池
-// 工控机参数、健康状态、路由。成功返回可 Run 的 App。
+// 工控机参数、Redis 会话存储（Ping fail-fast）、健康状态、认证路由。成功返回可
+// Run 的 App。
 func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	db, err := gorm.Open(mysql.Open(cfg.MySQL.DSN), &gorm.Config{
 		Logger:                 gormlogger.Default.LogMode(gormlogger.Warn),
@@ -56,17 +61,37 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 
 	h := health.New(sqlDB)
 
-	userRepo := repository.NewUserRepo(db)
-	userSvc := service.NewUserService(userRepo)
-	userHandler := handler.NewUserHandler(userSvc)
+	// Redis 会话存储（go-redis v9；启动 Ping fail-fast 对齐 app.New 的 err 返回风格
+	// ——会话基建不可用时服务绝不能以"全量 401"状态静默启动）
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     cfg.Redis.Addr,
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+	})
+	pingCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	err = rdb.Ping(pingCtx).Err()
+	cancel()
+	if err != nil {
+		return nil, fmt.Errorf("ping redis: %w", err)
+	}
 
-	engine := newRouter(h, userHandler, logger)
+	sessionMgr := auth.NewSessionManager(rdb, cfg.Auth.SessionTimeout)
+
+	userRepo := repository.NewUserRepo(db)
+	relationRepo := repository.NewRelationRepo(db)
+	userSvc := service.NewUserService(userRepo)
+	authSvc := service.NewAuthService(userRepo, relationRepo, sessionMgr)
+	userHandler := handler.NewUserHandler(userSvc)
+	authHandler := handler.NewAuthHandler(authSvc)
+
+	engine := newRouter(h, handlers{Auth: authHandler, Users: userHandler}, middleware.Auth(sessionMgr), logger)
 
 	return &App{
 		cfg:    cfg,
 		logger: logger,
 		engine: engine,
 		db:     db,
+		rdb:    rdb,
 		health: h,
 		srv: &http.Server{
 			Addr:    fmt.Sprintf(":%d", cfg.Server.Port),
@@ -98,7 +123,7 @@ func (a *App) Run() error {
 	return nil
 }
 
-// Stop 优雅关停：先摘流（readyz 立即 503）→ 15s 排空在途请求 → 关 MySQL 连接。
+// Stop 优雅关停：先摘流（readyz 立即 503）→ 15s 排空在途请求 → 关 Redis/MySQL 连接。
 func (a *App) Stop() {
 	a.health.SetNotReady()
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
@@ -108,6 +133,9 @@ func (a *App) Stop() {
 	}
 	if sqlDB, err := a.db.DB(); err == nil {
 		_ = sqlDB.Close()
+	}
+	if err := a.rdb.Close(); err != nil {
+		a.logger.Error("redis close", "error", err.Error())
 	}
 	a.logger.Info("shutdown complete")
 }

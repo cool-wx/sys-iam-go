@@ -23,7 +23,8 @@ import (
 const defaultMySQLImage = "mysql:8.4"
 
 // RunMySQL 启动独立 mysql:8.4 容器（库 sys_iam，root/root123），打开 GORM 连接，
-// 并在返回前【BLOCKING】执行 scripts/ddl/sys_user.sql 建表——断言运行前表必须就绪。
+// 并在返回前【BLOCKING】执行 scripts/ddl/ 目录全部 .sql 建表（按文件名序，Phase 2
+// 起 7 表全量就绪）——断言运行前表必须就绪。
 // 返回 go-sql-driver 格式 dsn（parseTime/loc 参数已固化）与 cleanup（关连接+终止容器）。
 func RunMySQL(ctx context.Context) (string, func(), error) {
 	maybeDisableRyuk()
@@ -57,8 +58,8 @@ func RunMySQL(ctx context.Context) (string, func(), error) {
 		return "", nil, err
 	}
 
-	// BLOCKING：DDL 逐语句执行（先于一切断言）
-	if err := execDDLScript(db, filepath.Join(projectRoot(), "scripts", "ddl", "sys_user.sql")); err != nil {
+	// BLOCKING：DDL 目录全部 .sql 逐语句执行（先于一切断言）
+	if err := execDDLDir(db, filepath.Join(projectRoot(), "scripts", "ddl")); err != nil {
 		terminate(ctr)
 		return "", nil, err
 	}
@@ -70,6 +71,24 @@ func RunMySQL(ctx context.Context) (string, func(), error) {
 		terminate(ctr)
 	}
 	return dsn, cleanup, nil
+}
+
+// execDDLDir 按 glob 文件名序执行 ddl 目录下全部 .sql（filepath.Glob 返回已排序结果；
+// 表间无外键依赖，顺序仅保证确定性）。任一文件失败即整体失败——表不全的容器绝不可用。
+func execDDLDir(db *gorm.DB, dir string) error {
+	files, err := filepath.Glob(filepath.Join(dir, "*.sql"))
+	if err != nil {
+		return fmt.Errorf("glob ddl dir %s: %w", dir, err)
+	}
+	if len(files) == 0 {
+		return fmt.Errorf("no ddl files found in %s", dir)
+	}
+	for _, f := range files {
+		if err := execDDLScript(db, f); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // execDDLScript 去除注释行后按分号拆分逐语句执行。

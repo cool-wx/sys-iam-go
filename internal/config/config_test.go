@@ -99,6 +99,56 @@ log:
 	assert.Equal(t, "debug", cfg.Log.Level)
 }
 
+func TestEnvOverrideRedisAndSessionTimeout(t *testing.T) {
+	// Phase 2：redis 段三步链直映（单词叶键 addr/password/db）+ auth.session_timeout
+	// 经别名表映射（多段 snake_case 键，WR-01 同型）必须真实生效。
+	path := writeConfig(t, "server:\n  port: 8080\n")
+	t.Setenv("IAM_REDIS_ADDR", "10.0.0.9:6380")
+	t.Setenv("IAM_REDIS_PASSWORD", "secret")
+	t.Setenv("IAM_REDIS_DB", "2")
+	t.Setenv("IAM_AUTH_SESSION_TIMEOUT", "48h")
+
+	cfg, err := config.Load(path, false)
+	require.NoError(t, err)
+	assert.Equal(t, "10.0.0.9:6380", cfg.Redis.Addr, "IAM_REDIS_ADDR 必须覆盖 redis.addr（三步链直映）")
+	assert.Equal(t, "secret", cfg.Redis.Password, "IAM_REDIS_PASSWORD 必须覆盖 redis.password")
+	assert.Equal(t, 2, cfg.Redis.DB, "IAM_REDIS_DB 必须覆盖 redis.db")
+	assert.Equal(t, 48*time.Hour, cfg.Auth.SessionTimeout, "IAM_AUTH_SESSION_TIMEOUT 必须经别名表覆盖 auth.session_timeout")
+}
+
+func TestDefaultsRedisAndSessionTimeout(t *testing.T) {
+	// 默认值：redis.addr=127.0.0.1:6379、timeout=720h（Sa-Token 30d 代理值，D-06）
+	cfg, err := config.Load(filepath.Join(t.TempDir(), "absent.yaml"), false)
+	require.NoError(t, err)
+	assert.Equal(t, "127.0.0.1:6379", cfg.Redis.Addr)
+	assert.Equal(t, "", cfg.Redis.Password)
+	assert.Equal(t, 0, cfg.Redis.DB)
+	assert.Equal(t, 720*time.Hour, cfg.Auth.SessionTimeout)
+}
+
+func TestInvalidRedisSessionConfigRejected(t *testing.T) {
+	// Phase 2 fail-fast 回归：redis.addr 空 / timeout 非法值必须启动即失败——
+	// 空 addr 拼错键会在启动期以连接失败暴露；timeout<=0 让登录会话写入即过期
+	// （EXPIRE 0/负值），auth 中间件全量 401。
+	cases := []struct {
+		name string
+		env  string
+		val  string
+	}{
+		{"redis.addr 空", "IAM_REDIS_ADDR", ""},
+		{"session_timeout=0（写入即过期）", "IAM_AUTH_SESSION_TIMEOUT", "0s"},
+		{"session_timeout 负值", "IAM_AUTH_SESSION_TIMEOUT", "-1h"},
+		{"session_timeout 非法格式", "IAM_AUTH_SESSION_TIMEOUT", "abc"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(tc.env, tc.val)
+			_, err := config.Load(filepath.Join(t.TempDir(), "absent.yaml"), false)
+			require.Error(t, err, "非法配置（%s=%s）必须返回 error", tc.env, tc.val)
+		})
+	}
+}
+
 func TestInvalidPortRejected(t *testing.T) {
 	t.Setenv("IAM_SERVER_PORT", "0")
 	_, err := config.Load(filepath.Join(t.TempDir(), "absent.yaml"), false)

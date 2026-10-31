@@ -26,12 +26,20 @@ const (
 	DefaultConnMaxLifetime = 30 * time.Minute
 	DefaultSnowflakeNode   = 1
 	DefaultLogLevel        = "info"
+	// DefaultRedisAddr 本机 Redis 默认端点（工控机单机部署：MySQL/Redis 同机）。
+	DefaultRedisAddr = "127.0.0.1:6379"
+	// DefaultSessionTimeout 会话 TTL 默认 720h = Sa-Token 官方默认 30d 代理值。
+	// 源 Nacos craft-satoken.yaml 实际值不可得（rnacos 空实例实证，02-RESEARCH
+	// 研究重点 2），现场可经 IAM_AUTH_SESSION_TIMEOUT env 校正（D-06 Nacos 缺口文档化）。
+	DefaultSessionTimeout = 720 * time.Hour
 )
 
 // Config 服务配置聚合。
 type Config struct {
 	Server    ServerConfig    `json:"server"`
 	MySQL     MySQLConfig     `json:"mysql"`
+	Redis     RedisConfig     `json:"redis"`
+	Auth      AuthConfig      `json:"auth"`
 	Snowflake SnowflakeConfig `json:"snowflake"`
 	Log       LogConfig       `json:"log"`
 }
@@ -54,6 +62,18 @@ type SnowflakeConfig struct {
 	Node int `json:"node"`
 }
 
+// RedisConfig Redis 连接配置（会话/缓存共用一个 client）。
+type RedisConfig struct {
+	Addr     string `json:"addr"`
+	Password string `json:"password"`
+	DB       int    `json:"db"`
+}
+
+// AuthConfig 认证与会话配置。YAML 叶键为 snake_case（auth.session_timeout）。
+type AuthConfig struct {
+	SessionTimeout time.Duration `json:"sessionTimeout"`
+}
+
 // LogConfig 日志配置。
 type LogConfig struct {
 	Level string `json:"level"`
@@ -68,6 +88,9 @@ var envKeyAliases = map[string]string{
 	"IAM_MYSQL_MAX_OPEN_CONNS":    "mysql.max_open_conns",
 	"IAM_MYSQL_MAX_IDLE_CONNS":    "mysql.max_idle_conns",
 	"IAM_MYSQL_CONN_MAX_LIFETIME": "mysql.conn_max_lifetime",
+	// Phase 2：auth.session_timeout 多段 snake_case 叶键（不登记则覆盖静默丢失，WR-01）。
+	// redis.addr/redis.password/redis.db 为单词叶键，三步链直映（IAM_REDIS_ADDR→redis.addr）无需别名。
+	"IAM_AUTH_SESSION_TIMEOUT": "auth.session_timeout",
 }
 
 // Load 加载配置：path 为 YAML 路径，explicit 表示路径是否由 -config 显式指定。
@@ -118,6 +141,22 @@ func Load(path string, explicit bool) (*Config, error) {
 		}
 		cfg.MySQL.ConnMaxLifetime = d
 	}
+	if k.Exists("redis.addr") {
+		cfg.Redis.Addr = k.String("redis.addr")
+	}
+	if k.Exists("redis.password") {
+		cfg.Redis.Password = k.String("redis.password")
+	}
+	if k.Exists("redis.db") {
+		cfg.Redis.DB = k.Int("redis.db")
+	}
+	if k.Exists("auth.session_timeout") {
+		d, err := time.ParseDuration(k.String("auth.session_timeout"))
+		if err != nil {
+			return nil, fmt.Errorf("invalid auth.session_timeout %q: %w", k.String("auth.session_timeout"), err)
+		}
+		cfg.Auth.SessionTimeout = d
+	}
 	if k.Exists("snowflake.node") {
 		cfg.Snowflake.Node = k.Int("snowflake.node")
 	}
@@ -141,6 +180,14 @@ func Load(path string, explicit bool) (*Config, error) {
 	if cfg.MySQL.ConnMaxLifetime <= 0 {
 		return nil, fmt.Errorf("invalid mysql.conn_max_lifetime %s (must be > 0)", cfg.MySQL.ConnMaxLifetime)
 	}
+	// Redis/会话参数 fail-fast：空 addr 拼错键会在启动期以连接失败暴露；timeout<=0
+	// 会让登录会话写入即过期（EXPIRE 0/负值），auth 中间件全量 401——均启动即拦截。
+	if cfg.Redis.Addr == "" {
+		return nil, fmt.Errorf("redis.addr must not be empty")
+	}
+	if cfg.Auth.SessionTimeout <= 0 {
+		return nil, fmt.Errorf("invalid auth.session_timeout %s (must be > 0)", cfg.Auth.SessionTimeout)
+	}
 	return cfg, nil
 }
 
@@ -155,6 +202,8 @@ func defaults() *Config {
 			ConnMaxLifetime: DefaultConnMaxLifetime,
 		},
 		Snowflake: SnowflakeConfig{Node: DefaultSnowflakeNode},
+		Redis:     RedisConfig{Addr: DefaultRedisAddr},
+		Auth:      AuthConfig{SessionTimeout: DefaultSessionTimeout},
 		Log:       LogConfig{Level: DefaultLogLevel},
 	}
 }

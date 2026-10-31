@@ -10,6 +10,13 @@ const (
 	CodeInvalidParam    = 10400 // 参数无效（含"记录已存在"）
 	CodeValidation      = 10401 // 参数校验失败
 	CodeBadCredentials  = 10501 // 用户名或密码错误
+	// Phase 2 认证增量：全部 HTTP 401（源消息可区分，独立错误码保持 errcode 语义
+	// 清晰——02-RESEARCH Open Question 3 决议）。
+	CodeUserDisabled      = 10502 // 用户已被禁用
+	CodeApiKeyInvalid     = 10503 // API Key 无效或已过期
+	CodeApiKeyNoUser      = 10504 // API Key 未关联用户
+	CodeApiKeyUserMissing = 10505 // API Key 关联用户不存在
+	CodeApiKeyUserDisabled = 10506 // API Key 关联用户已被禁用
 )
 
 // 分段错误单例（消息文案为出网固定文案）。
@@ -21,6 +28,8 @@ var (
 	ErrInvalidParam    = New(CodeInvalidParam, "参数无效")
 	ErrValidation      = New(CodeValidation, "参数校验失败")
 	ErrBadCredentials  = New(CodeBadCredentials, "用户名或密码错误")
+	ErrUserDisabled    = New(CodeUserDisabled, "用户已被禁用")
+	ErrApiKeyInvalid   = New(CodeApiKeyInvalid, "API Key 无效或已过期")
 )
 
 // Error 业务错误类型：经调用链传播，由 pkg/resp 统一出口写出。
@@ -39,13 +48,14 @@ func (e *Error) Error() string {
 	return e.Msg
 }
 
-// HTTPStatus 错误码→HTTP 状态如实映射（未登录 401、无权限 403、参数 400、
+// HTTPStatus 错误码→HTTP 状态如实映射（未登录/凭据类 401、无权限 403、参数 400、
 // 不存在 404、内部 500；未知分段按内部错误兜底）。
 func (e *Error) HTTPStatus() int {
 	switch e.Code {
 	case CodeInternal:
 		return 500
-	case CodeUnauthenticated, CodeBadCredentials:
+	case CodeUnauthenticated, CodeBadCredentials,
+		CodeUserDisabled, CodeApiKeyInvalid, CodeApiKeyNoUser, CodeApiKeyUserMissing, CodeApiKeyUserDisabled:
 		return 401
 	case CodeForbidden:
 		return 403

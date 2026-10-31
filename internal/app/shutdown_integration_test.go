@@ -45,15 +45,18 @@ const slowSleep = 1200 * time.Millisecond
 // inFlightPause 发起慢请求后到 Stop 之前的等待：确保请求已进入 handler sleep（在途）。
 const inFlightPause = 300 * time.Millisecond
 
-// newShutdownApp 起独立 MySQL 容器 + 完整真 App 装配 + 真实端口监听（本组测试不经
-// httptest 驱动 App 生命周期——断言的是 http.Server.Shutdown 真实行为）。
-// 注册测试专用慢路由（仅测试进程内注册，生产路由零污染）。
+// newShutdownApp 起独立 MySQL+Redis 双容器（Phase 2 起装配链含 Redis Ping fail-fast）
+// + 完整真 App 装配 + 真实端口监听（本组测试不经 httptest 驱动 App 生命周期——断言
+// 的是 http.Server.Shutdown 真实行为）。注册测试专用慢路由（仅测试进程内注册，
+// 生产路由零污染；engine 直挂不经 pri 组，不受 Auth 中间件约束）。
 // 返回 baseURL 与 App；cleanup 链：Stop（幂等保险）→ 容器终止。
 func newShutdownApp(t *testing.T) (string, *app.App) {
 	t.Helper()
 	ctx := context.Background()
-	dsn, stopContainer, err := testutil.RunMySQL(ctx)
+	dsn, stopMySQL, err := testutil.RunMySQL(ctx)
 	require.NoError(t, err, "mysql testcontainer 启动与 DDL 引导失败")
+	redisAddr, stopRedis, err := testutil.RunRedis(ctx)
+	require.NoError(t, err, "redis testcontainer 启动失败")
 
 	// 取空闲端口再交还（App.Run 真实 ListenAndServe）
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -64,6 +67,8 @@ func newShutdownApp(t *testing.T) (string, *app.App) {
 	cfg := &config.Config{
 		Server:    config.ServerConfig{Port: port},
 		MySQL:     config.MySQLConfig{DSN: dsn, MaxOpenConns: 5, MaxIdleConns: 2, ConnMaxLifetime: time.Minute},
+		Redis:     config.RedisConfig{Addr: redisAddr},
+		Auth:      config.AuthConfig{SessionTimeout: time.Hour},
 		Snowflake: config.SnowflakeConfig{Node: 1},
 		Log:       config.LogConfig{Level: "error"},
 	}
@@ -80,7 +85,8 @@ func newShutdownApp(t *testing.T) (string, *app.App) {
 	go func() { _ = application.Run() }()
 	t.Cleanup(func() {
 		application.Stop()
-		stopContainer()
+		stopRedis()
+		stopMySQL()
 	})
 
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
