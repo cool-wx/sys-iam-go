@@ -1,5 +1,7 @@
 // Package config 定义服务配置结构与加载链：YAML 文件 + IAM_ 前缀环境变量覆盖
-// （koanf，D-06/D-07）。TransformFunc 三步链：TrimPrefix IAM_ → ToLower → 下划线转点。
+// （koanf，D-06/D-07）。单词叶键走三步链：TrimPrefix IAM_ → ToLower → 下划线转点
+// （IAM_SERVER_PORT → server.port）；多段 snake_case 叶键（max_open_conns 等）
+// 三步链会把下划线全部转点导致键永不匹配（WR-01），经 envKeyAliases 显式映射。
 package config
 
 import (
@@ -57,6 +59,17 @@ type LogConfig struct {
 	Level string `json:"level"`
 }
 
+// envKeyAliases 多段 snake_case 叶键的显式映射表（WR-01）：默认三步链把变量名内
+// 全部下划线转为点（IAM_MYSQL_MAX_OPEN_CONNS → mysql.max.open.conns），与 YAML 键
+// mysql.max_open_conns 永不匹配，覆盖静默丢失（无任何报错）。koanf env/v2 的
+// TransformFunc 收到含前缀的完整变量名，故按变量全名精确映射回真实键。
+// 新增多段 snake_case 键时必须在此登记。
+var envKeyAliases = map[string]string{
+	"IAM_MYSQL_MAX_OPEN_CONNS":    "mysql.max_open_conns",
+	"IAM_MYSQL_MAX_IDLE_CONNS":    "mysql.max_idle_conns",
+	"IAM_MYSQL_CONN_MAX_LIFETIME": "mysql.conn_max_lifetime",
+}
+
 // Load 加载配置：path 为 YAML 路径，explicit 表示路径是否由 -config 显式指定。
 // 默认路径文件缺失 → warn 日志 + 内置默认值；explicit=true 且文件缺失 → 返回 error。
 // IAM_ 前缀环境变量覆盖文件值（后加载者胜）。
@@ -74,6 +87,10 @@ func Load(path string, explicit bool) (*Config, error) {
 	if err := k.Load(env.Provider(".", env.Opt{
 		Prefix: "IAM_",
 		TransformFunc: func(s, v string) (string, any) {
+			// 多段 snake_case 叶键经显式别名表映射（WR-01，见 envKeyAliases）
+			if mapped, ok := envKeyAliases[s]; ok {
+				return mapped, v
+			}
 			// IAM_MYSQL_DSN → mysql.dsn（三步链：TrimPrefix → ToLower → _ → .）
 			return strings.ReplaceAll(strings.ToLower(strings.TrimPrefix(s, "IAM_")), "_", "."), v
 		},

@@ -38,6 +38,22 @@ func TestEnvOverrideDSNPath(t *testing.T) {
 	assert.Equal(t, "x", cfg.MySQL.DSN, "IAM_MYSQL_DSN 必须落到 mysql.dsn（下划线转点三步链）")
 }
 
+func TestEnvOverrideSnakeCaseKeys(t *testing.T) {
+	// WR-01 回归：多段 snake_case 键必须可被 IAM_ 环境变量覆盖——默认三步链会把
+	// 变量名内全部下划线转点（IAM_MYSQL_MAX_OPEN_CONNS → mysql.max.open.conns），
+	// 与 YAML 键 mysql.max_open_conns 永不匹配，覆盖静默丢失。经别名表映射后必须真实生效。
+	path := writeConfig(t, "server:\n  port: 8080\n")
+	t.Setenv("IAM_MYSQL_MAX_OPEN_CONNS", "50")
+	t.Setenv("IAM_MYSQL_MAX_IDLE_CONNS", "10")
+	t.Setenv("IAM_MYSQL_CONN_MAX_LIFETIME", "1h")
+
+	cfg, err := config.Load(path, false)
+	require.NoError(t, err)
+	assert.Equal(t, 50, cfg.MySQL.MaxOpenConns, "IAM_MYSQL_MAX_OPEN_CONNS 必须覆盖 mysql.max_open_conns")
+	assert.Equal(t, 10, cfg.MySQL.MaxIdleConns, "IAM_MYSQL_MAX_IDLE_CONNS 必须覆盖 mysql.max_idle_conns")
+	assert.Equal(t, time.Hour, cfg.MySQL.ConnMaxLifetime, "IAM_MYSQL_CONN_MAX_LIFETIME 必须覆盖 mysql.conn_max_lifetime")
+}
+
 func TestDefaultsWhenFileMissing(t *testing.T) {
 	// 默认路径缺失：内置默认值 + warn（不报错）
 	cfg, err := config.Load(filepath.Join(t.TempDir(), "absent.yaml"), false)
