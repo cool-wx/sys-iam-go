@@ -23,7 +23,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 ## Phase Details
 
 ### Phase 1: 工程骨架与横切地基
-**Goal**: 单个 Go 服务在工控机环境可构建、部署、启动、优雅关停，且全库共享的横切约定（响应包装、ID 生成、序列化契约、零值保护、审计填充、分页）全部定死，后续每个域都站在它上面
+**Goal**: **As a** 运维工程师与后续各域开发者，**I want to** 一个在工控机环境可构建、部署、启动、优雅关停的单体 Go 服务，且全库共享的横切约定（响应包装、ID 生成、序列化契约、零值保护、审计填充、分页）一次定死，**so that** 后续每个功能域都直接站在稳定的地基上开发（UAT test 1 回写：原非故事格式的 goal 行等语义转写，2026-10-31）
 **Mode:** mvp
 **Depends on**: Nothing (first phase)
 **Requirements**: ENG-01, ENG-02, ENG-03, ENG-04, ENG-05, ENG-06, ENG-07, ENG-08
