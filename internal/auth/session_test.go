@@ -140,6 +140,60 @@ func TestKickoutCleansIndexAndDeadTokens(t *testing.T) {
 	require.NoError(t, sm.KickoutUser(ctx, 99), "无会话用户踢下线必须幂等")
 }
 
+// TestConcurrentApiKeyFullLogin 并发竞态显式处置（AUTH-02 边缘，D-03）：两个
+// goroutine 并发走"完整登录+BindAPIKey"——各自发新 token、两个 token 各自 Resolve
+// 均有效（互不污染）、索引含两 token、映射 SET 最后写者赢（指向其一且仍有效）。
+// 无 panic、无 error、无死键残留。
+func TestConcurrentApiKeyFullLogin(t *testing.T) {
+	sm, _, rdb := newTestManager(t)
+	ctx := context.Background()
+
+	const n = 2
+	tokens := make(chan string, n)
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		go func() {
+			token, err := sm.Login(ctx, SessionPayload{UserID: 21, UserName: "race-user", RealName: "竞态用户"})
+			if err != nil {
+				errs <- err
+				return
+			}
+			if err := sm.BindAPIKey(ctx, "ak-race", token); err != nil {
+				errs <- err
+				return
+			}
+			tokens <- token
+		}()
+	}
+	got := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		select {
+		case err := <-errs:
+			require.NoError(t, err)
+		case tk := <-tokens:
+			got = append(got, tk)
+		}
+	}
+	require.Len(t, got, 2, "两并发登录都必须成功")
+	require.NotEqual(t, got[0], got[1], "登录必发新 token（不复用旧值，T-2-03）")
+
+	// 两个 token 各自有效、互不污染
+	for _, tk := range got {
+		id, err := sm.Resolve(ctx, tk)
+		require.NoError(t, err)
+		assert.Equal(t, int64(21), id.UserID)
+	}
+	// user-tokens 索引含两 token
+	members, err := rdb.SMembers(ctx, keyUserTokensPrefix+"21").Result()
+	require.NoError(t, err)
+	assert.ElementsMatch(t, got, members, "索引必须含两枚并发 token")
+
+	// 映射 SET 最后写者赢：指向其中之一且仍存活（另一 token 仍独立有效——无害并存）
+	final, ok := sm.ResolveAPIKey(ctx, "ak-race")
+	require.True(t, ok, "映射最终必须命中其一")
+	assert.Contains(t, got, final)
+}
+
 // TestApiKeyBindingBranches apiKey→token 映射两分支：BindAPIKey 后 ResolveAPIKey
 // 命中返回原 token；DEL 会话（死 token）后 ResolveAPIKey 返回 ok=false（双检兜底）。
 func TestApiKeyBindingBranches(t *testing.T) {
