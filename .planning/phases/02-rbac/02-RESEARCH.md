@@ -358,15 +358,22 @@ sys_user（已有 PO）、sys_role、sys_menu、sys_dept、sys_api_key、sys_use
 | 请求体 DoS | BodyLimit 1MB（既有）+ 导入 10000 行上限（CONTEXT.md） |
 | ASVS 对应 | V2 密码验证（bcrypt cost 10）、V3 会话管理（服务端会话+TTL+失效）、V4 访问控制（中间件拒未认证）、V5 输入校验（binding+指针 DTO）——L1 目标与 Phase 1 一致 |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> 2026-10-31 修订回填：以下 5 问已在 Phase 2 规划（02-01/02-02/02-03-PLAN.md）与 02-CONTEXT.md 修正记录中全部落定，各问 RESOLVED 行指向落定处。
 
 1. **USER-06 三键 upsert 不可实现的最终确认**（高危，见研究重点 4）
    - 已知：源无端点、表无列、三键属 FaultInfo；CONTEXT.md 导入契约其余部分可落地
    - 建议：planner 按 **username 单键 upsert** 规划（uk_username 天然唯一键），PLAN 中显式记录对 CONTEXT.md 的最小偏差与理由；自主授权模式下无需阻塞等用户，但 UAT 时向用户提示此修正
+   - RESOLVED: USER-06 已于 2026-10-31 从 REQUIREMENTS.md/ROADMAP.md 删除，Excel 导入整体作废，username 单键 upsert 方案随之作废——见 02-CONTEXT.md「Excel 导入作废与 hash 抽样代证」修正记录；02-01-PLAN must_haves.prohibitions 禁止本阶段引入 excelize
 2. **user-tokens Set 惰性清理 vs 全量重建**：研究建议惰性清理（kickout 时顺带 SREM 死 token）；若 planner 希望更简单，可在 Resolve 失败时跳过清理（Set 残留无害），两者均正确——PLAN 定一处即可
+   - RESOLVED: 惰性清理已定——KickoutUser 逐 token Exists、live 者删 session、索引内全部 SRem（死 token 一并清理）——见 02-01-PLAN Task 1 第 7 步、AUTH-04 truth 与 TestKickoutCleansIndexAndDeadTokens
 3. **`用户已被禁用` 是否复用 CodeBadCredentials(10501)**：源消息可区分；若复用 10501 则响应 code 相同仅 message 不同。建议独立错误码（10502 段）保持 errcode 语义清晰，HTTP 均 401——PLAN 定夺
+   - RESOLVED: 独立错误码 CodeUserDisabled=10502（消息「用户已被禁用」，HTTP 401）——见 02-01-PLAN Task 1 第 9 步与 AUTH-01 truth
 4. **Excel 导入密码语义**：研究建议导入不设密码列、导入用户走"首次登录强制改密"（firstLogin=true + 统一初始密码 resetPwd 语义）。若用户期望 Excel 带密码列（源 @ExcelProperty 有"密码"列），需在 PLAN 中向用户 checkpoint——低风险，按研究建议先行
+   - RESOLVED: 随 USER-06 删除一并作废——本阶段零导入端点、无密码列语义（02-CONTEXT.md 修正记录）；excelize 依赖随 FAUL-02 于 Phase 4 引入
 5. **并发会话上限**：源/CONTEXT.md 均未设上限；Set 无限增长理论可堆积（工控机单机低风险）。不处理，保持与源一致
+   - RESOLVED: 不处理，保持与源一致（多端多 token 并存，Sa-Token 默认语义）——见 02-CONTEXT.md「会话参数与生命周期」段「并发会话」决策
 
 ## Environment Availability
 
