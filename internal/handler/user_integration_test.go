@@ -523,7 +523,8 @@ func TestCreateUserValidation(t *testing.T) {
 
 // TestCreateUserBodyTooLarge 请求体超 1MB 上限（WR-02/BodyLimit）：超限读取错误
 // 必须收敛为固定文案 10401 envelope——不 500、不回显底层错误原文（T-1-01）；
-// 传输层由 MaxBytesReader 标记 requestTooLarge（响应后关连，413 语义）。
+// 传输层无 413 关连语义：gin responseWriter 未实现 requestTooLarge 接口，该标记
+// 路径不生效（IN-09），连接复用交由 net/http 对未排空 body 的内置策略。
 func TestCreateUserBodyTooLarge(t *testing.T) {
 	ts, _ := newTestApp(t)
 
