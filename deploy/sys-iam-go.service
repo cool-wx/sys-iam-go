@@ -1,0 +1,33 @@
+# sys-iam-go systemd unit（ENG-08 交付物；工控机单机部署）
+#
+# 部署三步（现场步骤，开发机不执行）：
+#   1. 拷贝 bin/sys-iam-go 与 config.yaml 到 /opt/sys-iam-go/
+#   2. cp deploy/sys-iam-go.service /etc/systemd/system/
+#   3. systemctl daemon-reload && systemctl enable --now sys-iam-go
+#
+# D-09 语义注记：Type=simple 信号感知服务不配 ExecStop——systemd 默认 KillSignal=SIGTERM，
+# 由进程内 signal.NotifyContext → health.SetNotReady()（摘流）→ http.Server.Shutdown(15s)
+# （排空）→ 关 MySQL 连接完成优雅退出；TimeoutStopSec=30 ≥ 2×15s 排空预算兜底 SIGKILL（P6）。
+# D-09 原文"ExecStop 依赖 SIGTERM 触发 15s 优雅排空"的意图即此，缺省 ExecStop 与其语义等价。
+
+[Unit]
+Description=sys-iam-go IAM service
+After=network-online.target mysql.service redis.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/sys-iam-go
+ExecStart=/opt/sys-iam-go/sys-iam-go -config /opt/sys-iam-go/config.yaml
+Restart=on-failure
+RestartSec=3
+Environment=TZ=Asia/Shanghai
+StandardOutput=journal
+StandardError=journal
+TimeoutStopSec=30
+# 工控机加固（T-1-05：研究 Security Domain 推荐项）
+NoNewPrivileges=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
