@@ -574,20 +574,25 @@ func Fail(c *gin.Context, err error) {
 | A4 | snowflake workerId 单机固定 1（config 可调）足够 | Standard Stack | 多实例扩展时需 workerId 分配机制——项目单机形态下不成立，无风险 |
 | A5 | jsonv2 转正后 v1 API 行为完全兼容（go 团队兼容性承诺 + 契约测试防线） | State of the Art | 若有细微差异，ENG-04 契约测试在 Phase 1 即捕获，正是该 Phase 的验收面 |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> 三问已于 2026-10-31 planning 会话全部收口，实质解决落点见各问 RESOLVED 行（均在 01-01-PLAN.md）。
 
 1. **`sysiam-mysql` 开发容器去向与新容器身份**
    - What we know: 研究中途 sysiam-mysql/sysiam-redis 被移除；出现 mysql-server(8.4.8)/redis-server(8.6.2)，3306 有 MySQL 在听但 root123 凭据不通过
    - What's unclear: 它们是否为用户重建的开发环境、凭据几何、sys_iam 库与已导入的 DDL/种子是否还在
    - Recommendation: **执行期第一任务做环境重探**（docker ps + 端口探测 + 容器内查询）；若新容器不可用，Phase 1 集成测试全程 testcontainers（D-10 已定），手工验证改用 testcontainers 起一个临时容器（同一 DDL 脚本），计划不阻塞
+   - **RESOLVED (2026-10-31, planning):** 落入 01-01-PLAN.md Task 1 第 1 步——环境重探为执行期第一动作（docker ps + 3306 探测 + sys_iam 库与 sys_user 列集核查，结论写入 SUMMARY）；全部自动化测试走 testcontainers 独立容器、不锚定具名容器名（D-10/D-12 铁律），手工验证可由 testcontainers 临时容器替代。残余不确定性由执行期重探消化，不再是计划期未决项
 2. **种子数据导入方与时间基准**
    - What we know: admin 行 id=1 手工 ID、create_time 疑似 UTC 墙钟
    - What's unclear: 谁在导入、是否还会继续改库
    - Recommendation: Phase 1 测试不依赖种子行（testcontainers 自建）；若执行期发现 schema 又变，以执行期实测为准重跑对照（本节 diff 脚本思路可复用）
+   - **RESOLVED (2026-10-31, planning):** 落入 01-01-PLAN.md——Phase 1 断言数据全部自建（testcontainers 容器 + scripts/ddl/sys_user.sql 引导），不依赖任何种子行；schema 再变时按"执行期实测为准"重跑对照（对照方法见 §Schema 现状突变）
 3. **错误码分段最终表**（10400 vs 10401 的边界、是否需要 10500 段等）
    - What we know: ARCHITECTURE.md 已给分段草案（10001/10100/10200/10300/10400/10401/10501）
    - What's unclear: 草案→定案的编号分配属实现细节
    - Recommendation: planner 直接采纳 ARCHITECTURE.md 草案作为锁定表，Phase 1 定死并写契约测试
+   - **RESOLVED (2026-10-31, planning):** 定案于 01-01-PLAN.md Task 1 第 4 步——pkg/errcode 采纳 ARCHITECTURE.md 草案为锁定表（10001/10100/10200/10300/10400/10401/10501 七段 + HTTPStatus 映射），不设 10500 段；由 pkg/errcode/errcode_test.go 契约测试锁定
 
 ## Environment Availability
 
