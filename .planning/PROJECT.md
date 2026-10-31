@@ -30,7 +30,8 @@
 
 - [ ] 按 Go 标准项目结构搭建工程骨架（Gin + GORM + 分层目录）
 - [ ] 14 个功能域 REST API 全量重新设计并实现（允许 REST 最佳实践重设计）
-- [ ] 认证方案 Go 化（Sa-Token 等价能力：登录/会话/权限校验/上下文，Redis 存会话）
+- [ ] 认证方案 Go 化（自建 token-session 管理器：登录/会话/TTL/踢人下线，Redis 存储，兼容存量 BCrypt 哈希）
+- [ ] 权限体系升级为 Casbin：RBAC 功能权限 + 数据权限（dataScope 部门级行过滤）+ 变更即时生效（不复刻源系统"登录快照"语义）
 - [ ] MySQL 沿用现有 schema（GORM 接入，不重设计表结构）
 - [ ] 文件存储抽象：本地磁盘 / RustFS(S3) 可配置切换
 - [ ] 配置管理去 Nacos 化：本地 YAML + 环境变量
@@ -43,10 +44,11 @@
 
 - Dubbo RPC 服务（User/DictData/Shift/FaultInfo 四个 RPC 接口）— 单机部署无服务间调用，后续需要时再考虑协议选型
 - Nacos 注册/配置中心 — 单机形态无需注册发现；源项目注释称"nacos 为长期形态"，但那是中心化部署的前提，本项目明确去除
+- 源系统"登录快照"权限语义 — 用户决策升级为 Casbin 即时生效；快照行为不复刻
 - 前端改造 — 本项目只做后端；API 允许重新设计意味着前端后续自行适配
 - MQTT 采集（starter-mqtt）— 属于 craft-wcs 设备采集场景，不在 sys-iam 依赖闭包内
 - 存量会话/token 迁移 — 停机切换，Go 版上线即全新会话
-- 表结构重设计 — MySQL schema 原样沿用
+- 表结构重设计 — MySQL schema 原样沿用（例外：新增 Casbin 策略表属增量扩展）
 
 ## Context
 
@@ -80,6 +82,10 @@
 | 保留 Redis | 会话集中管理延续源系统模式 | — Pending |
 | 文件存储可配置切换（本地磁盘/RustFS） | 单机最简用磁盘，需要分布式时切 S3 | — Pending |
 | GORM 作为 ORM | Go 主流 ORM，支持 MySQL 方言与现有 schema 映射 | — Pending |
+| Casbin 作为授权框架（用户决策，覆盖研究建议的自建方案） | 源权限体系不完善：快照需重登录、无数据权限；升级为即时生效 RBAC + dataScope | — Pending |
+| 数据权限 dataScope 真正实现 | 部门级行过滤（本人/本部门/及以下/指定部门/全部），激活源系统死字段 | — Pending |
+| Casbin 策略存原生新表 | 现有 sys_role_menu/sys_menu 不动；新建 Casbin 策略表，双轨清晰 | — Pending |
+| 权限变更即时生效 | Casbin 策略重载，废弃源"改权限需重登录"行为 | — Pending |
 
 ## Evolution
 
