@@ -14,6 +14,8 @@ import (
 type handlers struct {
 	Auth  *handler.AuthHandler
 	Users *handler.UserHandler
+	Menus *handler.MenuHandler
+	Depts *handler.DeptHandler
 }
 
 // newRouter 装配路由：四中间件全局链（RequestID→AccessLog→Recovery→BodyLimit）+
@@ -21,7 +23,8 @@ type handlers struct {
 //   - pub 组（免 token）：/healthz、/readyz、POST /api/v1/auth/login、
 //     POST /api/v1/auth/apikey-login（白名单四路径齐备）；
 //   - pri 组（authMw 全量校验）：POST /api/v1/auth/logout、POST /api/v1/auth/kickout
-//     + 既有 users 四路由。
+//     + 既有 users 四路由 + menus/depts 全套业务路由（02-02 D-11/D-13：复数资源
+//     路由 + 树端点独立；gin 静态段 tree 与 :id 参数段共存，静态优先）。
 func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, logger *slog.Logger) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
@@ -43,6 +46,22 @@ func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, logger *slo
 	pri.PUT("/api/v1/users/:id", hs.Users.Update)
 	pri.GET("/api/v1/users/:id", hs.Users.Get)
 	pri.GET("/api/v1/users", hs.Users.List)
+
+	// 菜单域（MENU-01/02）：CRUD + 树端点（静态段 tree 与 :id 参数段共存）
+	pri.POST("/api/v1/menus", hs.Menus.Create)
+	pri.PUT("/api/v1/menus/:id", hs.Menus.Update)
+	pri.GET("/api/v1/menus/tree", hs.Menus.Tree)
+	pri.GET("/api/v1/menus/:id", hs.Menus.Get)
+	pri.GET("/api/v1/menus", hs.Menus.List)
+	pri.DELETE("/api/v1/menus/:id", hs.Menus.Delete)
+
+	// 部门域（DEPT-01/02）：与菜单域同构
+	pri.POST("/api/v1/depts", hs.Depts.Create)
+	pri.PUT("/api/v1/depts/:id", hs.Depts.Update)
+	pri.GET("/api/v1/depts/tree", hs.Depts.Tree)
+	pri.GET("/api/v1/depts/:id", hs.Depts.Get)
+	pri.GET("/api/v1/depts", hs.Depts.List)
+	pri.DELETE("/api/v1/depts/:id", hs.Depts.Delete)
 
 	return engine
 }
