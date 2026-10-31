@@ -44,7 +44,7 @@ Plans:
 - [x] 01-03-PLAN.md — 交付物：Makefile 静态交叉编译矩阵 + systemd unit + SIGTERM 优雅关停双重证明（Wave 2，依赖 01-01）
 
 ### Phase 2: 认证会话与 RBAC 主链路
-**Goal**: 用户可登录并获得会话（存量密码零迁移），管理员可管理用户/角色/菜单/部门/API Key 全套 RBAC 主链路数据
+**Goal**: **As a** sys-iam 的用户与管理员，**I want to** 用用户名密码或 API Key 登录获得可续期会话、并完整管理用户/角色/菜单/部门/API Key 数据，**so that** 工控机上的 Go 版 IAM 具备与源系统等价的认证与 RBAC 主链路（存量密码零迁移）（2026-10-31 规划期语义等价转写为用户故事格式，原 goal：用户可登录并获得会话（存量密码零迁移），管理员可管理用户/角色/菜单/部门/API Key 全套 RBAC 主链路数据）
 **Mode:** mvp
 **Depends on**: Phase 1
 **Requirements**: AUTH-01, AUTH-02, AUTH-03, AUTH-04, AUTH-05, AUTH-06, USER-01, USER-02, USER-03, USER-04, USER-05, USER-07, ROLE-01, ROLE-02, ROLE-03, MENU-01, MENU-02, DEPT-01, DEPT-02, AKEY-01, AKEY-02
@@ -54,7 +54,17 @@ Plans:
   3. 白名单路由（登录/健康检查）免鉴权可达，其余无 token 请求一律被拒绝
   4. User/Role/Menu/Dept/ApiKey 五域 CRUD 与查询全可用：用户分页默认 1/15 钳位、详情两查询装配防 N+1、builtin 用户删除硬拦截、停用用户与停用 API Key 不可登录、重置密码固定 123456、用户可分配/回收角色、角色分页条件查询（用户 Excel 导入已随 USER-06 删除移除——源系统 User 域无导入端点，三键语义属 Phase 4 FAUL-02，2026-10-31 研究实证修正）
   5. 菜单树按父子层级返回；部门树保持孤儿节点提升语义（与源一致）
-**Plans**: TBD
+**Plans**: 3/3 plans defined
+
+Plans:
+**Wave 1**
+- [ ] 02-01-PLAN.md — 认证会话 tracer 与核心：Redis 基建（DDL×6/testutil/config/依赖）+ login→session→中间件→logout 端到端 + 白名单收紧 + apikeyLogin 复用/竞态 + kickout + TTL 续期（AUTH-01..06）
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 02-02-PLAN.md — 基础数据域：泛型树构建器（孤儿提升）+ Menu/Dept 域 + Role 域（builtin 409 守卫/三连删事务/assignMenus）（MENU-01..02、DEPT-01..02、ROLE-01..03）
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 02-03-PLAN.md — 装配域收口：User 增强（roles 两查询装配/分配回收/停用踢人/重置密码/builtin 拦截）+ ApiKey 域（明文一次性返回/停用过期不可登录）（USER-01..05,07、AKEY-01..02）
 
 ### Phase 3: Casbin 授权与数据权限
 **Goal**: 功能权限与数据权限真正生效，且权限变更即时生效（Casbin 策略热重载——用户决策，显式区别于源系统"改权限需重登录"的登录快照语义）
