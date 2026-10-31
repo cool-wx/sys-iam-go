@@ -14,7 +14,7 @@
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: 工程骨架与横切地基** - 可启动的单体服务 + 全库共享约定（R 响应/雪花 ID/JSON 契约/零值保护与审计填充/分页/健康检查/本地配置/单二进制交付）
+- [x] **Phase 1: 工程骨架与横切地基** - 可启动的单体服务 + 全库共享约定（R 响应/雪花 ID/JSON 契约/零值保护与审计填充/分页/健康检查/本地配置/单二进制交付） (completed 2026-10-31)
 - [ ] **Phase 2: 认证会话与 RBAC 主链路** - 自建 token-session（登录/登出/踢人/TTL/白名单）+ User/Role/Menu/Dept/ApiKey 五域完整 CRUD
 - [ ] **Phase 3: Casbin 授权与数据权限** - Casbin RBAC + 原生策略表 + 策略热重载（变更即时生效）+ requirePerm 中间件 + dataScope 五档行过滤
 - [ ] **Phase 4: 业务域与操作日志** - Dict/Config/File/Shift/FaultInfo 六域 + 存储抽象（本地磁盘/RustFS-S3）+ 操作日志中间件 + Excel 导入
@@ -33,7 +33,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. 新建记录自动获得雪花 ID（DB 无自增）且 JSON 输出为字符串防 JS 精度丢失；时间输出 `yyyy-MM-dd HH:mm:ss` 无时区；null 键照常输出（禁 omitempty）；枚举读侧兼容 name|int 且未知值兜底不 500
   4. 更新接口未提交的字段保持原值（指针 DTO + 显式 Select，禁裸 Save）；create_time/update_time/create_by/update_by 自动填充且无操作人上下文时跳过操作人字段
   5. 配置全部来自本地 YAML + 环境变量（koanf，替代 Nacos）；MySQL DSN 固化 `loc=Asia/Shanghai` + parseTime（TZ=UTC 环境集成测试无 8 小时漂移）；连接池默认值显式且适合工控机
-**Plans**: 3/3 plans executed
+**Plans**: 3/3 plans complete
 
 Plans:
 **Wave 1**
@@ -99,7 +99,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. 工程骨架与横切地基 | 3/3 | In Progress | - |
+| 1. 工程骨架与横切地基 | 3/3 | Complete    | 2026-10-31 |
 | 2. 认证会话与 RBAC 主链路 | 0/TBD | Not started | - |
 | 3. Casbin 授权与数据权限 | 0/TBD | Not started | - |
 | 4. 业务域与操作日志 | 0/TBD | Not started | - |

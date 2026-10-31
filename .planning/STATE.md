@@ -1,43 +1,43 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 01
-current_phase_name: 工程骨架与横切地基
-status: verifying
-stopped_at: Phase 1 执行+审查+修复循环完成，verification=human_needed（29/29 自动化验证通过，4 项 UAT 待用户确认）——运行 /gsd-verify-work 1 完成 UAT 后继续 /gsd-autonomous
-last_updated: "2026-10-31T12:01:25.220Z"
+current_phase: 2
+current_phase_name: 认证会话与 RBAC 主链路
+status: planning
+stopped_at: Phase 1 complete, ready to plan Phase 2
+last_updated: "2026-10-31T12:25:51.501Z"
 last_activity: 2026-10-31
-last_activity_desc: Phase 01 execution started
-state_head: 3e751a9666d6a120e25c1745bfb1550553ab35f5
+last_activity_desc: Phase 1 complete, transitioned to Phase 2
+state_head: 811dd6ee931190aa76b733baaf9b9e3387d2f9c8
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
   completed_plans: 3
-  percent: 0
+  percent: 20
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-10-31)
+See: .planning/PROJECT.md (updated 2026-10-31, Phase 1 transition)
 
 **Core value:** 在工控机上以单个轻量 Go 服务完整复刻 sys-iam 的全部 IAM 能力，且接口实现与自动化测试全部通过。
-**Current focus:** Phase 01 — 工程骨架与横切地基
+**Current focus:** Phase 02 — 认证会话与 RBAC 主链路
 
 ## Current Position
 
-Phase: 01 (工程骨架与横切地基) — EXECUTING
-Plan: 3 of 3
-Status: Phase complete — ready for verification
-Last activity: 2026-10-31 — Phase 01 execution started
+Phase: 2 — 认证会话与 RBAC 主链路
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-10-31 — Phase 1 complete, transitioned to Phase 2
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██░░░░░░░░] 20%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
+- Total plans completed: 3
 - Average duration: -
 - Total execution time: -
 
@@ -45,7 +45,7 @@ Progress: [░░░░░░░░░░] 0%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 1 | 3 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -81,6 +81,8 @@ Recent decisions affecting current work:
 - [Phase 01]: 01-03: 摘流 503 断言重设计——Go Shutdown 并发关 idle 连接/停 accept 使排空窗口 503 外部观察仅微秒级竞态，改为摘流单步直证（真 handler 200→503）+ 排空窗口'永不 200'强断言（严格强于单点 503）
 - [Phase 01]: 01-03: make verify-static 为出厂门（T-1-09）——file 输出缺 statically linked 即非 0 退出（负路径已验证）；CGO_ENABLED=0 显式进每条构建命令，双架构产物 amd64 22.9MB/arm64 21.1MB
 - [Phase 01]: 01-03: 验证脚本镜像离线自适应（IAM_TEST_MYSQL_IMAGE>本地 mysql:8.4.x 探测>mysql:8.4 兜底）与 systemd-analyze verify 需按部署第一步放置 /opt/sys-iam-go 后校验（exit 0，校验后清理）
+- [Phase 01 UAT]: ROADMAP Phase 1 goal 回写用户故事格式（优于 override）；ENG-07 缺失取舍认可；systemd 不加 User=（现场账号未定）；arm64 以 qemu-aarch64 binfmt 全链路实证（boot/探活/POST/SIGTERM），真机首启留现场部署清单
+- [Phase 01 安全]: 11 项威胁 L1 全 CLOSED（asvs=1 短路），01-SECURITY.md 落盘 threats_open=0
 
 ### Pending Todos
 
@@ -88,9 +90,9 @@ None yet.
 
 ### Blockers/Concerns
 
-- [Phase 1 规划前] MySQL 实际 schema 逐列核对（源 PO 列名映射为 MyBatis-Plus 推测，仓库无 DDL）——需连库确认或向用户索取
 - [Phase 2 规划前] 需向用户索取 Nacos `craft-satoken.yaml` 的 timeout/active-timeout 实际值、MySQL collation
 - [Phase 2 验收] 存量 BCrypt hash 抽样验证：从生产库取 20 个 hash 用 Go 验证（PITFALLS.md Pitfall 7）
+- [现场部署] arm64 真实工控机首启 healthz 200 确认（qemu 全链路已代证，随部署三步执行）
 
 ## Deferred Items
 
@@ -102,6 +104,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-31T12:01:25.183Z
-Stopped at: Phase 1 执行+审查+修复循环完成，verification=human_needed（29/29 自动化验证通过，4 项 UAT 待用户确认）——运行 /gsd-verify-work 1 完成 UAT 后继续 /gsd-autonomous
-Resume file: .planning/phases/01-foundation/01-UAT.md
+Last session: 2026-10-31T20:35:00+08:00
+Stopped at: Phase 1 complete（UAT 4/4 pass + SECURITY threats_open=0 + verification=passed + 转场完成），ready to plan Phase 2——按既定路径继续 /gsd-autonomous 或 /gsd-discuss-phase 2
+Resume file: None

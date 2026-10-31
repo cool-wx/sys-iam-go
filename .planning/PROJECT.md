@@ -25,10 +25,10 @@
 - ✓ API Key 管理（ApiKey）— 源系统既有
 - ✓ 名称冗余同步（6 个领域事件监听器：部门/字典/菜单/角色/用户名/真名变更同步）— 源系统既有
 - ✓ 数据导入（ImportResult，用户/角色等 Excel 导入）— 源系统既有
+- ✓ Go 工程骨架与横切地基（Gin+GORM+cmd/internal/pkg 结构、R 响应/雪花 ID/JSON 契约/审计填充/分页、静态单二进制+systemd+优雅关停）— Phase 1
 
 ### Active
 
-- [ ] 按 Go 标准项目结构搭建工程骨架（Gin + GORM + 分层目录）
 - [ ] 14 个功能域 REST API 全量重新设计并实现（允许 REST 最佳实践重设计）
 - [ ] 认证方案 Go 化（自建 token-session 管理器：登录/会话/TTL/踢人下线，Redis 存储，兼容存量 BCrypt 哈希）
 - [ ] 权限体系升级为 Casbin：RBAC 功能权限 + 数据权限（dataScope 部门级行过滤）+ 变更即时生效（不复刻源系统"登录快照"语义）
@@ -73,19 +73,23 @@
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Gin 作为 Web 框架 | 用户指定；轻量、生态成熟，适合工控场景 | — Pending |
-| Go 标准项目结构，放弃 DDD 四层 | Go 社区惯例；降低移植复杂度，用户指定 | — Pending |
-| API 允许重新设计 | 无存量前端兼容包袱，按 REST 最佳实践来 | — Pending |
+| Gin 作为 Web 框架 | 用户指定；轻量、生态成熟，适合工控场景 | ✓ Phase 1 骨架落地 |
+| Go 标准项目结构，放弃 DDD 四层 | Go 社区惯例；降低移植复杂度，用户指定 | ✓ Phase 1 骨架落地 |
+| API 允许重新设计 | 无存量前端兼容包袱，按 REST 最佳实践来 | ✓ Phase 1 四端点先行落地 |
 | 去除 Dubbo RPC | 单机部署无服务间调用；后续再考虑 | — Pending |
-| 去除 Nacos | 单机无注册发现需求；配置走本地 YAML + 环境变量 | — Pending |
-| MySQL schema 沿用 | 数据层零迁移成本，工控机本地 MySQL | — Pending |
+| 去除 Nacos | 单机无注册发现需求；配置走本地 YAML + 环境变量 | ✓ Phase 1 koanf 落地 |
+| MySQL schema 沿用 | 数据层零迁移成本，工控机本地 MySQL | ✓ Phase 1 sys_user 22 列实证 |
 | 保留 Redis | 会话集中管理延续源系统模式 | — Pending |
 | 文件存储可配置切换（本地磁盘/RustFS） | 单机最简用磁盘，需要分布式时切 S3 | — Pending |
-| GORM 作为 ORM | Go 主流 ORM，支持 MySQL 方言与现有 schema 映射 | — Pending |
+| GORM 作为 ORM | Go 主流 ORM，支持 MySQL 方言与现有 schema 映射 | ✓ Phase 1 落地（显式列映射+禁 AutoMigrate） |
 | Casbin 作为授权框架（用户决策，覆盖研究建议的自建方案） | 源权限体系不完善：快照需重登录、无数据权限；升级为即时生效 RBAC + dataScope | — Pending |
 | 数据权限 dataScope 真正实现 | 部门级行过滤（本人/本部门/及以下/指定部门/全部），激活源系统死字段 | — Pending |
 | Casbin 策略存原生新表 | 现有 sys_role_menu/sys_menu 不动；新建 Casbin 策略表，双轨清晰 | — Pending |
 | 权限变更即时生效 | Casbin 策略重载，废弃源"改权限需重登录"行为 | — Pending |
+| MVP 契约载体：ROADMAP goal 回写用户故事格式 | UAT test 1 定案——回写优于 override，契约真正成立而非豁免 | ✓ Phase 1 UAT 2026-10-31 |
+| ENG-07 配置缺失取舍定案 | 默认路径缺失→内置默认值+warn 启动（工控机无人值守可用性）；-config 显式缺失→退出码 1（指错早失败） | ✓ Phase 1 UAT 认可 |
+| systemd unit 不追加 User=/ProtectHome/PrivateTmp | 现场账号未定不硬编码（防现场启动失败）；ProtectHome 与 Phase 4 存储路径强相关，届时随路径一并定 | ✓ Phase 1 UAT 定案，Phase 4 复核 |
+| arm64 验证策略：qemu-aarch64 binfmt 全链路 | 开发机无真机；qemu 下 boot/healthz/readyz/POST 创建/SIGTERM 全链路实证，真机首启留现场部署清单 | ✓ Phase 1 UAT 2026-10-31 |
 
 ## Evolution
 
@@ -105,4 +109,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-31 after initialization*
+*Last updated: 2026-10-31 after Phase 1*
