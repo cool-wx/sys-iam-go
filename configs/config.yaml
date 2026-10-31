@@ -1,0 +1,16 @@
+# sys-iam-go 默认配置（部署时旁路放置于工作目录，D-07）
+# 全部键可被 IAM_ 前缀环境变量覆盖，如 IAM_SERVER_PORT=18080、IAM_MYSQL_DSN=...
+server:
+  port: 8080
+
+mysql:
+  dsn: "root:root123@tcp(127.0.0.1:3306)/sys_iam?charset=utf8mb4&parseTime=True&loc=Asia%2FShanghai"
+  max_open_conns: 20
+  max_idle_conns: 5
+  conn_max_lifetime: 30m
+
+snowflake:
+  node: 1
+
+log:
+  level: info
