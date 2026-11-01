@@ -183,13 +183,13 @@ func (r *RelationRepo) FindMenuIDsByRoleID(ctx context.Context, roleID int64) (m
 }
 
 // DeleteRoleMenus 删除角色的全部菜单关联（assignMenus 全删重建的前半步 /
-// role 删除三连删的第二步）；roleID 经参数化占位符传入（T-1-03）。
+// role 删除四连删的第二步）；roleID 经参数化占位符传入（T-1-03）。
 func (r *RelationRepo) DeleteRoleMenus(ctx context.Context, roleID int64) (err error) {
 	return r.db.WithContext(ctx).Where("role_id = ?", roleID).Delete(&po.RoleMenuPO{}).Error
 }
 
 // DeleteUserRolesByRoleID 删除角色在 sys_user_role 的全部关联
-// （role 删除三连删的第一步，源 RoleApplicationService.removeById 顺序）。
+// （role 删除四连删的第一步，源 RoleApplicationService.removeById 顺序）。
 func (r *RelationRepo) DeleteUserRolesByRoleID(ctx context.Context, roleID int64) (err error) {
 	return r.db.WithContext(ctx).Where("role_id = ?", roleID).Delete(&po.UserRolePO{}).Error
 }

@@ -159,7 +159,7 @@ func TestRoleCRUD(t *testing.T) {
 
 // TestRoleBuiltinDeleteConflict builtin 角色删除硬拦截（ROLE-02/D-14）：DELETE 返回
 // HTTP 409 + code=10602 + message「系统内置角色不可删除」，且该角色其后仍可 GET
-// （零删除证明——前置拦截，三连删一个都不触发）。测试容器 sys_role 为空，builtin
+// （零删除证明——前置拦截，四连删一个都不触发）。测试容器 sys_role 为空，builtin
 // 角色由 SQL seed（勿动任何既有 builtin 行）。
 func TestRoleBuiltinDeleteConflict(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)

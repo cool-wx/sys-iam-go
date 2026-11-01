@@ -62,8 +62,8 @@ func (r *RoleRepo) Patch(ctx context.Context, id int64, cols map[string]any) err
 	return nil
 }
 
-// Delete 物理删除（硬删除语义，P4）；由 service 层 db.Transaction 三连删调用
-// （user_role → role_menu → role，任一失败整体回滚）。恒带 Where 防 Type 白名单外调用。
+// Delete 物理删除（硬删除语义，P4）；由 service 层 db.Transaction 四连删调用
+// （user_role → role_menu → role_dept → role，任一失败整体回滚）。恒带 Where 防 Type 白名单外调用。
 func (r *RoleRepo) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&po.RolePO{}).Error
 }

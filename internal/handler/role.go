@@ -78,8 +78,8 @@ func (h *RoleHandler) List(c *gin.Context) {
 	resp.OK(c, data)
 }
 
-// Delete 处理 DELETE /api/v1/roles/:id：解析 :id → service（builtin 守卫 + 三连删
-// 事务）→ envelope。
+// Delete 处理 DELETE /api/v1/roles/:id：解析 :id → service（builtin 守卫 +
+// ClearRole 预清 + 四连删事务 user_role→role_menu→role_dept→role）→ envelope。
 func (h *RoleHandler) Delete(c *gin.Context) {
 	id, ok := parseID(c, "无效的角色 ID")
 	if !ok {
