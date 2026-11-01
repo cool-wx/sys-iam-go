@@ -29,11 +29,12 @@ import (
 	"github.com/cool-wx/sys-iam-go/pkg/types"
 )
 
-// maxImportRows 导入行数上限（含表头计，D-15 内存防线）：GetRows 将整表全量
-// 载入 [][]string 后才返回——上限必须在逐行解析前拒绝超限文件。工控机内存推导：
-// 5000 行 × ~2KB/行（8 列 × 平均 250 字符）≈ 10MB GetRows 上界，叠加
-// BodyLimitWithMB(20) 体积封顶与 MaxMultipartMemory 8MB 落盘阈值，三维封顶
-// （T-4-11 DoS 缓解）。
+// maxImportRows 导入行数上限（含表头计，D-15 内存防线）：流式迭代读取（WR-03）
+// 中逐行计数，超限在读取流阶段立即拒绝、不再继续读——不存在 GetRows 全量载入
+// 步骤，20MB xlsx zip 炸弹（高压缩比工作表）无「解压后数百 MB～GB 全量缓冲」
+// 放大面。工控机内存推导：5000 行 × ~2KB/行（8 列 × 平均 250 字符）≈ 10MB
+// 解析上界，叠加 BodyLimitWithMB(20) 体积封顶与 MaxMultipartMemory 8MB 落盘
+// 阈值，三维封顶（T-4-11 DoS 缓解）。
 const maxImportRows = 5000
 
 // faultImportHeaders 契约表头文案（列序即 8 列契约，逐一全等比较——禁容错）。
@@ -51,53 +52,61 @@ func strPtr(s string) *string {
 // ImportExcel Excel 导入全链（FAUL-02）。防线顺序即解析顺序（prohibition：
 // 行数上限与表头校验必须在解析用户数据前生效）：
 //
-//	(a) OpenReader + GetRows("Sheet1")（源 ExcelHelper 默认 sheet 名）
-//	(b) 行数上限前置：len(rows) > maxImportRows → 400 整批拒绝
-//	(c) 表头严格匹配：rows[0] 前 8 列逐一全等 → 不符 400 整批拒绝
-//	(d) 逐行解析（i 从 1 起）：len(row) > idx 边界检查（GetRows 尾部空单元格
-//	    跳过、行长度不一致是常态）；name 空 → skip 不计数（源 name==null skip）；
+//	(a) OpenReader + Rows("Sheet1") 流式行迭代器（源 ExcelHelper 默认 sheet 名；
+//	    WR-03：替代 GetRows 全量载入——行数防线在读取流阶段即生效，超限文件读到
+//	    上限立即中断读取，无全量缓冲面）
+//	(b) 表头严格匹配（首行）：前 8 列逐一全等 → 不符 400 整批拒绝
+//	(c) 行数上限（含表头计）：流式逐行计数，超限在读取阶段立即 400 整批拒绝
+//	(d) 逐行解析：len(row) > idx 边界检查（流式 Columns 同样跳过尾部空单元格、
+//	    行长度不一致是常态）；name 空 → skip 不计数（源 name==null skip）；
 //	    任一可解析列失败（触发位非数字等）→ 行错误上抛
 //	(e) 整批单事务：tx 变体 repo FindByThreeKeys 命中 → Patch 复用原行 id →
 //	    updateCount++；未命中 → Create → insertCount++；任一行 error 上抛即
 //	    全批无痕回滚（源 @Transactional 语义，D-15）
 //	(f) 返回 ImportResult{insertCount, updateCount}
 func (s *FaultService) ImportExcel(ctx context.Context, r io.Reader) (*dto.ImportResult, error) {
-	// (a) 打开工作簿并读取 Sheet1 全量行
+	// (a) 打开工作簿并取 Sheet1 流式行迭代器（WR-03：行数防线前移到读取流阶段）
 	f, err := excelize.OpenReader(r)
 	if err != nil {
 		return nil, errcode.New(errcode.CodeInvalidParam, "Excel 文件无法解析")
 	}
 	defer f.Close()
-	rows, err := f.GetRows("Sheet1")
+	iter, err := f.Rows("Sheet1")
 	if err != nil {
 		return nil, errcode.New(errcode.CodeInvalidParam, "Excel 缺少 Sheet1 工作表")
 	}
+	defer iter.Close()
 
-	// (b) 行数上限前置（含表头计）：超限文件不进逐行解析（D-15 内存防线）
-	if len(rows) > maxImportRows {
-		return nil, errcode.New(errcode.CodeInvalidParam, fmt.Sprintf("导入数据超过上限 %d 行", maxImportRows))
-	}
-
-	// (c) 表头严格匹配：前 8 列逐一与契约文案全等（列序禁重排禁容错，D-15——
-	// GetRows 行尾空单元格跳过，不足 8 列的表头行按缺列处理即不符）
-	if len(rows) == 0 {
-		return nil, errcode.New(errcode.CodeInvalidParam, "Excel 表头与模板不符")
-	}
-	for i, want := range faultImportHeaders {
-		got := ""
-		if len(rows[0]) > i {
-			got = rows[0][i]
+	// (b)(c)(d) 表头校验 → 流式逐行计数与解析（prohibition：行数上限与表头校验
+	// 先于用户数据解析生效；超限读到即断，不继续消费迭代器）
+	parsed := make([]*po.FaultInfoPO, 0, maxImportRows-1)
+	rowCount := 0 // 物理行计数（含表头与 skip 行，与原 len(rows) 语义一致）
+	for iter.Next() {
+		row, colErr := iter.Columns()
+		if colErr != nil {
+			return nil, errcode.New(errcode.CodeInvalidParam, "Excel 文件无法解析")
 		}
-		if got != want {
-			return nil, errcode.New(errcode.CodeInvalidParam, "Excel 表头与模板不符")
+		rowCount++
+		if rowCount == 1 {
+			// (b) 表头严格匹配：前 8 列逐一与契约文案全等（列序禁重排禁容错，
+			// D-15——行尾空单元格跳过，不足 8 列的表头行按缺列处理即不符）
+			for i, want := range faultImportHeaders {
+				got := ""
+				if len(row) > i {
+					got = row[i]
+				}
+				if got != want {
+					return nil, errcode.New(errcode.CodeInvalidParam, "Excel 表头与模板不符")
+				}
+			}
+			continue
 		}
-	}
-
-	// (d) 逐行解析为 PO（仅业务列；审计列由 Create 钩子/Patch 白名单各自承担）
-	parsed := make([]*po.FaultInfoPO, 0, len(rows))
-	for i := 1; i < len(rows); i++ {
-		row := rows[i]
-		// cell 带边界取值：GetRows 尾部空单元格跳过，行长度不一致是常态——
+		// (c) 行数上限（含表头计）：超限文件在读取流阶段拒绝——不进逐行解析、
+		// 不再继续读后续行（D-15 内存防线，WR-03 前置）
+		if rowCount > maxImportRows {
+			return nil, errcode.New(errcode.CodeInvalidParam, fmt.Sprintf("导入数据超过上限 %d 行", maxImportRows))
+		}
+		// cell 带边界取值：流式 Columns 尾部空单元格跳过，行长度不一致是常态——
 		// 越界一律取空串（04-RESEARCH 重点 6）
 		cell := func(idx int) string {
 			if len(row) > idx {
@@ -116,7 +125,7 @@ func (s *FaultService) ImportExcel(ctx context.Context, r io.Reader) (*dto.Impor
 			v, atoiErr := strconv.Atoi(raw)
 			if atoiErr != nil {
 				return nil, errcode.New(errcode.CodeInvalidParam,
-					fmt.Sprintf("第 %d 行触发位必须为整数: %s", i+1, raw))
+					fmt.Sprintf("第 %d 行触发位必须为整数: %s", rowCount, raw))
 			}
 			bitIndex = v
 		}
@@ -134,6 +143,13 @@ func (s *FaultService) ImportExcel(ctx context.Context, r io.Reader) (*dto.Impor
 			Location: strPtr(cell(6)),
 			Fix:      strPtr(cell(7)),
 		})
+	}
+	if err := iter.Error(); err != nil {
+		return nil, errcode.New(errcode.CodeInvalidParam, "Excel 文件无法解析")
+	}
+	if rowCount == 0 {
+		// 空 sheet（无任何行）：无表头可校验，与原 GetRows 空结果同译「表头不符」
+		return nil, errcode.New(errcode.CodeInvalidParam, "Excel 表头与模板不符")
 	}
 
 	// (e) 整批单事务（SkipDefaultTransaction=true 下唯一事务边界，照 RoleService
