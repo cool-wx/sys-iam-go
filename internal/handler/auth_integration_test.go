@@ -250,6 +250,20 @@ func TestAuthLoginFailures(t *testing.T) {
 	assert.Equal(t, 10502, disabledEnvelope.Code, "禁用用户必须 10502: body=%s", body)
 	assert.Equal(t, "用户已被禁用", disabledEnvelope.Message)
 
+	// ②'（WR-01 回归）禁用用户 + 错误密码 → 统一 10501（与"不存在/启用错密码"
+	// 逐字节相同的语义）：状态校验在 bcrypt 成功之后——错密码不得提前返回 10502
+	// 泄漏"存在且禁用"名单（防枚举，T-2-01）
+	status, body = doRequest(t, "POST", ts.URL+"/api/v1/auth/login", `{"username":"disabled-user","password":"wrong-password"}`)
+	require.Equal(t, http.StatusUnauthorized, status, "body=%s", body)
+	var disabledWrongPw struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(body, &disabledWrongPw))
+	assert.Equal(t, 10501, disabledWrongPw.Code, "禁用用户错密码必须统一 10501（不得泄漏禁用态）: body=%s", body)
+	assert.Equal(t, "用户名或密码错误", disabledWrongPw.Message)
+	assert.Equal(t, string(body1), string(body), "禁用错密码与不存在响应必须逐字节相同（防枚举）")
+
 	// ③ 畸形 hash（10 字符垃圾值，本库 arm64 行同型 fixture）→ 10501 且 HTTP 401
 	// 而非 500（T-2-08：任何 bcrypt error 一律译为登录失败）
 	seedUser(t, dsn, "malformed-user", "Arm64@U", "畸形哈希者", 1, false)

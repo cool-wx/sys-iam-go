@@ -38,10 +38,18 @@ func NewAuthService(userRepo *repository.UserRepo, relationRepo *repository.Rela
 	}
 }
 
-// Login 用户名密码登录（顺序与消息照源 AuthApplicationService.java:52-60，D-02）：
-// ①查用户（不存在 → 对 dummyHash 恒时比较后统一 10501）②状态校验（非 ENABLED →
-// 10502）③bcrypt 校验（任何 error 一律译 10501——畸形 hash 也不 500，T-2-08）
-// ④角色装配（会话 roles 载荷，permissions 不放，D-10）⑤发会话 ⑥出响应。
+// Login 用户名密码登录：①查用户（不存在 → 对 dummyHash 恒时比较后统一 10501）
+// ②bcrypt 校验（任何 error 一律译 10501——畸形 hash 也不 500，T-2-08）③状态校验
+// （非 ENABLED → 10502，仅密码正确后暴露）④角色装配（会话 roles 载荷，permissions
+// 不放，D-10）⑤发会话 ⑥出响应。
+//
+// 顺序偏离声明（WR-01 修复）：源 AuthApplicationService.java:52-60 状态校验先于
+// bcrypt——照抄会让"禁用账号 + 任意密码（无需正确）"返回 10502 且不消耗 bcrypt
+// 耗时，攻击者凭响应码/响应时间即可把禁用账号从"不存在/启用存在"中完整枚举
+// （T-2-01 防枚举目标被绕过 + 第二重时间侧信道）。Go 版有意将状态校验移到 bcrypt
+// 成功之后：密码错误一律统一 10501，验证通过后才暴露 10502——禁用语义对持正确
+// 密码的本人仍然可见（状态语义保真），枚举面与不存在账号归零。此为安全目标
+// （T-2-01）对源顺序保真（D-02）的有意覆盖，非漂移。
 func (s *AuthService) Login(ctx context.Context, req *dto.LoginReq) (*dto.LoginResp, error) {
 	u, err := s.userRepo.FindByUsername(ctx, derefStr(req.Username))
 	if err != nil {
@@ -53,14 +61,16 @@ func (s *AuthService) Login(ctx context.Context, req *dto.LoginReq) (*dto.LoginR
 		_ = bcrypt.CompareHashAndPassword(s.dummyHash, []byte(derefStr(req.Password)))
 		return nil, errcode.ErrBadCredentials
 	}
-	if u.Status == nil || *u.Status != 1 {
-		// 非 ENABLED（含 NULL fail-closed）：独立错误码 10502，消息照源"用户已被禁用"
-		return nil, errcode.ErrUserDisabled
-	}
 	if err := bcrypt.CompareHashAndPassword([]byte(derefStr(u.Password)), []byte(derefStr(req.Password))); err != nil {
 		// 畸形/过期/非 bcrypt 值（如存量 arm64 行的 10 字符垃圾值）一律登录失败
 		// 而非 500（T-2-08）；消息与"用户不存在"完全一致（防枚举，D-02）。
+		// 禁用账号错密码同样落此分支——10501 不泄漏"存在且禁用"（WR-01）。
 		return nil, errcode.ErrBadCredentials
+	}
+	if u.Status == nil || *u.Status != 1 {
+		// 非 ENABLED（含 NULL fail-closed）：密码正确后才返回独立错误码 10502，
+		// 消息照源"用户已被禁用"（WR-01：防禁用名单枚举）
+		return nil, errcode.ErrUserDisabled
 	}
 	return s.completeLogin(ctx, u)
 }
