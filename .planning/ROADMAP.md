@@ -99,7 +99,20 @@ Plans:
   3. 操作日志中间件自动记录写操作：module/operation 显式元数据、敏感参数 7 字段掩码为 `******`、errorMsg 截 500、失败请求也记录（status=0）且日志落库失败静默不影响业务、body 回放后接口正常
   4. 操作日志分页查询可用（默认 1/10 钳位例外，与源一致）
   5. 排班全量查询（无分页，源行为）与 CRUD；故障信息 CRUD 与 Excel 导入（name+bitIndex+location 三键 upsert、整批事务、返回 ImportResult insertCount/updateCount，用源系统真实导出文件回测）
-**Plans**: TBD
+**Plans**: 4/4 plans defined
+
+Plans:
+**Wave 1**
+- [ ] 04-01-PLAN.md — 轻三域 tracer：8 表 DDL 全落 + 六域 perm 常量 + Dict 全链端到端（1062 翻译/类型校验冗余/按类型过滤）+ Config（key 查询）+ Shift（全量无分页）（DICT-01..03、CONF-01、SHFT-01/02）
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 04-02-PLAN.md — FileStorage 抽象（local/S3 配置切换 + rustfs smoke）+ File 域（判重五语义/流式下载/宽容删除）+ FileCategory 树 + BodyLimit 独立上限（FILE-01..05）
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 04-03-PLAN.md — Oplog 中间件（8 字段掩码/body 回放/chan 异步/Stop flush）+ resp 透出 + paging 1/10 特例 + 日志查询域 + 全部写路由声明制挂载（OLOG-01..03）
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 04-04-PLAN.md — Fault 域 CRUD + FaultType 枚举 + Excel 三键 upsert 导入（8 列契约/整批事务/ImportResult/构造等价回测）（FAUL-01/02）
 
 ### Phase 5: 名称同步事件与验收收尾
 **Goal**: 6 个名称变更事件的冗余字段同步全部生效（横跨 8 个域，须等所有域 CRUD 稳定后统一实现），并完成全量验收回归
