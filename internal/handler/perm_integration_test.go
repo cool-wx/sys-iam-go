@@ -207,6 +207,109 @@ func TestPermDeleteCascades(t *testing.T) {
 	assert.Equal(t, int64(0), before.Cnt, "删除角色后 casbin_rule 必须无该角色任何 p/g 行（ClearRole 双清）")
 }
 
+// TestPermRouteLockdown 全量收口横向越权采样（PERM-06/WR-05 清偿直证，D-15）：
+// 角色 R + 用户 U 经 API 授权链装配后逐域采样六端点——
+//
+//	(a) R 无任何 p 策略：U 同一 token 每域采样一条（users/menus/depts.tree/roles/
+//	    api-keys/kickout）全部 403/10200（漏挂即在此暴露——T-3-10 缓解断言）；
+//	(b) admin 给 R 分配【仅含 system:menu:list】菜单（PUT /roles/:id/menus）→
+//	    **同一 U token 不重登录**：GET /menus 200 且 GET /users 仍 403——授权
+//	    最小化与横向隔离直证（同 token 授权域 200 与未授权域 403 并存）；
+//	(c) kickout 叠加语义（D-15 纵深防御直证）：R 追加 system:auth:kickout 菜单
+//	    （sys_menu 无 auth 域行，发明串直插菜单——Q2 已知边界）→ GET /menus 仍
+//	    200（p 行同步链正常）→ U 调 kickout 仍 403：RequirePerm 层已放行，403
+//	    必来自 RequireRoles(super_admin) 第二层拦截；
+//	(d) super_admin 调 kickout → 200（matcher 豁免 + RequireRoles 命中；目标为
+//	    无会话孤儿用户，KickoutUser 幂等 no-op 不扰动测试会话）。
+func TestPermRouteLockdown(t *testing.T) {
+	ts, dsn, adminToken, _ := newTestApp(t)
+	db := openCheckDB(t, dsn)
+	adminTk := adminToken()
+
+	const roleCode = "lockdown_role"
+	menuMenu := int64(ids.NewID())
+	execMust(t, db,
+		"INSERT INTO sys_menu (id, name, permission, create_time, update_time) VALUES (?, '菜单列表', 'system:menu:list', NOW(), NOW())",
+		menuMenu,
+	)
+	menuKick := int64(ids.NewID())
+	execMust(t, db,
+		"INSERT INTO sys_menu (id, name, permission, create_time, update_time) VALUES (?, '踢下线', 'system:auth:kickout', NOW(), NOW())",
+		menuKick,
+	)
+	roleID := seedRoleWithScope(t, dsn, "收口采样角色", roleCode, false, 5)
+	userID := seedUser(t, dsn, "lockdown-user", testAdminHash, "采样者", 1, false)
+	roleIDStr := strconv.FormatInt(roleID, 10)
+	userIDStr := strconv.FormatInt(userID, 10)
+	orphanID := seedUser(t, dsn, "lockdown-orphan", testAdminHash, "孤儿", 1, false)
+	kickBody := `{"userId":"` + strconv.FormatInt(orphanID, 10) + `"}`
+
+	assignR := func(menuIDsJSON string) {
+		t.Helper()
+		status, body := doAuthRequest(t, adminTk, "PUT", ts.URL+"/api/v1/roles/"+roleIDStr+"/menus",
+			`{"menuIds":[`+menuIDsJSON+`]}`)
+		require.Equal(t, http.StatusOK, status, "授菜单必须成功: body=%s", body)
+	}
+
+	// (a) U 挂 R（R 无 p 策略）→ 登录 → 每域采样一条全 403/10200
+	status, body := doAuthRequest(t, adminTk, "PUT", ts.URL+"/api/v1/users/"+userIDStr+"/roles",
+		`{"roleIds":["`+roleIDStr+`"]}`)
+	require.Equal(t, http.StatusOK, status, "分配角色必须成功: body=%s", body)
+	uToken := loginAs(t, ts, "lockdown-user", testAdminPass)
+	for _, ep := range []struct{ method, path, reqBody string }{
+		{"GET", "/api/v1/users", ""},
+		{"GET", "/api/v1/menus", ""},
+		{"GET", "/api/v1/depts/tree", ""},
+		{"GET", "/api/v1/roles", ""},
+		{"GET", "/api/v1/api-keys", ""},
+		{"POST", "/api/v1/auth/kickout", kickBody},
+	} {
+		status, body := doAuthRequest(t, uToken, ep.method, ts.URL+ep.path, ep.reqBody)
+		require.Equal(t, http.StatusForbidden, status, "%s %s 无 p 策略必须 403（漏挂/perm 串错在此暴露）: body=%s", ep.method, ep.path, body)
+		var env struct {
+			Code int `json:"code"`
+		}
+		require.NoError(t, json.Unmarshal(body, &env))
+		assert.Equal(t, 10200, env.Code, "%s %s body=%s", ep.method, ep.path, body)
+	}
+
+	// (b) 仅授 system:menu:list → 同一 token：授权域 200 + 未授权域 403 并存
+	menuMenuStr := strconv.FormatInt(menuMenu, 10)
+	assignR(`"` + menuMenuStr + `"`)
+	status, body = doAuthRequest(t, uToken, "GET", ts.URL+"/api/v1/menus", "")
+	require.Equal(t, http.StatusOK, status, "授权域 menus 必须同 token 即时 200（PERM-02）: body=%s", body)
+	status, body = doAuthRequest(t, uToken, "GET", ts.URL+"/api/v1/users", "")
+	require.Equal(t, http.StatusForbidden, status, "未授权域 users 同一 token 必须仍 403（横向隔离直证）: body=%s", body)
+	var stillDenied struct {
+		Code int `json:"code"`
+	}
+	require.NoError(t, json.Unmarshal(body, &stillDenied))
+	assert.Equal(t, 10200, stillDenied.Code, "body=%s", body)
+
+	// (c) R 追加 kickout 菜单（全量替换语义）→ p 行同步正常（menus 仍 200）→
+	// U 调 kickout 仍 403——RequireRoles 第二层拦截直证（D-15 纵深防御）
+	menuKickStr := strconv.FormatInt(menuKick, 10)
+	assignR(`"` + menuMenuStr + `", "` + menuKickStr + `"`)
+	status, body = doAuthRequest(t, uToken, "GET", ts.URL+"/api/v1/menus", "")
+	require.Equal(t, http.StatusOK, status, "追加菜单后授权链路必须仍正常（p 行已含 kickout 串）: body=%s", body)
+	// 直查 casbin_rule：U 的 g 行 + R 的 kickout p 行均已就位——403 非授权缺失
+	var policyRow struct {
+		Cnt int64
+	}
+	require.NoError(t, db.Raw(
+		"SELECT COUNT(*) AS cnt FROM casbin_rule WHERE (ptype='p' AND v0=? AND v1='system:auth:kickout') OR (ptype='g' AND v1=?)",
+		roleCode, roleCode,
+	).Scan(&policyRow).Error)
+	require.Equal(t, int64(2), policyRow.Cnt, "p(kickout)+g 行必须均已同步（403 必来自第二层）")
+	status, body = doAuthRequest(t, uToken, "POST", ts.URL+"/api/v1/auth/kickout", kickBody)
+	require.Equal(t, http.StatusForbidden, status, "持 kickout p 策略的非 super_admin 调 kickout 必须仍 403（RequireRoles 第二层，D-15）: body=%s", body)
+
+	// (d) super_admin 调 kickout → 200（matcher 豁免过 RequirePerm + RequireRoles
+	// 命中；目标孤儿用户无会话，KickoutUser 幂等 no-op）
+	status, body = doAuthRequest(t, adminTk, "POST", ts.URL+"/api/v1/auth/kickout", kickBody)
+	require.Equal(t, http.StatusOK, status, "super_admin kickout 必须 200（叠加双层全放行）: body=%s", body)
+}
+
 // TestUserDataScope dataScope 五档行差异（PERM-03 验收核心，03-RESEARCH 四步断言
 // 法第 4 步）。种子数据集：dept 三层树 D1(根)←D1a←D1a1 + 独立 D2；用户 C 挂 D1、
 // A 挂 D1a1、B 挂 D2（create_by_id=admin），另有 create_by_id=C 的自建行落 D2

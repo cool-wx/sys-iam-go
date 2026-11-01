@@ -25,8 +25,10 @@ type handlers struct {
 // 认证分组（D-15/AUTH-06 白名单收紧）：
 //   - pub 组（免 token）：/healthz、/readyz、POST /api/v1/auth/login、
 //     POST /api/v1/auth/apikey-login（白名单四路径齐备）；
-//   - pri 组（authMw 全量校验）：POST /api/v1/auth/logout、POST /api/v1/auth/kickout
-//     （kickout 额外挂 RequireRoles("super_admin") 授权 gate，WR-05 过渡收口）
+//   - pri 组（authMw 全量校验）：POST /api/v1/auth/logout（会话撤销自身不设权限
+//     门槛，挂载清单不含）+ 全部管理路由逐条 RequirePerm（Phase 3 PERM-06 全量
+//     收口：34+2 路由逐路由 requirePerm，D-08/D-15；kickout 叠加 RequireRoles
+//     纵深防御保留——WR-05/T-2-07 清偿）；
 //   - 既有 users 四路由 + menus/depts 全套业务路由（02-02 D-11/D-13：复数资源
 //     路由 + 树端点独立；gin 静态段 tree 与 :id 参数段共存，静态优先）。
 func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, az authz.Authorizer, logger *slog.Logger) *gin.Engine {
@@ -44,63 +46,66 @@ func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, az authz.Au
 	pub.POST("/api/v1/auth/apikey-login", hs.Auth.ApikeyLogin)
 
 	pri := engine.Group("/", authMw)
+	// logout 不挂 perm（挂载清单不含——会话撤销自身不设权限门槛）
 	pri.POST("/api/v1/auth/logout", hs.Auth.Logout)
-	// kickout 授权收口（WR-05/T-2-07 过渡态）：仅 super_admin 可调（会话 roles
-	// 快照判定）——不再"任何有效 token 可踢任意会话（含 admin）"；其余管理端点
-	// 的 requirePerm 全量收口在 03-03（D-15：kickout 的 RequireRoles 保留叠加）
-	pri.POST("/api/v1/auth/kickout", middleware.RequireRoles("super_admin"), hs.Auth.Kickout)
-	pri.POST("/api/v1/users", hs.Users.Create)
-	pri.PUT("/api/v1/users/:id", hs.Users.Update)
-	pri.GET("/api/v1/users/:id", hs.Users.Get)
-	// requirePerm tracer 首路由（D-08 逐路由显式挂载，路由与权限同屏）：casbin
-	// RBAC 判定（用户 g 行→角色→p 行 perm 串），权限变更下一请求即时生效（PERM-02）
+	// kickout 双层 gate（D-15 纵深防御不拆，照现行形态 RequireRoles 前置）：
+	// RequireRoles(super_admin) 会话快照层 + requirePerm 授权层——仅 super_admin
+	// 可调，不再"任何有效 token 可踢任意会话（含 admin）"；WR-05/T-2-07 清偿
+	pri.POST("/api/v1/auth/kickout", middleware.RequireRoles("super_admin"), middleware.RequirePerm(az, authz.PermAuthKickout), hs.Auth.Kickout)
+	// 用户域九路由（PERM-06 全量收口，D-08 逐路由显式挂载，路由与权限同屏；
+	// perm 串与 03-RESEARCH 挂载清单表逐行对照——reset-password 用 resetPwd 非 edit）
+	pri.POST("/api/v1/users", middleware.RequirePerm(az, authz.PermUserAdd), hs.Users.Create)
+	pri.PUT("/api/v1/users/:id", middleware.RequirePerm(az, authz.PermUserEdit), hs.Users.Update)
+	pri.GET("/api/v1/users/:id", middleware.RequirePerm(az, authz.PermUserQuery), hs.Users.Get)
 	pri.GET("/api/v1/users", middleware.RequirePerm(az, authz.PermUserList), hs.Users.List)
-	pri.DELETE("/api/v1/users/:id", hs.Users.Delete)
+	pri.DELETE("/api/v1/users/:id", middleware.RequirePerm(az, authz.PermUserRemove), hs.Users.Delete)
 	// 用户装配子资源（USER-04/02/03/07，02-03）：roles 全量替换、status 停用踢会话、
 	// reset-password 重置踢会话——gin 静态段（roles/status/reset-password）与 :id
 	// 参数段共存，静态优先（与 roles/:id/menus 同构）
-	pri.GET("/api/v1/users/:id/roles", hs.Users.GetRoles)
-	pri.PUT("/api/v1/users/:id/roles", hs.Users.AssignRoles)
-	pri.PUT("/api/v1/users/:id/status", hs.Users.UpdateStatus)
-	pri.PUT("/api/v1/users/:id/reset-password", hs.Users.ResetPassword)
+	pri.GET("/api/v1/users/:id/roles", middleware.RequirePerm(az, authz.PermUserQuery), hs.Users.GetRoles)
+	pri.PUT("/api/v1/users/:id/roles", middleware.RequirePerm(az, authz.PermUserEdit), hs.Users.AssignRoles)
+	pri.PUT("/api/v1/users/:id/status", middleware.RequirePerm(az, authz.PermUserEdit), hs.Users.UpdateStatus)
+	pri.PUT("/api/v1/users/:id/reset-password", middleware.RequirePerm(az, authz.PermUserResetPwd), hs.Users.ResetPassword)
 
-	// 菜单域（MENU-01/02）：CRUD + 树端点（静态段 tree 与 :id 参数段共存）
-	pri.POST("/api/v1/menus", hs.Menus.Create)
-	pri.PUT("/api/v1/menus/:id", hs.Menus.Update)
-	pri.GET("/api/v1/menus/tree", hs.Menus.Tree)
-	pri.GET("/api/v1/menus/:id", hs.Menus.Get)
-	pri.GET("/api/v1/menus", hs.Menus.List)
-	pri.DELETE("/api/v1/menus/:id", hs.Menus.Delete)
+	// 菜单域六路由（MENU-01/02）：CRUD + 树端点（静态段 tree 与 :id 参数段共存；
+	// tree 与列表均为 list 档，GET :id 为 query 档）
+	pri.POST("/api/v1/menus", middleware.RequirePerm(az, authz.PermMenuAdd), hs.Menus.Create)
+	pri.PUT("/api/v1/menus/:id", middleware.RequirePerm(az, authz.PermMenuEdit), hs.Menus.Update)
+	pri.GET("/api/v1/menus/tree", middleware.RequirePerm(az, authz.PermMenuList), hs.Menus.Tree)
+	pri.GET("/api/v1/menus/:id", middleware.RequirePerm(az, authz.PermMenuQuery), hs.Menus.Get)
+	pri.GET("/api/v1/menus", middleware.RequirePerm(az, authz.PermMenuList), hs.Menus.List)
+	pri.DELETE("/api/v1/menus/:id", middleware.RequirePerm(az, authz.PermMenuRemove), hs.Menus.Delete)
 
-	// 部门域（DEPT-01/02）：与菜单域同构
-	pri.POST("/api/v1/depts", hs.Depts.Create)
-	pri.PUT("/api/v1/depts/:id", hs.Depts.Update)
-	pri.GET("/api/v1/depts/tree", hs.Depts.Tree)
-	pri.GET("/api/v1/depts/:id", hs.Depts.Get)
-	pri.GET("/api/v1/depts", hs.Depts.List)
-	pri.DELETE("/api/v1/depts/:id", hs.Depts.Delete)
+	// 部门域六路由（DEPT-01/02）：与菜单域同构
+	pri.POST("/api/v1/depts", middleware.RequirePerm(az, authz.PermDeptAdd), hs.Depts.Create)
+	pri.PUT("/api/v1/depts/:id", middleware.RequirePerm(az, authz.PermDeptEdit), hs.Depts.Update)
+	pri.GET("/api/v1/depts/tree", middleware.RequirePerm(az, authz.PermDeptList), hs.Depts.Tree)
+	pri.GET("/api/v1/depts/:id", middleware.RequirePerm(az, authz.PermDeptQuery), hs.Depts.Get)
+	pri.GET("/api/v1/depts", middleware.RequirePerm(az, authz.PermDeptList), hs.Depts.List)
+	pri.DELETE("/api/v1/depts/:id", middleware.RequirePerm(az, authz.PermDeptRemove), hs.Depts.Delete)
 
-	// 角色域（ROLE-01/02/03）：CRUD + 角色菜单分配子资源（全量替换语义）
-	pri.POST("/api/v1/roles", hs.Roles.Create)
-	pri.PUT("/api/v1/roles/:id", hs.Roles.Update)
-	pri.GET("/api/v1/roles/:id", hs.Roles.Get)
-	pri.GET("/api/v1/roles", hs.Roles.List)
-	pri.DELETE("/api/v1/roles/:id", hs.Roles.Delete)
-	pri.GET("/api/v1/roles/:id/menus", hs.Roles.GetMenus)
-	pri.PUT("/api/v1/roles/:id/menus", hs.Roles.AssignMenus)
+	// 角色域七路由（ROLE-01/02/03）：CRUD + 角色菜单分配子资源（全量替换语义；
+	// :id 与 :id/menus GET 均为 query 档）
+	pri.POST("/api/v1/roles", middleware.RequirePerm(az, authz.PermRoleAdd), hs.Roles.Create)
+	pri.PUT("/api/v1/roles/:id", middleware.RequirePerm(az, authz.PermRoleEdit), hs.Roles.Update)
+	pri.GET("/api/v1/roles/:id", middleware.RequirePerm(az, authz.PermRoleQuery), hs.Roles.Get)
+	pri.GET("/api/v1/roles", middleware.RequirePerm(az, authz.PermRoleList), hs.Roles.List)
+	pri.DELETE("/api/v1/roles/:id", middleware.RequirePerm(az, authz.PermRoleRemove), hs.Roles.Delete)
+	pri.GET("/api/v1/roles/:id/menus", middleware.RequirePerm(az, authz.PermRoleQuery), hs.Roles.GetMenus)
+	pri.PUT("/api/v1/roles/:id/menus", middleware.RequirePerm(az, authz.PermRoleEdit), hs.Roles.AssignMenus)
 	// 数据权限范围部门子资源（PERM-03 档位 4 存储面，D-10 sys_role_dept）：独立
-	// 子资源端点（与 roles/:id/menus 同形态，管理面先例是全删重建）；RequirePerm
-	// 挂载照 03-01 tracer 先例（D-08 逐路由显式，其余路由 03-03 全量收口）
+	// 子资源端点（与 roles/:id/menus 同形态，管理面先例是全删重建）；03-02 已挂，
+	// 本路由计入全量收口总数
 	pri.GET("/api/v1/roles/:id/scopes", middleware.RequirePerm(az, authz.PermRoleQuery), hs.Roles.GetScopes)
 	pri.PUT("/api/v1/roles/:id/scopes", middleware.RequirePerm(az, authz.PermRoleEdit), hs.Roles.AssignScopes)
 
-	// API Key 域（AKEY-01/02，02-03）：CRUD 五端点 + status 子资源（源 editApiKey
+	// API Key 域五路由（AKEY-01/02，02-03）：CRUD + status 子资源（源 editApiKey
 	// 仅 status 单列语义）。至此 Phase 2 五域路由全量注册（D-11 六组齐备）
-	pri.POST("/api/v1/api-keys", hs.ApiKeys.Create)
-	pri.GET("/api/v1/api-keys/:id", hs.ApiKeys.Get)
-	pri.GET("/api/v1/api-keys", hs.ApiKeys.List)
-	pri.PUT("/api/v1/api-keys/:id/status", hs.ApiKeys.UpdateStatus)
-	pri.DELETE("/api/v1/api-keys/:id", hs.ApiKeys.Delete)
+	pri.POST("/api/v1/api-keys", middleware.RequirePerm(az, authz.PermApiKeyAdd), hs.ApiKeys.Create)
+	pri.GET("/api/v1/api-keys/:id", middleware.RequirePerm(az, authz.PermApiKeyQuery), hs.ApiKeys.Get)
+	pri.GET("/api/v1/api-keys", middleware.RequirePerm(az, authz.PermApiKeyList), hs.ApiKeys.List)
+	pri.PUT("/api/v1/api-keys/:id/status", middleware.RequirePerm(az, authz.PermApiKeyEdit), hs.ApiKeys.UpdateStatus)
+	pri.DELETE("/api/v1/api-keys/:id", middleware.RequirePerm(az, authz.PermApiKeyRemove), hs.ApiKeys.Delete)
 
 	return engine
 }

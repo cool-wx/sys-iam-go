@@ -15,6 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+
+	"github.com/cool-wx/sys-iam-go/pkg/ids"
 )
 
 // createRole 经 POST /api/v1/roles（带 admin token）创建角色，返回 id 字符串。
@@ -58,6 +60,30 @@ func getUserRoles(t *testing.T, ts *httptest.Server, token, userID string) ([]ro
 	}
 	require.NoError(t, json.Unmarshal(body, &envelope), "body=%s", body)
 	return envelope.Data, body
+}
+
+// grantUserPerm 为运行时用户授权单条 perm（03-03 全量收口适配）：DB 直插 perm 菜单
+// + seedRoleWithScope 角色，再走 API 授权链（PUT /roles/:id/menus + PUT /users/:id/roles）
+// 同步 enforcer——g/p 行运行时写入使被测用户当前会话下一请求即持 perm。boot 对账只
+// 覆盖 newTestApp 种子三件套；本 helper 服务 app.New 之后经 API 创建的用户（03-01
+// 曾以"改走未挂 gate 端点"绕行，03-03 全量收口后无未挂 gate 的管理端点，探活必须
+// 修种子授权——prohibition：不拆 gate）。
+func grantUserPerm(t *testing.T, ts *httptest.Server, token, dsn string, userID int64, perm, roleCode string) {
+	t.Helper()
+	db := openCheckDB(t, dsn)
+	menuID := int64(ids.NewID())
+	execMust(t, db,
+		"INSERT INTO sys_menu (id, name, permission, create_time, update_time) VALUES (?, '探活授权菜单', ?, NOW(), NOW())",
+		menuID, perm,
+	)
+	roleID := seedRoleWithScope(t, dsn, "探活角色", roleCode, false, 5)
+	roleIDStr := strconv.FormatInt(roleID, 10)
+	status, body := doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleIDStr+"/menus",
+		`{"menuIds":["`+strconv.FormatInt(menuID, 10)+`"]}`)
+	require.Equal(t, http.StatusOK, status, "授菜单必须成功: body=%s", body)
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/users/"+strconv.FormatInt(userID, 10)+"/roles",
+		`{"roleIds":["`+roleIDStr+`"]}`)
+	require.Equal(t, http.StatusOK, status, "授角色必须成功: body=%s", body)
 }
 
 // roleIDSet 提取 roleId 集合（无序比较用）。
@@ -170,9 +196,14 @@ func TestUserStatusDisableKickout(t *testing.T) {
 	seedDept(t, dsn, 100, "总部")
 
 	uidStr := createRawUser(t, ts, token, `{"username":"status-user","password":"pw-123456","realName":"停用者","deptId":"100"}`)
+	uid, err := strconv.ParseInt(uidStr, 10, 64)
+	require.NoError(t, err)
 
-	// 目标用户登录拿 token 并确认可用（03-01 起列表端点已挂 requirePerm gate，
-	// 无角色用户探活改走未挂 gate 的详情端点——认证可用性断言语义不变）
+	// 03-03 全量收口后详情端点同样挂 requirePerm gate——探活用户必须持
+	// system:user:query（API 授权链运行时同步 enforcer）
+	grantUserPerm(t, ts, token, dsn, uid, "system:user:query", "probe_status_role")
+
+	// 目标用户登录拿 token 并确认可用（认证可用性断言语义不变）
 	tokenU := loginAs(t, ts, "status-user", "pw-123456")
 	status, body := doAuthRequest(t, tokenU, "GET", ts.URL+"/api/v1/users/"+uidStr, "")
 	require.Equal(t, http.StatusOK, status, "停用前 token 应可用: body=%s", body)
@@ -214,8 +245,10 @@ func TestResetPasswordFlow(t *testing.T) {
 	uid, err := strconv.ParseInt(uidStr, 10, 64)
 	require.NoError(t, err)
 
+	// 03-03 全量收口后探活用户必须持 system:user:query（API 授权链，同上）
+	grantUserPerm(t, ts, token, dsn, uid, "system:user:query", "probe_reset_role")
+
 	tokenA := loginAs(t, ts, "reset-user", "pw-123456")
-	// 03-01 起列表端点已挂 requirePerm gate，无角色用户探活改走详情端点（语义不变）
 	status, body := doAuthRequest(t, tokenA, "GET", ts.URL+"/api/v1/users/"+uidStr, "")
 	require.Equal(t, http.StatusOK, status, "重置前 token 应可用: body=%s", body)
 
@@ -422,10 +455,14 @@ func TestDeleteUserKicksSessions(t *testing.T) {
 	seedDept(t, dsn, 100, "总部")
 
 	uidStr := createRawUser(t, ts, token, `{"username":"delete-kick","password":"pw-123456","realName":"删踢者","deptId":"100"}`)
+	uid, err := strconv.ParseInt(uidStr, 10, 64)
+	require.NoError(t, err)
+
+	// 03-03 全量收口后探活用户必须持 system:user:query（API 授权链，同上——
+	// 无角色普通用户走任何管理端点都会被授权层 403 污染认证语义）
+	grantUserPerm(t, ts, token, dsn, uid, "system:user:query", "probe_delkick_role")
+
 	tokenU := loginAs(t, ts, "delete-kick", "pw-123456")
-	// 03-01 起 GET /api/v1/users（列表）已挂 requirePerm gate——被删用户 U 是无
-	// 角色普通用户，走列表会被授权层 403 污染本测试的认证语义；改探未挂 gate 的
-	// 详情端点（认证可用性=200 的断言目标不变，AUTH 链路语义等价）
 	status, body := doAuthRequest(t, tokenU, "GET", ts.URL+"/api/v1/users/"+uidStr, "")
 	require.Equal(t, http.StatusOK, status, "删除前 token 应可用: body=%s", body)
 
