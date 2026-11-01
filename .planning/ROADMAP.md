@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: 工程骨架与横切地基** - 可启动的单体服务 + 全库共享约定（R 响应/雪花 ID/JSON 契约/零值保护与审计填充/分页/健康检查/本地配置/单二进制交付） (completed 2026-10-31)
 - [x] **Phase 2: 认证会话与 RBAC 主链路** - 自建 token-session（登录/登出/踢人/TTL/白名单）+ User/Role/Menu/Dept/ApiKey 五域完整 CRUD (completed 2026-11-01)
 - [x] **Phase 3: Casbin 授权与数据权限** - Casbin RBAC + 原生策略表 + 策略热重载（变更即时生效）+ requirePerm 中间件 + dataScope 五档行过滤 (completed 2026-11-01)
-- [ ] **Phase 4: 业务域与操作日志** - Dict/Config/File/Shift/FaultInfo 六域 + 存储抽象（本地磁盘/RustFS-S3）+ 操作日志中间件 + Excel 导入
+- [x] **Phase 4: 业务域与操作日志** - Dict/Config/File/Shift/FaultInfo 六域 + 存储抽象（本地磁盘/RustFS-S3）+ 操作日志中间件 + Excel 导入 (completed 2026-11-02)
 - [ ] **Phase 5: 名称同步事件与验收收尾** - 进程内事件 dispatcher + 6 个名称同步 handler + 全量接口与自动化测试回归
 
 ## Phase Details
@@ -99,7 +99,7 @@ Plans:
   3. 操作日志中间件自动记录写操作：module/operation 显式元数据、敏感参数 7 字段掩码为 `******`、errorMsg 截 500、失败请求也记录（status=0）且日志落库失败静默不影响业务、body 回放后接口正常
   4. 操作日志分页查询可用（默认 1/10 钳位例外，与源一致）
   5. 排班全量查询（无分页，源行为）与 CRUD；故障信息 CRUD 与 Excel 导入（name+bitIndex+location 三键 upsert、整批事务、返回 ImportResult insertCount/updateCount，用源系统真实导出文件回测）
-**Plans**: 2/4 plans executed defined
+**Plans**: 4/4 plans complete defined
 
 Plans:
 **Wave 1**
@@ -109,10 +109,10 @@ Plans:
 - [x] 04-02-PLAN.md — FileStorage 抽象（local/S3 配置切换 + rustfs smoke）+ File 域（判重五语义/流式下载/宽容删除）+ FileCategory 树 + BodyLimit 独立上限（FILE-01..05）
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 04-03-PLAN.md — Oplog 中间件（8 字段掩码/body 回放/chan 异步/Stop flush）+ resp 透出 + paging 1/10 特例 + 日志查询域 + 全部写路由声明制挂载（OLOG-01..03）
+- [x] 04-03-PLAN.md — Oplog 中间件（8 字段掩码/body 回放/chan 异步/Stop flush）+ resp 透出 + paging 1/10 特例 + 日志查询域 + 全部写路由声明制挂载（OLOG-01..03）
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 04-04-PLAN.md — Fault 域 CRUD + FaultType 枚举 + Excel 三键 upsert 导入（8 列契约/整批事务/ImportResult/构造等价回测）（FAUL-01/02）
+- [x] 04-04-PLAN.md — Fault 域 CRUD + FaultType 枚举 + Excel 三键 upsert 导入（8 列契约/整批事务/ImportResult/构造等价回测）（FAUL-01/02）
 
 ### Phase 5: 名称同步事件与验收收尾
 **Goal**: 6 个名称变更事件的冗余字段同步全部生效（横跨 8 个域，须等所有域 CRUD 稳定后统一实现），并完成全量验收回归
@@ -135,5 +135,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. 工程骨架与横切地基 | 3/3 | Complete    | 2026-10-31 |
 | 2. 认证会话与 RBAC 主链路 | 3/3 | Complete    | 2026-11-01 |
 | 3. Casbin 授权与数据权限 | 3/3 | Complete    | 2026-11-01 |
-| 4. 业务域与操作日志 | 2/4 | In Progress | - |
+| 4. 业务域与操作日志 | 4/4 | Complete    | 2026-11-02 |
 | 5. 名称同步事件与验收收尾 | 0/TBD | Not started | - |
