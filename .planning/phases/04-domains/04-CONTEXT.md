@@ -37,7 +37,7 @@
 - **D-06:** body 回放用缓存字节重放（`c.Request.Body = io.NopCloser(bytes.NewReader(cached))`；1MB BodyLimit 上限内缓存无内存放大）
 - **D-07:** 异步落库：buffered chan + 后台 goroutine 批量写；chan 满丢弃不阻塞业务（OLOG-02 "落库失败静默不影响业务"的结构化实现）；失败请求也记（status=0 + errorMsg 截 500）
 - **D-08:** 优雅关停 flush：SIGTERM 时 drain chan 残留（app.Shutdown 链复用 Phase 1 NotifyContext）——丢弃窗口最小化
-- **D-09:** 敏感参数 7 字段掩码 `******`（字段清单研究期从源 OperationLogAspect 逐字段提取保真）；分页 1/10 钳位例外（paging.Parse 特例参数）
+- **D-09:** 敏感参数掩码——**研究实证修正为 8 字段**（源 OperationLogAspect.java:27-28 正则逐字：password/oldPassword/newPassword/secretKey/apiKey/token/accessToken/refreshToken，掩码 `******`；REQUIREMENTS"7 字段"表述系计数笔误）；另两处源差异裁定：源为**同步落库**——D-07 异步为本项目工程化改进（chan 满丢弃优于请求阻塞，留档有意偏离）；源切点**含读操作**——按 D-05 收紧为仅写操作（注解声明制）；分页 1/10 钳位例外（handler 局部实现，不改 pkg/paging 全局默认）
 
 ### 文件存储双实现（Claude 自主决策）
 
