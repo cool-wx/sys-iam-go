@@ -25,8 +25,8 @@ affects: [04-03-olog, 04-04-fault]
 actuals:
   tokens: 24000    # chars/4 over the realized diff (24 files, 2334 insertions / 38 deletions)
   tasks: 2
-  commits: 3
-commits: 3
+  commits: 2
+commits: 2
 plan_head_before: 3df4ef5cc73e8a62889979ba4dc4f9ba4279f7ed
 plan_head_after: 6748849c5363590153e8a3ad9bce29b070c27df4
 
