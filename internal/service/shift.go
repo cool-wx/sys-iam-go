@@ -24,8 +24,9 @@ func NewShiftService(repo *repository.ShiftRepo) *ShiftService {
 	return &ShiftService{repo: repo}
 }
 
-// Create 创建排班：status 服务端默认 1 正常（对齐 DDL default 与源 MP null-skip
-// 语义）。审计字段由 PO 钩子服务端填充（ENG-02）。
+// Create 创建排班：status 不收客户端值，服务端默认 1 正常（对齐 DDL default 与
+// 源 MP null-skip 语义；WR-04 对齐 dict/fileCategory 域 Create 形态）。审计字段
+// 由 PO 钩子服务端填充（ENG-02）。
 func (s *ShiftService) Create(ctx context.Context, req *dto.ShiftCreateReq) (*dto.ShiftResp, error) {
 	m := &po.ShiftPO{
 		ShiftCode: req.ShiftCode,
@@ -34,12 +35,8 @@ func (s *ShiftService) Create(ctx context.Context, req *dto.ShiftCreateReq) (*dt
 		EndTime:   req.EndTime,
 		Remark:    req.Remark,
 	}
-	if req.Status != nil {
-		m.Status = req.Status
-	} else {
-		status := int8(1)
-		m.Status = &status
-	}
+	status := int8(1)
+	m.Status = &status
 	if err := s.repo.Create(ctx, m); err != nil {
 		return nil, err
 	}
@@ -63,7 +60,8 @@ func (s *ShiftService) Update(ctx context.Context, id int64, req *dto.ShiftUpdat
 		cols["end_time"] = *req.EndTime
 	}
 	if req.Status != nil {
-		cols["status"] = *req.Status
+		// UsageStatus 严格解析（WR-04）：未知值已在绑定层 400/10401，此处恒合法
+		cols["status"] = int8(*req.Status)
 	}
 	if req.Remark != nil {
 		cols["remark"] = *req.Remark

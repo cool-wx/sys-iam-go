@@ -367,18 +367,22 @@ func TestConfigCRUDAndKey(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, status, "删除后 key 查询必须 404: body=%s", body)
 }
 
-// shiftRespBody 排班响应体（集成断言所需子集）。
+// shiftRespBody 排班响应体（集成断言所需子集；status 为 UsageStatus 枚举形态
+// 出网字符串，WR-04）。
 type shiftRespBody struct {
 	ID        ids.ID  `json:"id"`
 	ShiftCode *string `json:"shiftCode"`
 	ShiftName *string `json:"shiftName"`
 	StartTime *string `json:"startTime"`
 	EndTime   *string `json:"endTime"`
+	Status    *string `json:"status"`
 }
 
 // TestShiftFullListNoPaging 排班全量直出（SHFT-01 源行为直译）+ CRUD（SHFT-02）：
 // create 3 条 → GET /api/v1/shifts 断言 data 为长度 3 数组且响应无 items/total
-// 包装 → PUT 改 start_time 后 Get 回读更新生效。
+// 包装 → PUT 改 start_time 后 Get 回读更新生效。status 经 UsageStatus 枚举
+//（WR-04）：create 恒服务端默认 "ENABLED"；update 未知枚举值 400/10401 不静默
+// 落库；update "DISABLED" 合法且回读一致。
 func TestShiftFullListNoPaging(t *testing.T) {
 	ts, _, adminToken, _ := newTestApp(t)
 	token := adminToken()
@@ -421,4 +425,38 @@ func TestShiftFullListNoPaging(t *testing.T) {
 	require.NoError(t, json.Unmarshal(env.Data, &got))
 	require.NotNil(t, got.StartTime)
 	assert.Equal(t, "09:00:00", *got.StartTime)
+
+	// status 枚举纪律（WR-04）：create 恒服务端默认 1 → 出网 "ENABLED"
+	//（create 请求体不收 status——与其他域对齐）
+	require.NotNil(t, got.Status)
+	assert.Equal(t, "ENABLED", *got.Status, "服务端默认 status=1 必须出网 ENABLED")
+
+	// update 未知枚举值 → UsageStatus.UnmarshalJSON 报错 → 400/10401，不静默落库
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/shifts/"+int64ToStr(int64(target)),
+		`{"status":42}`)
+	require.Equal(t, http.StatusBadRequest, status, "未知枚举值必须 400: body=%s", body)
+	var badEnumEnv dictEnvelope
+	require.NoError(t, json.Unmarshal(body, &badEnumEnv))
+	assert.Equal(t, 10401, badEnumEnv.Code, "body=%s", body)
+	assert.Contains(t, badEnumEnv.Message, "参数校验失败", "body=%s", body)
+
+	// update 合法枚举 name 形态 → 200 且回读 "DISABLED"
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/shifts/"+int64ToStr(int64(target)),
+		`{"status":"DISABLED"}`)
+	require.Equal(t, http.StatusOK, status, "合法枚举必须 200: body=%s", body)
+	require.NoError(t, json.Unmarshal(body, &env))
+	var updatedStatus shiftRespBody
+	require.NoError(t, json.Unmarshal(env.Data, &updatedStatus))
+	require.NotNil(t, updatedStatus.Status)
+	assert.Equal(t, "DISABLED", *updatedStatus.Status, "update DISABLED 必须落库并回读")
+
+	// update 合法枚举数字双形态 → 200 回读 "ENABLED"（双形态兼容，WR-03 先例）
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/shifts/"+int64ToStr(int64(target)),
+		`{"status":1}`)
+	require.Equal(t, http.StatusOK, status, "数字双形态必须 200: body=%s", body)
+	require.NoError(t, json.Unmarshal(body, &env))
+	var updatedNum shiftRespBody
+	require.NoError(t, json.Unmarshal(env.Data, &updatedNum))
+	require.NotNil(t, updatedNum.Status)
+	assert.Equal(t, "ENABLED", *updatedNum.Status)
 }
