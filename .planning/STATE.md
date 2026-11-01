@@ -4,10 +4,10 @@ current_phase: 4
 current_phase_name: 业务域与操作日志
 status: planning
 stopped_at: Phase 3 complete, ready to plan Phase 4
-last_updated: "2026-11-01T08:27:12.190Z"
+last_updated: "2026-11-01T08:27:46.933Z"
 last_activity: 2026-11-01
 last_activity_desc: Phase 3 complete, transitioned to Phase 4
-state_head: 07db5589eb21592841e4500b8a9a7fd42e2e2d75
+state_head: 14686255d90e66b387b24085ba8925672801ad17
 progress:
   total_phases: 5
   completed_phases: 3
@@ -20,7 +20,7 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-11-01, Phase 2 transition)
+See: .planning/PROJECT.md (updated 2026-11-01, Phase 3 transition)
 
 **Core value:** 在工控机上以单个轻量 Go 服务完整复刻 sys-iam 的全部 IAM 能力，且接口实现与自动化测试全部通过。
 **Current focus:** Phase 3 — Casbin 授权与数据权限
@@ -116,6 +116,8 @@ None yet.
 
 - [现场部署] arm64 真实工控机首启 healthz 200 确认（qemu 全链路已代证，随部署三步执行）
 - [现场部署] 生产库 20 条 BCrypt hash 抽样验证（开发库活体直证已代证 D-16；MySQL collation 已实证 utf8mb4_general_ci）
+- [现场部署] system:role:edit 仅授予管理员角色（WR-05 部署信任边界——角色菜单编辑即自授面，deferred 挂账）
+- [现场部署] 生产存量 super_admin 行 data_scope=NULL 需经 PUT /roles/:id 置 5（03-02 留档）
 - [现场部署] Nacos craft-satoken.yaml timeout 真值校正（D-06 已 30d 代理 + IAM_AUTH_SESSION_TIMEOUT 可覆盖；rnacos 空实例确认永不可得）
 - ~~[Phase 3] IN-14 过期 key 存量会话无自动撤销触发点~~ — 03-03 收口（iam:apikey-user: 反查键三件落地，过期 key 登录拒绝即撤销存量会话）
 - ~~[Phase 3] 管理端点全量授权~~ — 03-03 收口（34+2 路由逐路由 requirePerm，RequireRoles 仅 kickout 叠加保留）

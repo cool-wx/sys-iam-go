@@ -17,6 +17,7 @@
 - ✓ 认证与会话管理（Sa-Token + OAuth2 依赖 + Redis 会话）— 源系统既有
 - ✓ 认证会话 Go 化（自建 token-session：登录/登出/踢下线/TTL 滚动续期/API Key 登录复用，存量 BCrypt `$2a$` 零迁移活体直证）— Phase 2
 - ✓ 用户/角色/菜单/部门/API Key 五域 RBAC 主链路（CRUD/树查询/角色分配/停用即踢双轴/builtin 409 守卫/重置 123456）— Phase 2
+- ✓ Casbin 授权与数据权限（requirePerm 全量收口/策略即时生效/dataScope 五档行过滤/sys_role_dept 关联表/IN-14 收口）— Phase 3
 - ✓ 用户/角色/菜单/部门 RBAC 权限体系（User/Role/Menu/RoleMenu/Dept）— 源系统既有
 - ✓ 字典管理（DictType/DictData 双表）— 源系统既有
 - ✓ 系统配置管理（SysConfig）— 源系统既有
@@ -32,7 +33,7 @@
 ### Active
 
 - [ ] 14 个功能域 REST API 全量重新设计并实现（允许 REST 最佳实践重设计）（Auth/User/Role/Menu/Dept/ApiKey 六域已完成——Phase 2）
-- [ ] 权限体系升级为 Casbin：RBAC 功能权限 + 数据权限（dataScope 部门级行过滤）+ 变更即时生效（不复刻源系统"登录快照"语义）
+[已交付 Phase 3] 权限体系 Casbin：enforcer 单例+boot 对账+RequirePerm 36 路由+双轨同步+dataScope 五档（sys_role_dept 新表）
 - [ ] MySQL 沿用现有 schema（GORM 接入，不重设计表结构）
 - [ ] 文件存储抽象：本地磁盘 / RustFS(S3) 可配置切换
 - [ ] 配置管理去 Nacos 化：本地 YAML + 环境变量
@@ -96,6 +97,11 @@
 | 失效写路径全链踢会话（D-09 双轴） | 停用/重置/删除（用户轴）+ 停用/删除 API Key（apikey 轴 KickoutAPIKey）即时撤销存量会话——有意的源行为安全增强；CR-01/WR-06 review 补全 | ✓ Phase 2 |
 | 登录状态校验后置（WR-01） | 防枚举优先于源顺序保真：错密码恒 10501（含禁用用户），密码正确才 10502——T-2-01 对 D-02 的显式覆盖 | ✓ Phase 2 review 修正 |
 | kickout 端点收紧 RequireRoles(super_admin) | WR-05 部分修复过渡态（会话 roles 快照判定）；全量 requirePerm 属 Phase 3 Casbin | ✓ Phase 2 过渡 |
+| Casbin v2 路线锁定（v2.135.0 + gorm-adapter v3.35.0） | v3.36+ 切 v3 不兼容；端到端 probe 实测三盲坑（matcher token 名/首位短路/Error 1869 去重） | ✓ Phase 3 研究实证 |
+| boot 对账（冷启动全量导入） | 补 RESEARCH 盲点：casbin_rule 空表+存量关系→否则全员 403；与运行期双轨同步互补（重启自愈） | ✓ Phase 3 |
+| builtin 守卫全生命周期不变量 | Create 拒绝/Update 白名单剔除/不可停用 10604/不可删除 10602/分配需 super_admin（enforcer g 层判据）——CR-03/04 + WR-01/06 修复链 | ✓ Phase 3 review |
+| Delete 预清模式（补偿可达性） | 清理前置事务（Kickout/ClearRole/ClearUser 先行），DB 删除后无 post-commit 步骤——重试 404 不再挡死清理（CR-01/02） | ✓ Phase 3 review |
+| 停用角色授权即刻失效 | JOIN status=1 + Update 运行期策略同步 + boot 同口径 + AssignMenus/AssignRoles 前置拒绝（WR-04/07 闭环） | ✓ Phase 3 review |
 | 会话 timeout 30d 缺省 + env 覆盖 | Nacos 实际值永不可得（rnacos 空实例确认），Sa-Token 官方默认为最接近代理；现场可校正 | ✓ Phase 2（D-06） |
 
 ## Evolution
@@ -116,4 +122,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-01 after Phase 2*
+*Last updated: 2026-11-01 after Phase 3*
