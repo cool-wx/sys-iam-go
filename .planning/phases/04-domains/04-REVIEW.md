@@ -1,188 +1,134 @@
 ---
 phase: 04-domains
-reviewed: 2026-11-01T13:10:36Z
+reviewed: 2026-11-01T14:07:00Z
 depth: standard
-files_reviewed: 70
+iteration: 2
+files_reviewed: 24
 files_reviewed_list:
-  - configs/config.yaml
-  - go.mod
-  - internal/app/app.go
-  - internal/app/router.go
-  - internal/app/shutdown_integration_test.go
-  - internal/authz/perms.go
-  - internal/config/config.go
-  - internal/config/config_test.go
-  - internal/handler/config.go
-  - internal/handler/dict_config_shift_integration_test.go
-  - internal/handler/dict_data.go
-  - internal/handler/dict_type.go
-  - internal/handler/fault.go
-  - internal/handler/fault_integration_test.go
-  - internal/handler/file_category.go
-  - internal/handler/file.go
-  - internal/handler/file_integration_test.go
-  - internal/handler/olog_integration_test.go
-  - internal/handler/operation_log.go
-  - internal/handler/shift.go
-  - internal/handler/user_integration_test.go
   - internal/middleware/body_limit.go
+  - internal/middleware/body_limit_test.go
   - internal/middleware/op_log.go
   - internal/middleware/op_log_test.go
-  - internal/model/dto/config.go
-  - internal/model/dto/dict.go
-  - internal/model/dto/fault_info.go
-  - internal/model/dto/file.go
-  - internal/model/dto/operation_log.go
   - internal/model/dto/shift.go
-  - internal/model/po/dict.go
-  - internal/model/po/fault_info.go
-  - internal/model/po/file.go
-  - internal/model/po/operation_log.go
-  - internal/model/po/shift.go
-  - internal/model/po/sys_config.go
-  - internal/repository/dict.go
-  - internal/repository/fault_info.go
-  - internal/repository/file_category.go
-  - internal/repository/file_info.go
-  - internal/repository/operation_log.go
-  - internal/repository/shift.go
-  - internal/repository/sys_config.go
   - internal/service/config.go
   - internal/service/dict.go
-  - internal/service/fault.go
+  - internal/handler/dict_config_shift_integration_test.go
   - internal/service/fault_import.go
-  - internal/service/file_category.go
   - internal/service/file.go
-  - internal/service/operation_log.go
+  - internal/service/file_test.go
   - internal/service/shift.go
-  - internal/storage/local.go
-  - internal/storage/local_test.go
-  - internal/storage/s3.go
-  - internal/storage/s3_test.go
-  - internal/storage/storage.go
-  - pkg/paging/paging.go
-  - pkg/paging/paging_test.go
-  - pkg/resp/resp.go
-  - pkg/resp/resp_test.go
-  - pkg/types/fault_type.go
-  - pkg/types/fault_type_test.go
+  - internal/app/router.go
+  - internal/handler/user.go
+  - internal/handler/shift.go
+  - internal/handler/file.go
+  - internal/handler/fault.go
+  - pkg/types/enum.go
+  - internal/repository/dict.go
+  - internal/repository/sys_config.go
+  - scripts/ddl/sys_dict_type.sql
   - scripts/ddl/sys_config.sql
   - scripts/ddl/sys_dict_data.sql
-  - scripts/ddl/sys_dict_type.sql
-  - scripts/ddl/sys_fault_info.sql
-  - scripts/ddl/sys_file_category.sql
   - scripts/ddl/sys_file.sql
-  - scripts/ddl/sys_operation_log.sql
-  - scripts/ddl/sys_shift.sql
 findings:
-  critical: 2
-  warning: 5
+  critical: 0
+  warning: 1
   info: 1
-  total: 8
+  total: 2
 status: issues_found
 ---
 
-# Phase 4: Code Review Report
+# Phase 4: Code Review Report（iter-2 复审）
 
-**Reviewed:** 2026-11-01T13:10:36Z
+**Reviewed:** 2026-11-01T14:07:00Z
 **Depth:** standard
-**Files Reviewed:** 70
+**Files Reviewed:** 24（fix 范围 13 文件全量通读 + 11 支撑文件交叉核验）
 **Status:** issues_found
 
 ## Summary
 
-Phase 4 六域（config/dict/fault/file/olog/shift）整体质量高：分层纪律一致（handler 薄层三段式 → service 白名单 Patch → repo 恒带 `Where("id = ?")`）、审计钩子/雪花 ID/1062 翻译等 Phase 2 惯例得到忠实延续、测试覆盖扎实（掩码顺序、回滚、NULL 判重锁定、优雅关停 drain 均有直证测试），`go vet` / `go build` 全绿。
+对 fix commits `5b3d429..3ca7bd7`（7 个修复）做收敛复审：`git diff f9ef353..3ca7bd7` 全量通读确认无夹带改动、注释与实现同步更新；逐修复核对了与项目既有裁定的一致性（CR-01 保留 D-12 双层封顶、CR-02 遵守「schema 沿用源库」不 ALTER、WR-04 对齐 UsageStatus 全库纪律且 API 契约变化合规）；独立运行验证 `go build` / `go vet` 全绿、middleware+service 单测全过、WR-02/WR-04/WR-03 对应的 9 条集成测试（testcontainers 双容器）独立复核全部 PASS。
 
-但仍审出 2 个 Critical：
+**结论：7/7 verified-fixed。** 每个修复均真正消除了 iter-1 报告的问题，修复方式与项目惯例一致，新增测试断言真实有效。两个 fixer 声明的已知残留均判定**可接受**（见「已知残留处置」）。
 
-1. **BodyLimit 对 multipart 的全局跳过打开了无界请求体读取面**——免认证的 `POST /api/v1/auth/login` 等路由以 `Content-Type: multipart/form-data` 发送任意大 JSON 时完全绕过 1MB 上限，`ShouldBindJSON` 全量读入内存（已读 gin v1.12 源码实证 `decodeJSON` 无任何限制），30s ReadTimeout 只限时不限量，内网可 OOM 工控机。
-2. **file_type 列 varchar(50) 而上传链直接回存客户端 Content-Type**——xlsx/docx 的标准 MIME（65 字符）超列长，浏览器正常上传 Office 文档在 strict mode 下 INSERT 必失败（500），文件域核心场景对合法输入确定性损坏。
+复审新发现 1 Warning + 1 Info：WR-06 是 WR-01 修复方式引入的次生 CPU 放大面（实测 18.8ms/恶意请求，~2000 倍放大，授权用户可确定性触发）；IN-02 是 CR-01 已知残留（文案数字漂移）的一行修复路径——`http.MaxBytesError.Limit` 字段本可让文案与实际上限永不漂移，比保留残留更优。
 
-5 个 Warning 集中在：字节截断可切出无效 UTF-8 导致整批日志落库失败、Update 路径唯一键冲突未翻译（500 vs Create 的 400）、Excel 导入行数防线在 GetRows 全量载入之后才生效、shift 域 status 绕过全库 UsageStatus 枚举纪律、上传文件名/Content-Type 无长度钳位。
+## 既有 Finding 复核（iter-1 → iter-2）
 
-## Critical Issues
+### CR-01: BodyLimit multipart 兜底封顶 — **verified-fixed**
 
-### CR-01: BodyLimit 对 multipart 全局跳过，非 upload 路由可被无界请求体打 OOM（免认证 login 即可触发）
+**证据：**
+- `internal/middleware/body_limit.go:43-54`：multipart 分支由直接放行改为套 `maxMultipartBytes`（20MB）兜底 `MaxBytesReader`——采用 iter-1 建议方案一，无界面（免认证 login 打 multipart 超大 body）被消除；非 multipart 的 1MB 防护面不变。
+- D-12 双层封顶设计保留：全局外层 20MB + 路由级内层 20MB（`MaxMultipartMB` 单一事实源），内层生效值不变。`internal/app/router.go:174,204` 两处 `BodyLimitWithMB(20)` 字面量改引 `middleware.MaxMultipartMB`，两层永不漂移。
+- 新增 `body_limit_test.go` 三直证断言真实：`TestBodyLimitMultipartBoundedOnNonUploadRoutes`（21MB multipart 打普通路由 → `*http.MaxBytesError`）、`TestBodyLimitMultipartUploadRouteDoubleCap`（15MB 完整可读 / 25MB 封顶——合法大上传不回归）、`TestBodyLimitJSONRoutesUnchanged`（1MB 边界不回归）。独立运行全过。
+- 交互面核验：Oplog 对 multipart 跳过缓存（内存防线保持）、对非 multipart 超限 body 经 errReader 回放保持 10401 语义（`op_log.go:236-251` 既有逻辑，未回归）；`BodyLimitWithMB` 语义不变，生效值 = min(全局, 路由级) 在同值叠加下正确。
 
-**File:** `internal/middleware/body_limit.go:32-43`（跳过逻辑）；`internal/app/router.go:65-66`（pub 路由无路由级上限）；`internal/handler/user.go:33-47`（bindJSON 无二次防护）
+### CR-02: file_type 列宽钳位 — **verified-fixed**
 
-**Issue:**
-全局 `BodyLimit()` 对 `Content-Type: multipart/` 前缀请求直接 `c.Next(); return`——**不包 MaxBytesReader**。该上限原意是给 `files/upload`、`faults/import` 两个挂了 `BodyLimitWithMB(20)` 的路由让路，但跳过是按 Content-Type 判定而非按路由判定，于是**其余全部路由（无路由级上限）对 multipart Content-Type 的请求完全无体积封顶**：
+**证据：**
+- `internal/service/file.go:169-177` `normalizeContentType`：先取分号前 media type 本体（去参数段），rune 计数超 50 兜底 `application/octet-stream`；空 Content-Type 原样返回（既有行为不变）。采用建议 (a) service 层钳位，遵守「schema 沿用源库」约束未 ALTER DDL。
+- 口径正确性核验：`varchar(50)` utf8mb4 字符语义，rune 计数与列宽语义一致；50 rune CJK（200B）恰在 50×4B 上界内存得下，不误判；兜底值本身 24 字符 ≤ 50。
+- `file_test.go` 断言真实：xlsx/docx 65 字符标准 MIME、参数段剥离、50/51 边界全覆盖。
+- 联动面：钳位后值同时传 `storage.Put`（S3 对象元数据），xlsx 上传对象 Content-Type 变 octet-stream——下载响应头回读 DB 值自洽，功能无损，属 DDL 保真约束下的必然代价，不另立 finding。
 
-- 客户端只需对任意 JSON 路由（如免认证的 `POST /api/v1/auth/login`）声明 `Content-Type: multipart/form-data; boundary=x`，同时发送任意大 JSON body；
-- `c.ContentType()` 返回去参 media type（gin context.go:1036-1038，已读 v1.12 源码实证），前缀命中 → 跳过；
-- handler `bindJSON` → `c.ShouldBindJSON` → gin `decodeJSON` = `json.NewDecoder(r).Decode(obj)`（gin binding/json.go:44-56，已实证无任何大小限制）——`Decode` 解析单个 JSON value 时必须把整个 value 缓冲进内存；
-- `ReadTimeout=30s` 只封读取时长不封字节数：内网百兆 30s 可注入数百 MB～GB 级 body → 工控机（内存有限，注释自述"无上限 body 经 ShouldBindJSON 全量读入可致 OOM"）被单请求 OOM。
+### WR-01: truncateBytes rune 边界回退 — **verified-fixed（含次生面，另报 WR-06）**
 
-免认证 login 路由意味着该 DoS 无需任何凭据；已认证用户则可打全部写路由。这与本中间件注释自述的防护目标（WR-02/T-1-04 DoS 防护）直接矛盾——multipart 豁免把防护面豁免掉了。
+**证据：**
+- `internal/middleware/op_log.go:321-330`：截断后 `for len(s) > 0 && !utf8.ValidString(s) { s = s[:len(s)-1] }` 回退切点——合法 UTF-8 输入（正常场景）输出恒为合法 UTF-8，utf8mb4 params 列 1366 整批丢日志的确定性触发面消除。
+- `op_log_test.go` `TestTruncateBytesUTF8Safe` 直证多字节切点回退（59999A+「错」修复前产出无效尾串、修复后回退），补齐了 iter-1 指出的测试缺口。
+- **但回退循环对「输入本身非法」的场景存在 CPU 放大次生面 → 新 finding WR-06。**
 
-**Fix:**
-最小改动（保持 upload/import 20MB 生效不变）：multipart 跳过时仍包一层全局 multipart 上限的 MaxBytesReader，与路由级 20MB 叠加时内层生效值不变：
+### WR-02: Update 撞 uk 翻译对齐 Create — **verified-fixed**
 
-```go
-// 全局 multipart 上限：与 upload/import 路由级 BodyLimitWithMB(20) 对齐。
-const maxMultipartBytes int64 = 20 << 20
+**证据：**
+- `internal/service/dict.go:74-82` / `internal/service/config.go:68-76`：Update 的 Patch 错误分支补 `errors.Is(err, gorm.ErrDuplicatedKey)` → 400/10400「字典类型已存在」/「配置键已存在」，if 改 switch 与 Create 形态一致，翻译链（TranslateError 开启 → 1062 → `gorm.ErrDuplicatedKey`）核验成立。
+- **覆盖完整性核验**：DDL 实证 Phase 4 六域唯一键仅 `uk_dict_type` / `uk_config_key`，其余四域（dict_data/fault/shift/file）无唯一键——修复范围完整，不存在同形态兄弟缺口。
+- 集成断言（TestDictTypeCRUD update rename 撞 uk、TestConfigCRUDAndKey update 撞 uk：400 + 10400 + 源消息原文）独立复核 PASS。
 
-func BodyLimit() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if c.Request.Body != nil {
-			if strings.HasPrefix(c.ContentType(), "multipart/") {
-				c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxMultipartBytes)
-			} else {
-				c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBodyBytes)
-			}
-		}
-		c.Next()
-	}
-}
-```
+### WR-03: Excel 导入流式迭代器 — **verified-fixed**
 
-更严格的替代：非 `files/upload`、`faults/import` 路由对 multipart Content-Type 直接 415（这些路由契约本就是 JSON body）——但同时消除"合法 multipart 打到错误路由"的静默语义。两案取一即可，推荐前者（改动面小、`BodyLimitWithMB` 语义不变）。
+**证据：**
+- `internal/service/fault_import.go:74-153`：`GetRows` 全量载入改为 `Rows` 流式迭代器（`defer iter.Close()`），行数防线在读取流阶段生效（`rowCount > maxImportRows` 立即 400、不再继续消费迭代器）——20MB zip 炸弹的「解压后全量缓冲」放大面消除，「三维封顶」注释自此与防线位置相符。
+- 语义保真逐项核验：空 sheet 仍译「表头不符」（`rowCount == 0` 分支）；行号报错维持 1-based 物理行号（原 `i+1` 与新 `rowCount` 等价）；skip 行计入 rowCount 与原 `len(rows)` 一致；`iter.Error()` 收口迭代错误；`cell()` 边界取值保留（流式 Columns 同样跳过尾部空单元格）；预分配 `make(..., 0, maxImportRows-1)` 约 40KB 指针数组，合理。
+- TestFaultImport 六集成用例（Upsert/LocationNullNoDedup/TxRollback/HeaderReject/RowLimit/Yf175aData）独立复核全 PASS——流式重写对导入主链零回归。
 
-### CR-02: file_type 列 varchar(50) 小于 xlsx/docx 标准 MIME 长度，浏览器正常上传 Office 文档必失败（500）
+### WR-04: shift status 对齐 UsageStatus 枚举纪律 — **verified-fixed**
 
-**File:** `internal/service/file.go:115,117-125`（contentType 直存）；`scripts/ddl/sys_file.sql`（`file_type` varchar(50)）
+**证据：**
+- `internal/model/dto/shift.go`：`ShiftCreateReq` 删 Status 字段（服务端恒默认 1，`shift.go:38-39`，对齐 dict/fileCategory 域 Create 形态）；`ShiftUpdateReq.Status` 改 `*types.UsageStatus`（`pkg/types/enum.go` UnmarshalJSON 实证：`42` → 报错 → 绑定层 400/10401；`"DISABLED"/"0"`/`"ENABLED"/"1"` 双形态合法）；`ShiftResp.Status` 枚举出网 + `ToShiftResp` 经 `UsageStatusFromInt` 兜底——读侧纪律缺口同根同修，与 ToDictTypeResp 同构。
+- 契约变化合规：CLAUDE.md 明确「API 契约允许重新设计」；grep 实证 `ShiftResp` 无其他内部消费方，出网形态 int8→字符串无内部回归面。
+- 集成断言 4 条（create 默认 "ENABLED"、`{"status":42}` → 400/10401、`{"status":"DISABLED"}` 合法落库回读、`{"status":1}` 数字双形态回读 "ENABLED"）独立复核 PASS。
 
-**Issue:**
-上传链把客户端 multipart part 的 Content-Type 原样落库：`contentType := fh.Header.Get("Content-Type")` → `FileInfoPO.FileType` → INSERT。而 `sys_file.file_type` 为 `varchar(50)`。浏览器对 Office 文档 part 发送的标准 MIME 超长：
+### WR-05: 上传链文件名长度钳位 — **verified-fixed**
 
-- `.xlsx` → `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`（65 字符）
-- `.docx` → `application/vnd.openxmlformats-officedocument.wordprocessingml.document`（65 字符）
+**证据：**
+- `internal/service/file.go:64-66`：入口 `utf8.RuneCountInString(fh.Filename) > 255` → 400「文件名过长」，校验位于所有依赖使用之前（nil 依赖可直测）。rune 口径较 iter-1 建议的字节口径更准——`file_name varchar(255)` 为字符语义，中文名不被字节计数误拒。
+- 边界核验：`key = uuid(36) + "_" + filename ≤ 292 < 500`，file_path 恒安全（注释推导正确）。
+- `file_test.go` 断言真实：256 ASCII / 256 汉字（768B）超限拒绝、100 汉字（300B > 255B 但 100 rune）不误拒——直接证明了 rune 口径。
 
-MySQL strict mode（5.7+/8.0 默认）下 INSERT 报 1406 Data too long → 上传事务回滚 → 用户收到 500/10001 固定文案。即：**文件域对最常见的办公文档类型上传，标准浏览器/HTTP 客户端行为下确定性失败**；只有 curl 等不带 part Content-Type 的客户端才侥幸成功（空串落库）。这不是边缘输入，是文件管理域的核心合法输入。
+### IN-01: InsertBatch 逼近 max_allowed_packet — **deferred（合理）**
 
-**Fix:**
-两处择一（推荐 a+b 双管齐下）：
+fix_scope=critical_warning 不含 Info，deferred 为部署清单项与 iter-1 建议一致，裁定合理。建议部署阶段若确认 MySQL 5.7 则装配处降 `opLogBatchSize` 至 32。
 
-```go
-// (a) service 层超长防御：超列长收敛为合法兜底值
-contentType := fh.Header.Get("Content-Type")
-if len(contentType) > 50 { // 与 DDL file_type varchar(50) 对齐
-    contentType = contentType[:strings.IndexByte(contentType+";", ';')] // 取 media type 本体（去参数）
-}
-if len(contentType) > 50 {
-    contentType = "application/octet-stream"
-}
-```
+## 已知残留处置（fixer 声明，复审判定）
 
-```sql
--- (b) 若现场允许改列（源库列长本就与真实 MIME 不兼容，属 DDL 保真缺陷而非契约）：
-ALTER TABLE sys_file MODIFY file_type varchar(100) DEFAULT NULL;
-```
+1. **CR-01 multipart 打 JSON 路由超 20MB 时文案数字漂移（报「超过 1MB 上限」）— 可接受，且存在一行修复路径（IN-02）。** 行为正确（400/10401 而非无界读入），该请求属畸形请求（multipart Content-Type 打 JSON 契约路由），文案漂移不误导合法用户。但 `http.MaxBytesError` 自带 `Limit` 字段，bindJSON 文案本可由截断层实际 limit 生成——见 IN-02。
+2. **WR-03 表头不符 + 超限文件现报表头不符 — 可接受。** 表头为首行先校验，防线次序（prohibition：表头与行数校验先于数据解析）不变，内存防线不受影响，且「表头不符」对用户更具指向性。
 
-至少要做 (a)，使上游来源不受信任的该字段永不触发 500。
+## 新发现（iter-2）
 
-## Warnings
+### WR-06: truncateBytes 回退循环对本身非法的 UTF-8 输入存在 CPU 放大面（实测 ~18.8ms/请求，约 2000-4500 倍）
 
-### WR-01: truncateBytes 按字节切断可产生无效 UTF-8，MySQL strict mode 下整批日志落库失败（可被确定性触发）
-
-**File:** `internal/middleware/op_log.go:316-321`（truncateBytes）；`internal/middleware/op_log.go:280`（调用点）
+**File:** `internal/middleware/op_log.go:326-328`（回退循环）；调用点 `internal/middleware/op_log.go:281`（assembleEntry，请求 goroutine 的 defer 中同步执行）
 
 **Issue:**
-`truncateBytes(s, 60000)` 在字节 60000 处硬切。`params` 列为 utf8mb4，请求体含中文（3 字节/rune）时切点大概率落在多字节字符中间，产生非法 UTF-8 尾串。go-sql-driver 以该字节串绑定参数，MySQL strict mode 报 1366 Incorrect string value → `CreateInBatches` 整条多行 INSERT 失败 → `flushBatch` 整批（最多 64 条）日志丢弃。攻击者只需发送 >60KB 且含多字节字符的请求体（对有 perm 的任意写路由），即可让**与其请求无关的同批其他日志一并丢失**——日志可审计性受损。测试只覆盖了 ASCII（`TestMaskSensitiveOrderWithTruncation` 用 "A" 重复），未覆盖多字节切点。
+WR-01 修复用 `for len(s) > 0 && !utf8.ValidString(s) { s = s[:len(s)-1] }` 回退切点。对**合法 UTF-8** 输入（正常场景）切点碎片至多 2 字节，回退 ≤2 次、每次 O(n)，实测 4µs——无回归。但对**输入本身非法**（如含 0xFF 字节的二进制 body）时，回退循环每剥 1 字节都要重新 `ValidString` 全量扫描至最靠前的非法点，最坏 O(n²)：
+
+- 触发路径：授权用户对任意挂 Oplog 的写路由（需 perm）发送 >60KB 且构造为「合法 30000B + 1 个非法字节 + 合法余量」的 body → params 截断 60000 字节 → defer 中 `truncateBytes` 同步执行 ~18.8ms CPU（/tmp 独立基准实测：合法多字节切点 4µs、密集非法点 0.6ms、**单非法字节后置构造 18.8ms**）；
+- 正常请求该函数 <10µs，放大 ~2000-4500 倍；每请求 CPU 在业务 goroutine 内同步消耗，工控机小核数下持续并发可侵占服务容量；
+- 有界（60000 字节内、无累积无持久化）、需认证，故 Warning 而非 Critical；修复前该函数 O(1) 切断无此面，属修复引入的次生攻击面。
 
 **Fix:**
-截断后回退到最近完整 rune 边界：
+分两层消除 O(n²)：合法输入用 RuneStart 尾部回退（至多 `utf8.UTFMax-1` 次迭代即达边界）；仅当仍非法（输入本身非法）时做**一次** O(n) 扫描定位首个非法字节处截断：
 
 ```go
 func truncateBytes(s string, n int) string {
@@ -190,92 +136,52 @@ func truncateBytes(s string, n int) string {
 		return s
 	}
 	s = s[:n]
-	// 回退切点，保证不切断多字节 rune（utf8mb4 列 INSERT 才不会报 1366）
-	for len(s) > 0 && !utf8.ValidString(s) {
+	// 合法 UTF-8 的切点碎片至多 utf8.UTFMax-1 字节：按 rune 起始字节回退，
+	// 恒 ≤3 次迭代（正常路径 O(1) 次 ValidString）。
+	for i := 0; i < utf8.UTFMax && len(s) > 0 && !utf8.RuneStart(s[len(s)-1]); i++ {
 		s = s[:len(s)-1]
+	}
+	if utf8.ValidString(s) {
+		return s
+	}
+	// 输入本身非法（非切点问题）：一次扫描定位首个非法序列起点，O(n) 截断，
+	// 不再逐字节回退全量重扫（WR-06 CPU 放大面）。
+	for i, r := range s {
+		if r == utf8.RuneError {
+			if _, size := utf8.DecodeRuneInString(s[i:]); size == 1 {
+				return s[:i]
+			}
+		}
 	}
 	return s
 }
 ```
 
-并补一条多字节切点直测（如 59999 字节 ASCII + "错" 开头的 body）。
+并补一条恶意非法输入的直测（如 30000A + `\xff` + 30000B，断言返回 30000 字节合法前缀）。
 
-### WR-02: Update 路径唯一键冲突未翻译——撞 uk 返回 500/10001，Create 路径同冲突返回 400/10400
+### IN-02: bindJSON 超限文案可由 MaxBytesError.Limit 生成，一行消除 CR-01 残留的文案漂移
 
-**File:** `internal/service/dict.go:58-79`（UpdateDictType）；`internal/service/config.go:52-73`（Update）
+**File:** `internal/handler/user.go:35-40`（bindJSON 的 MaxBytesError 分支）
 
 **Issue:**
-`CreateDictType`/`Create` 均把 `gorm.ErrDuplicatedKey` 翻译为 400/10400「已存在」，但两个 Update 路径都允许修改唯一键列（`dict_type`、`config_key`），Patch 撞 `uk_dict_type`/`uk_config_key` 产生的 `gorm.ErrDuplicatedKey` 未被翻译：service 只判 `errcode.ErrNotFound`，原始错误透传到 `resp.Fail` → `errors.As` 失败 → 500/10001 + slog.Error。用户重命名字典类型/配置键为已存在值（常见操作）收到"内部错误"而非业务 400，且每次触发都污染 error 日志。
+CR-01 修复后，multipart Content-Type 打 JSON 路由超 20MB 时 `bindJSON` 的固定文案仍按 `middleware.MaxBodyMB` 生成「请求体超过 1MB 上限」，与实际上限 20MB 漂移（fixer 已声明为无害残留）。`*http.MaxBytesError` 结构体自带 `Limit int64` 字段——即实际触发的截断层的 limit，文案本可精确生成，无需感知「是哪一层截断」。所有 BodyLimit 层上限均 `<<20` 派生整 MB 值（`MaxBodyMB`/`MaxMultipartMB`），整除安全。
 
 **Fix:**
-两个 Update 的错误分支与 Create 对齐：
-
 ```go
-if err := s.typeRepo.Patch(ctx, id, cols); err != nil {
-	switch {
-	case errors.Is(err, errcode.ErrNotFound):
-		return nil, errcode.New(errcode.CodeNotFound, fmt.Sprintf("字典类型不存在: %d", id))
-	case errors.Is(err, gorm.ErrDuplicatedKey):
-		return nil, errcode.New(errcode.CodeInvalidParam, "字典类型已存在")
-	}
-	return nil, err
+if errors.As(err, &tooLarge) {
+	// 文案由实际触发的截断层 limit 生成（MaxBytesError.Limit）——multipart 打
+	// JSON 路由超全局 multipart 兜底时文案数字不再漂移（IN-02）。
+	resp.Fail(c, errcode.New(errcode.CodeValidation,
+		fmt.Sprintf("请求体超过 %dMB 上限", tooLarge.Limit>>20)))
+	return false
 }
 ```
 
-（config.go Update 同构：「配置键已存在」。）
-
-### WR-03: Excel 导入行数上限在 GetRows 全量载入之后才生效，20MB xlsx zip 炸弹可放大数百 MB 内存
-
-**File:** `internal/service/fault_import.go:64-79`（(a)(b) 两步顺序）
-
-**Issue:**
-`maxImportRows=5000` 检查位于 `excelize.OpenReader` + `f.GetRows("Sheet1")` **之后**——而 `GetRows` 本身就是把整表全量载入 `[][]string` 的调用（注释自己也承认这一点，但防线位置在它后面）。xlsx 是 zip 容器：20MB 体积上限内可构造高压缩比工作表（zip 炸弹），解压后 XML 与 GetRows 结果可达数百 MB～GB，行数防线对这一步不起作用。缓解面：`PermFaultImport` 为发明串 v1 仅 super_admin 可用 + `BodyLimitWithMB(20)` 封顶体积——故定 Warning 而非 Critical，但"三维封顶"的注释声明（T-4-11）与实际防线位置不符。
-
-**Fix:**
-改用 excelize 流式迭代器，边读边计数边解析、超限即中断（同时天然消除 GetRows 的全量缓冲）：
-
-```go
-iter, err := f.Rows("Sheet1")
-if err != nil { /* 缺 Sheet1 */ }
-// 表头：iter.Next() 取首行校验；随后循环 iter.Next()/iter.Columns()
-// 每行先 count++，count > maxImportRows → 立即 400 返回，不再继续读
-```
-
-若需保留 GetRows 形态，至少先用 `f.GetSheetDimension("Sheet1")` 预检声明维度做前置拒绝（可被伪造，属降险非根治）。
-
-### WR-04: shift 域 status 绕过全库 UsageStatus 枚举纪律，任意 int8 静默落库
-
-**File:** `internal/model/dto/shift.go:17,28`（`Status *int8`）；`internal/service/shift.go:37-42,65-67`（直存）
-
-**Issue:**
-同为 `tinyint DEFAULT '1'` 的 status 列，dict 域 Update 用 `*types.UsageStatus` 严格解析（未知值 400/10401，Phase 2 WR-03 先例）、fileCategory 域同样用 `UsageStatus`（dto/file.go:34），且这两域 Create 均不收 status（服务端默认 1）。shift 域却在 Create/Update 都以裸 `*int8` 接受任意 -128..127（如 42）静默落库、读侧原样回显——输入验证与域内纪律双重不一致。源是否同样宽松可辩，但同仓库同形态字段两套处理至少应显式裁定。
-
-**Fix:**
-`ShiftCreateReq.Status`/`ShiftUpdateReq.Status` 改为 `*types.UsageStatus`（create 时忽略客户端值保持服务端默认 1，与其他域对齐；update 时严格解析未知值 400）。若裁定 shift 域 status 无枚举语义（源直译），则在 DTO 注释与 04-CONTEXT 留档该偏离，消除"遗漏 vs 裁定"的歧义。
-
-### WR-05: 上传链对 file_name/file_path 无长度钳位，超长文件名 500 而非 400
-
-**File:** `internal/service/file.go:114,117-125`；`scripts/ddl/sys_file.sql`（`file_name` varchar(255)、`file_path` varchar(500)）
-
-**Issue:**
-`key = uuid.NewString() + "_" + fh.Filename`（uuid 恒 36 字符 + 下划线 → filename > 463 即超 `file_path` varchar(500)；filename > 255 超 `file_name`）后 INSERT 无任何长度校验，超长即 strict mode 1406 → 上传事务回滚 → 500/10001。浏览器通常发 basename 不易触发，但任何允许自定义 filename 的客户端（curl `-F 'file=@x;filename=<500字>'`）或未来前端透传路径的场景都会稳定触发。与 CR-02 同根：**落库字符串字段全部信任客户端长度**。
-
-**Fix:**
-上传链入口对 `fh.Filename` 做钳位/校验（超 255 → 400「文件名过长」或截断到安全长度后再拼 key），与 CR-02 的 contentType 钳位同一处收口。
-
-## Info
-
-### IN-01: InsertBatch 最坏单批 ≈3.8MB，逼近 MySQL 5.7 默认 max_allowed_packet=4MB
-
-**File:** `internal/middleware/op_log.go:40-42`（批 64 × params 60KB）；`internal/repository/operation_log.go:32-37`
-
-**Issue:**
-批满 64 条 × params 截断上限 60KB ≈ 3.75MB，叠加 SQL 文本与其他列、转义膨胀后可能超过 MySQL 5.7 默认 `max_allowed_packet=4MB`（8.0 默认 64MB 无虞）——整批 INSERT 失败、64 条日志丢弃。触发条件苛刻（64 条并发接近满 60KB params），工控机 MySQL 版本未知，故仅记录。
-
-**Fix:** 若现场为 MySQL 5.7，可在 `NewOpLogWriterWithSink` 装配处将 `opLogBatchSize` 降为 32，或在部署清单注明 `max_allowed_packet` 要求。
+改动面与现状相同（只换实参来源），消除后 CR-01 的「已知残留」归零。`internal/middleware/op_log.go` 的 errReader 回放路径原样传递 `MaxBytesError`，Limit 字段在回放后保持不变，无兼容问题。
 
 ---
 
-_Reviewed: 2026-11-01T13:10:36Z_
+_Reviewed: 2026-11-01T14:07:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
+_Iteration: 2（fix 收敛复审：7/7 verified-fixed，新报 1W+1I）_
