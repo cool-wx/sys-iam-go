@@ -121,6 +121,51 @@ func TestTruncateBytesUTF8Safe(t *testing.T) {
 	assert.Equal(t, "参数校验失败", truncateBytes("参数校验失败", paramsMaxBytes))
 }
 
+// TestTruncateBytesInvalidInputLinear WR-06 直证：输入本身含非法字节时，截断
+// 一次 O(n) 扫描定位首个非法序列起点（不逐字节回退全量重扫）。恶意构造 >60KB
+// 非法 body 在请求 goroutine 的 defer 中同步执行，O(n²) 实现实测 ~18.8ms/请求
+//（iter-2 基准，正常请求 <10µs，放大 ~2000 倍）；O(n) 实现同场景 µs 级。时间
+// 上界取 5ms 宽松阈值：与 O(n²) 相差近两个数量级，机器抖动不致误报。
+func TestTruncateBytesInvalidInputLinear(t *testing.T) {
+	// 前置 0xFF（iter-2 实测 18.8ms 的构造）：30000A + \xff + 30000B——切点
+	// 尾部是合法 ASCII，ValidString 失败由一次 range 定位首个非法字节处截断，
+	// 非法字节之后的合法内容一并丢弃（畸形请求原文，语义无损）。
+	in := strings.Repeat("A", 30000) + "\xff" + strings.Repeat("B", 30000)
+	require.Len(t, in, paramsMaxBytes+1)
+	start := time.Now()
+	out := truncateBytes(in, paramsMaxBytes)
+	elapsed := time.Since(start)
+	assert.Equal(t, strings.Repeat("A", 30000), out, "必须截断至首个非法字节前的完整前缀")
+	assert.LessOrEqual(t, len(out), paramsMaxBytes)
+	assert.True(t, utf8.ValidString(out), "截断结果恒为合法 UTF-8（utf8mb4 列 1366）")
+	assert.Less(t, elapsed, 5*time.Millisecond,
+		"非法输入截断必须 O(n)（WR-06：O(n²) 同构造实测 18.8ms）: %s", elapsed)
+
+	// 非法字节落在切点尾部：碎片回退后仍非法 → 同样一次 range 定位。
+	in2 := strings.Repeat("A", 59999) + "\xff" + "B"
+	require.Len(t, in2, paramsMaxBytes+1)
+	out2 := truncateBytes(in2, paramsMaxBytes)
+	assert.Equal(t, strings.Repeat("A", 59999), out2, "切点尾部非法字节连同碎片一并截除")
+	assert.True(t, utf8.ValidString(out2))
+
+	// 密集非法点（iter-2 实测 0.6ms 构造族）：首字节合法、次字节即非法 →
+	// 截至首个非法点，仅存 1 字节。
+	in3 := strings.Repeat("A\xff", 30000) + "A"
+	require.Len(t, in3, paramsMaxBytes+1)
+	out3 := truncateBytes(in3, paramsMaxBytes)
+	assert.Equal(t, "A", out3, "首个非法序列起点之前的完整前缀")
+	assert.True(t, utf8.ValidString(out3))
+
+	// 合法编码的 U+FFFD（size==3）不误判为解码失败（size==1）——恰在边界的
+	// 完整 U+FFFD 不得被当作非法截除。
+	in4 := strings.Repeat("A", paramsMaxBytes-3) + "�" + "X"
+	require.Len(t, in4, paramsMaxBytes+1)
+	out4 := truncateBytes(in4, paramsMaxBytes)
+	assert.Equal(t, strings.Repeat("A", paramsMaxBytes-3)+"�", out4,
+		"合法编码 U+FFFD 是完整 rune，不得误截")
+	assert.True(t, utf8.ValidString(out4))
+}
+
 // TestEnqueueNeverBlocks chan 满丢弃不阻塞直证（prohibition）：容量 1 的 writer
 // 先填满，再 Enqueue 1000 次——全部走 default 丢弃路径，总耗时可忽略且不 panic。
 func TestEnqueueNeverBlocks(t *testing.T) {

@@ -318,13 +318,42 @@ func assembleEntry(c *gin.Context, start time.Time, module, operation string, ca
 // string value → CreateInBatches 整批 INSERT 失败、同批（最多 64 条）无关日志
 // 一并丢弃——回退后恒为合法 UTF-8，落库不再被确定性打爆。调用方必须保证已先
 // 掩码（截断先于掩码会切出掩码边界新明文——prohibition 顺序锁定）。
+//
+// 复杂度纪律（WR-06）：回退判定用 DecodeLastRuneInString 尾部解码（O(UTFMax)
+// 常数窗口），绝不做「剥 1 字节重扫全串」——那对输入本身含非法字节的 body 是
+// O(n²)（授权用户恶意构造 >60KB 非法 body 在请求 goroutine defer 中同步执行，
+// iter-2 实测 ~18.8ms/请求）。全路径至多 2 次 O(n) 扫描（ValidString + 首个
+// 非法点定位）：合法输入的切点碎片至多 3 字节，尾部解码不完整即逐字节回退，
+// ≤3 次迭代达边界；输入本身非法时一次 range 定位首个非法序列起点直接截断
+//（其后的合法内容一并丢弃——params 是请求原文日志，非法字节来自畸形请求，
+// 截至首个非法点语义无损）。尾部解码须用「RuneError 且 size==1」判定不完整：
+// 合法编码的 U+FFFD（�）解码结果同为 RuneError 但 size==3，不得误剥。
+// 注：iter-2 REVIEW 建议的 RuneStart 逐字节回退会把「恰在 rune 边界」的
+// continuation 结尾误剥成不完整序列，故改用尾部完整解码判定。
 func truncateBytes(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
 	s = s[:n]
-	for len(s) > 0 && !utf8.ValidString(s) {
+	// 尾部解码回退至完整 rune 边界：尾部是完整 rune（ASCII / 恰在边界的多字节
+	// 结尾 / 合法 U+FFFD）不剥；不完整切点碎片逐字节回退（≤3 次迭代）。
+	for len(s) > 0 {
+		if r, size := utf8.DecodeLastRuneInString(s); r != utf8.RuneError || size > 1 {
+			break
+		}
 		s = s[:len(s)-1]
+	}
+	if utf8.ValidString(s) {
+		return s
+	}
+	// 输入本身非法（非切点问题）：一次扫描定位首个非法序列起点，O(n) 截断，
+	// 不再逐字节回退全量重扫（WR-06 CPU 放大面）。
+	for i, r := range s {
+		if r == utf8.RuneError {
+			if _, size := utf8.DecodeRuneInString(s[i:]); size == 1 {
+				return s[:i]
+			}
+		}
 	}
 	return s
 }
