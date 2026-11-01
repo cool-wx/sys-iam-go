@@ -28,5 +28,24 @@ auth:
 snowflake:
   node: 1
 
+# 文件存储（FILE-05，D-10/D-11）：driver 切换 local|s3，同一套上传/下载/删除代码
+# 对两种后端无差别。
+# - local：磁盘存储，root 缺省 ./data/files（相对工作目录——systemd WorkingDirectory
+#   联动，绝对路径可配）。env 覆盖：IAM_STORAGE_LOCAL_ROOT=/var/lib/sys-iam/files
+# - s3：S3 兼容端点（工控机现场为 RustFS）。env 覆盖：IAM_STORAGE_S3_ENDPOINT=
+#   http://10.0.0.9:9000、IAM_STORAGE_S3_ACCESS_KEY=...、IAM_STORAGE_S3_SECRET_KEY=...
+#   下方 access_key/secret_key 默认值照源 RustfsProperties——现场部署必须替换，
+#   且错误消息/日志全程不回显凭证值（T-4-04）
+storage:
+  driver: local
+  local:
+    root: ./data/files
+  s3:
+    endpoint: http://localhost:9000
+    access_key: "rustfsadmin"
+    secret_key: "rustfssecret"
+    bucket: tims
+    secure: false
+
 log:
   level: info

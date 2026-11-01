@@ -178,3 +178,105 @@ func TestInvalidPoolConfigRejected(t *testing.T) {
 		})
 	}
 }
+
+func TestDefaultsStorage(t *testing.T) {
+	// storage 段默认值（FILE-05，D-10/D-11）：driver=local、local.root=./data/files
+	// （相对工作目录，systemd WorkingDirectory 联动）、s3 四参数照源默认形态
+	// （endpoint 带 scheme http://localhost:9000、bucket tims——现场可配）。
+	cfg, err := config.Load(filepath.Join(t.TempDir(), "absent.yaml"), false)
+	require.NoError(t, err)
+	assert.Equal(t, "local", cfg.Storage.Driver)
+	assert.Equal(t, "./data/files", cfg.Storage.Local.Root)
+	assert.Equal(t, "http://localhost:9000", cfg.Storage.S3.Endpoint)
+	assert.Equal(t, "tims", cfg.Storage.S3.Bucket)
+	assert.False(t, cfg.Storage.S3.Secure)
+}
+
+func TestEnvOverrideStorage(t *testing.T) {
+	// WR-01 回归（storage 段）：三段嵌套键必须经别名表真实生效——s3.access_key/
+	// secret_key 带下划线叶键三步链必然错映（→storage.s3.access.key 永不匹配），
+	// 显式别名是唯一覆盖通道；driver/local.root/s3 三键一并登记（三段以上全部
+	// 显式登记最稳）。
+	path := writeConfig(t, "server:\n  port: 8080\n")
+	t.Setenv("IAM_STORAGE_DRIVER", "s3")
+	t.Setenv("IAM_STORAGE_LOCAL_ROOT", "/var/lib/iam/files")
+	t.Setenv("IAM_STORAGE_S3_ENDPOINT", "http://10.0.0.9:9000")
+	t.Setenv("IAM_STORAGE_S3_ACCESS_KEY", "ak-x")
+	t.Setenv("IAM_STORAGE_S3_SECRET_KEY", "sk-x")
+	t.Setenv("IAM_STORAGE_S3_BUCKET", "iam-bucket")
+	t.Setenv("IAM_STORAGE_S3_SECURE", "true")
+
+	cfg, err := config.Load(path, false)
+	require.NoError(t, err)
+	assert.Equal(t, "s3", cfg.Storage.Driver, "IAM_STORAGE_DRIVER 必须经别名表覆盖 storage.driver")
+	assert.Equal(t, "/var/lib/iam/files", cfg.Storage.Local.Root, "IAM_STORAGE_LOCAL_ROOT 必须覆盖 storage.local.root")
+	assert.Equal(t, "http://10.0.0.9:9000", cfg.Storage.S3.Endpoint, "IAM_STORAGE_S3_ENDPOINT 必须覆盖 storage.s3.endpoint")
+	assert.Equal(t, "ak-x", cfg.Storage.S3.AccessKey, "IAM_STORAGE_S3_ACCESS_KEY 必须覆盖 storage.s3.access_key（带下划线叶键唯一通道）")
+	assert.Equal(t, "sk-x", cfg.Storage.S3.SecretKey, "IAM_STORAGE_S3_SECRET_KEY 必须覆盖 storage.s3.secret_key（带下划线叶键唯一通道）")
+	assert.Equal(t, "iam-bucket", cfg.Storage.S3.Bucket, "IAM_STORAGE_S3_BUCKET 必须覆盖 storage.s3.bucket")
+	assert.True(t, cfg.Storage.S3.Secure, "IAM_STORAGE_S3_SECURE 必须覆盖 storage.s3.secure")
+}
+
+func TestStorageFailFast(t *testing.T) {
+	// fail-fast 三分支（FILE-05）：非法 driver / s3 模式缺参启动即拦截——拼错
+	// 键静默落默认值会表现为"配了 s3 却 local 落盘"的静默错配；local 模式
+	// Root 空取默认值不报错（D-11）。错误消息不含凭证值（T-4-04）。
+	t.Run("非法 driver 拒绝", func(t *testing.T) {
+		t.Setenv("IAM_STORAGE_DRIVER", "minio")
+		_, err := config.Load(filepath.Join(t.TempDir(), "absent.yaml"), false)
+		require.Error(t, err, "driver 非 local/s3 必须启动即失败")
+		assert.Contains(t, err.Error(), "storage.driver")
+	})
+
+	t.Run("s3 缺 endpoint 拒绝", func(t *testing.T) {
+		t.Setenv("IAM_STORAGE_DRIVER", "s3")
+		t.Setenv("IAM_STORAGE_S3_ENDPOINT", "")
+		_, err := config.Load(filepath.Join(t.TempDir(), "absent.yaml"), false)
+		require.Error(t, err, "driver=s3 且 endpoint 空必须启动即失败")
+	})
+
+	t.Run("s3 缺 secret_key 拒绝且消息不含凭证值", func(t *testing.T) {
+		path := writeConfig(t, `storage:
+  driver: s3
+  s3:
+    endpoint: http://10.0.0.9:9000
+    access_key: real-ak
+    secret_key: ""
+    bucket: iam
+`)
+		_, err := config.Load(path, true)
+		require.Error(t, err, "driver=s3 且 secret_key 空必须启动即失败")
+		assert.NotContains(t, err.Error(), "real-ak", "错误消息绝不能回显凭证值（T-4-04）")
+	})
+
+	t.Run("local Root 空取默认值不报错", func(t *testing.T) {
+		path := writeConfig(t, `storage:
+  driver: local
+  local:
+    root: ""
+`)
+		cfg, err := config.Load(path, true)
+		require.NoError(t, err, "driver=local 且 root 空（D-11）必须取默认值而非报错")
+		assert.Equal(t, "./data/files", cfg.Storage.Local.Root)
+	})
+
+	t.Run("文件加载 storage 段", func(t *testing.T) {
+		path := writeConfig(t, `storage:
+  driver: s3
+  s3:
+    endpoint: http://10.0.0.9:9000
+    access_key: ak
+    secret_key: sk
+    bucket: iam
+    secure: true
+`)
+		cfg, err := config.Load(path, true)
+		require.NoError(t, err)
+		assert.Equal(t, "s3", cfg.Storage.Driver)
+		assert.Equal(t, "http://10.0.0.9:9000", cfg.Storage.S3.Endpoint)
+		assert.Equal(t, "ak", cfg.Storage.S3.AccessKey)
+		assert.Equal(t, "sk", cfg.Storage.S3.SecretKey)
+		assert.Equal(t, "iam", cfg.Storage.S3.Bucket)
+		assert.True(t, cfg.Storage.S3.Secure)
+	})
+}

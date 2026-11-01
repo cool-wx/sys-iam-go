@@ -32,6 +32,21 @@ const (
 	// 源 Nacos craft-satoken.yaml 实际值不可得（rnacos 空实例实证，02-RESEARCH
 	// 研究重点 2），现场可经 IAM_AUTH_SESSION_TIMEOUT env 校正（D-06 Nacos 缺口文档化）。
 	DefaultSessionTimeout = 720 * time.Hour
+
+	// StorageDriverLocal / StorageDriverS3 storage.driver 合法值域（D-10）。
+	StorageDriverLocal = "local"
+	StorageDriverS3    = "s3"
+	// DefaultStorageLocalRoot 本地存储根目录默认值（D-11）：相对工作目录，
+	// systemd WorkingDirectory 联动；绝对路径可配。
+	DefaultStorageLocalRoot = "./data/files"
+	// DefaultStorageS3* S3 段默认值（照源 RustfsProperties.java:14-33 默认形态：
+	// endpoint http://localhost:9000、bucket tims；凭证 rustfsadmin/rustfssecret
+	// 为源默认值——现场部署必须替换，与本机 rustfs 容器实际 admin/admin 无关；
+	// 集成测试用容器实际值经 env 覆盖注入）。
+	DefaultStorageS3Endpoint  = "http://localhost:9000"
+	DefaultStorageS3AccessKey = "rustfsadmin"
+	DefaultStorageS3SecretKey = "rustfssecret"
+	DefaultStorageS3Bucket    = "tims"
 )
 
 // Config 服务配置聚合。
@@ -42,6 +57,7 @@ type Config struct {
 	Auth      AuthConfig      `json:"auth"`
 	Snowflake SnowflakeConfig `json:"snowflake"`
 	Log       LogConfig       `json:"log"`
+	Storage   StorageConfig   `json:"storage"`
 }
 
 // ServerConfig HTTP 服务配置。
@@ -79,6 +95,30 @@ type LogConfig struct {
 	Level string `json:"level"`
 }
 
+// StorageConfig 文件存储配置（FILE-05，D-10/D-11）：driver 切换 local|s3，
+// 两段互斥生效——local 模式 S3 段仅占位（构造链不触碰 minio），s3 模式
+// Local 段仅占位。YAML 叶键 snake_case（storage.local_root 多段、storage.s3_*）。
+type StorageConfig struct {
+	Driver string             `json:"driver"`
+	Local  LocalStorageConfig `json:"local"`
+	S3     S3Config           `json:"s3"`
+}
+
+// LocalStorageConfig 本地磁盘存储段。
+type LocalStorageConfig struct {
+	Root string `json:"root"`
+}
+
+// S3Config S3 兼容对象存储段（工控机现场为 RustFS）。SecretKey 全程不进日志/
+// 错误消息（T-4-04）。
+type S3Config struct {
+	Endpoint  string `json:"endpoint"`
+	AccessKey string `json:"accessKey"`
+	SecretKey string `json:"secretKey"`
+	Bucket    string `json:"bucket"`
+	Secure    bool   `json:"secure"`
+}
+
 // envKeyAliases 多段 snake_case 叶键的显式映射表（WR-01）：默认三步链把变量名内
 // 全部下划线转为点（IAM_MYSQL_MAX_OPEN_CONNS → mysql.max.open.conns），与 YAML 键
 // mysql.max_open_conns 永不匹配，覆盖静默丢失（无任何报错）。koanf env/v2 的
@@ -91,6 +131,18 @@ var envKeyAliases = map[string]string{
 	// Phase 2：auth.session_timeout 多段 snake_case 叶键（不登记则覆盖静默丢失，WR-01）。
 	// redis.addr/redis.password/redis.db 为单词叶键，三步链直映（IAM_REDIS_ADDR→redis.addr）无需别名。
 	"IAM_AUTH_SESSION_TIMEOUT": "auth.session_timeout",
+	// Phase 4：storage 段（FILE-05，D-10/D-11）。三段嵌套键内带下划线的叶键
+	// （s3.access_key/s3.secret_key）三步链必然错映（→storage.s3.access.key 永不
+	// 匹配），必须显式别名（WR-01）；其余键（driver/local.root/s3.endpoint/
+	// s3.bucket/s3.secure）三步链可直映，但按"三段以上全部显式登记最稳"一并
+	// 登记，消除键名演化时的静默丢失面。
+	"IAM_STORAGE_DRIVER":        "storage.driver",
+	"IAM_STORAGE_LOCAL_ROOT":    "storage.local.root",
+	"IAM_STORAGE_S3_ENDPOINT":   "storage.s3.endpoint",
+	"IAM_STORAGE_S3_ACCESS_KEY": "storage.s3.access_key",
+	"IAM_STORAGE_S3_SECRET_KEY": "storage.s3.secret_key",
+	"IAM_STORAGE_S3_BUCKET":     "storage.s3.bucket",
+	"IAM_STORAGE_S3_SECURE":     "storage.s3.secure",
 }
 
 // Load 加载配置：path 为 YAML 路径，explicit 表示路径是否由 -config 显式指定。
@@ -163,6 +215,27 @@ func Load(path string, explicit bool) (*Config, error) {
 	if k.Exists("log.level") {
 		cfg.Log.Level = k.String("log.level")
 	}
+	if k.Exists("storage.driver") {
+		cfg.Storage.Driver = k.String("storage.driver")
+	}
+	if k.Exists("storage.local.root") {
+		cfg.Storage.Local.Root = k.String("storage.local.root")
+	}
+	if k.Exists("storage.s3.endpoint") {
+		cfg.Storage.S3.Endpoint = k.String("storage.s3.endpoint")
+	}
+	if k.Exists("storage.s3.access_key") {
+		cfg.Storage.S3.AccessKey = k.String("storage.s3.access_key")
+	}
+	if k.Exists("storage.s3.secret_key") {
+		cfg.Storage.S3.SecretKey = k.String("storage.s3.secret_key")
+	}
+	if k.Exists("storage.s3.bucket") {
+		cfg.Storage.S3.Bucket = k.String("storage.s3.bucket")
+	}
+	if k.Exists("storage.s3.secure") {
+		cfg.Storage.S3.Secure = k.Bool("storage.s3.secure")
+	}
 
 	if cfg.Server.Port <= 0 || cfg.Server.Port > 65535 {
 		return nil, fmt.Errorf("invalid server.port %d (must be 1..65535)", cfg.Server.Port)
@@ -188,6 +261,24 @@ func Load(path string, explicit bool) (*Config, error) {
 	if cfg.Auth.SessionTimeout <= 0 {
 		return nil, fmt.Errorf("invalid auth.session_timeout %s (must be > 0)", cfg.Auth.SessionTimeout)
 	}
+	// Storage 段 fail-fast（FILE-05，D-10/D-11）：非法 driver / s3 模式缺参启动
+	// 即拦截——拼错键会静默落默认值（现场表现为"配了 s3 却 local 落盘"的静默
+	// 错配，远比启动失败难排查）。错误消息不含任何凭证值（T-4-04）。
+	switch cfg.Storage.Driver {
+	case StorageDriverLocal:
+		// D-11：local.root 空取默认值不报错（相对工作目录，systemd
+		// WorkingDirectory 联动；env/文件覆盖空串与缺省同义）。
+		if cfg.Storage.Local.Root == "" {
+			cfg.Storage.Local.Root = DefaultStorageLocalRoot
+		}
+	case StorageDriverS3:
+		if cfg.Storage.S3.Endpoint == "" || cfg.Storage.S3.Bucket == "" ||
+			cfg.Storage.S3.AccessKey == "" || cfg.Storage.S3.SecretKey == "" {
+			return nil, fmt.Errorf("storage.s3 requires endpoint, bucket, access_key and secret_key to be set when storage.driver is s3")
+		}
+	default:
+		return nil, fmt.Errorf("invalid storage.driver %q (must be %q or %q)", cfg.Storage.Driver, StorageDriverLocal, StorageDriverS3)
+	}
 	return cfg, nil
 }
 
@@ -205,5 +296,15 @@ func defaults() *Config {
 		Redis:     RedisConfig{Addr: DefaultRedisAddr},
 		Auth:      AuthConfig{SessionTimeout: DefaultSessionTimeout},
 		Log:       LogConfig{Level: DefaultLogLevel},
+		Storage: StorageConfig{
+			Driver: StorageDriverLocal,
+			Local:  LocalStorageConfig{Root: DefaultStorageLocalRoot},
+			S3: S3Config{
+				Endpoint:  DefaultStorageS3Endpoint,
+				AccessKey: DefaultStorageS3AccessKey,
+				SecretKey: DefaultStorageS3SecretKey,
+				Bucket:    DefaultStorageS3Bucket,
+			},
+		},
 	}
 }
