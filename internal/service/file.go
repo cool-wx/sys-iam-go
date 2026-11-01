@@ -56,6 +56,15 @@ func NewFileService(db *gorm.DB, repo *repository.FileInfoRepo, catRepo *reposit
 // 零副作用保证（prohibition）：判重命中前不触碰存储与 DB——拒绝时 sys_file 零
 // 新行、存储无对象（D-12 拒绝零副作用语义）。
 func (s *FileService) Upload(ctx context.Context, fh *multipart.FileHeader, categoryIDRaw string) (*dto.FileInfoResp, error) {
+	// 入口长度钳位（WR-05）：file_name varchar(255)、file_path varchar(500) 均
+	// 字符语义（中文文件名按 rune 计数）——超长直接 400「文件名过长」，不走
+	// strict mode 1406 → 500（落库字符串字段不全信客户端长度，与 CR-02
+	// contentType 钳位同一收口）。key = uuid(36 字符) + "_" + filename，
+	// filename ≤255 时 file_path ≤292 < 500 恒安全，255 为有效上界。
+	if utf8.RuneCountInString(fh.Filename) > maxFileNameLen {
+		return nil, errcode.New(errcode.CodeInvalidParam, "文件名过长")
+	}
+
 	// (a) 打开上传流（multipart.File：小文件内存 bytes.Reader、大文件临时文件
 	// *os.File——二者均实现 io.Seeker，RSS 平稳；MaxMultipartMemory 阈值落盘）
 	f, err := fh.Open()
@@ -148,6 +157,10 @@ func (s *FileService) Upload(ctx context.Context, fh *multipart.FileHeader, cate
 // maxFileTypeLen file_type 列宽（DDL scripts/ddl/sys_file.sql file_type
 // varchar(50)，字符语义；MIME 本体恒 ASCII，rune 计数与列宽语义一致）。
 const maxFileTypeLen = 50
+
+// maxFileNameLen file_name 列宽（DDL sys_file.file_name varchar(255)，字符
+// 语义——中文名按 rune 计数；上传链入口钳位，WR-05）。
+const maxFileNameLen = 255
 
 // normalizeContentType 规范化并钳位客户端 Content-Type 至 file_type 列宽
 //（CR-02）：先取分号前 media type 本体（去可能跟的参数段），仍超 50 字符则兜底
