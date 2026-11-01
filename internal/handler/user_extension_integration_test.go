@@ -599,3 +599,36 @@ func TestUserStatusInvalidEnumRejected(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &apiKeyBad))
 	assert.Equal(t, 10401, apiKeyBad.Code, "body=%s", body)
 }
+
+// TestUserUpdateDeptNameNotWritable dept_name 不可经请求体直写（IN-03 回归，
+// 02-03 USER-01"冗余不可伪造"truth 全覆盖）：Update 只带 deptName 不带 deptId →
+// 200 但 dept_name 列保持服务端查库值不变（客户端展示冗余零直写路径）；带 deptId
+// 变更时 dept_name 才以查库值联动覆写。
+func TestUserUpdateDeptNameNotWritable(t *testing.T) {
+	ts, dsn, adminToken, _ := newTestApp(t)
+	token := adminToken()
+	seedDept(t, dsn, 100, "总部")
+	seedDept(t, dsn, 101, "研发部")
+
+	uidStr := createRawUser(t, ts, token, `{"username":"deptname-guard","password":"pw-123456","realName":"冗余守卫","deptId":"100"}`)
+
+	// 只带伪造 deptName（无 deptId）→ 200 但列值不动
+	status, body := doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/users/"+uidStr,
+		`{"deptName":"伪造部门名"}`)
+	require.Equal(t, http.StatusOK, status, "update 请求本身应成功（deptName 键被忽略）: body=%s", body)
+	checkDB := openCheckDB(t, dsn)
+	var deptName string
+	require.NoError(t, checkDB.Raw(
+		"SELECT dept_name FROM sys_user WHERE username = 'deptname-guard'",
+	).Scan(&deptName).Error)
+	assert.Equal(t, "总部", deptName, "dept_name 必须保持服务端查库值，不得被请求体直写（IN-03）")
+
+	// 带 deptId 变更 → dept_name 以查库值联动覆写（唯一合法路径）
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/users/"+uidStr,
+		`{"deptId":"101","deptName":"又一次伪造"}`)
+	require.Equal(t, http.StatusOK, status, "body=%s", body)
+	require.NoError(t, checkDB.Raw(
+		"SELECT dept_name FROM sys_user WHERE username = 'deptname-guard'",
+	).Scan(&deptName).Error)
+	assert.Equal(t, "研发部", deptName, "deptId 变更时 dept_name 必须以查库值联动覆写（T-2-15）")
+}

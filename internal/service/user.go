@@ -128,8 +128,10 @@ func (s *UserService) Create(ctx context.Context, req *dto.UserCreateReq) (*dto.
 // 审计（update_time/update_by）由 repo.Patch 显式并入，不接受客户端同名键（ENG-02）。
 //
 // 白名单刻意不含 username/password 两列（源 editUser 不可改语义：用户名为登录锚点、
-// 密码走 reset-password 端点）；deptId 显式传入时走与 Create 相同的校验链且
-// dept_name 以查库值联动覆写（请求体 deptName 键在 deptId 存在时被查库值覆盖）。
+// 密码走 reset-password 端点）与 dept_name 一列（IN-03：dept_name 是服务端查库
+// 冗余，仅随 deptId 显式变更联动覆写为查库值——请求体 deptName 键被 DTO 白名单
+// 忽略，绝无客户端直写路径，02-03 USER-01"冗余不可伪造"truth 全覆盖）。
+// deptId 显式传入时走与 Create 相同的校验链。
 func (s *UserService) Update(ctx context.Context, id int64, req *dto.UpdateUserReq) (*dto.UserResp, error) {
 	cols := map[string]any{}
 	if req.RealName != nil {
@@ -144,16 +146,13 @@ func (s *UserService) Update(ctx context.Context, id int64, req *dto.UpdateUserR
 	if req.Avatar != nil {
 		cols["avatar"] = *req.Avatar
 	}
-	if req.DeptName != nil {
-		cols["dept_name"] = *req.DeptName
-	}
 	if req.DeptID != nil {
 		dept, err := s.validateDept(ctx, req.DeptID)
 		if err != nil {
 			return nil, err
 		}
 		cols["dept_id"] = int64(*req.DeptID)
-		cols["dept_name"] = dept.DeptName // 查库值联动覆写（伪造的 deptName 键失效）
+		cols["dept_name"] = dept.DeptName // 查库值联动覆写（T-2-15 冗余不可伪造）
 	}
 	if req.Gender != nil {
 		cols["gender"] = int8(*req.Gender)

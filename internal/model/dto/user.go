@@ -24,7 +24,9 @@ type UserCreateReq struct {
 // UpdateUserReq 更新用户请求：全指针字段，nil=未提供（不写库），空串=显式清空。
 // 不得定义任何审计字段键（ENG-02 禁令：update_by/update_time 只由服务端填充，
 // 客户端不可伪造）。可更新列集合收敛于本结构键集——请求体任意额外 JSON 键被
-// 忽略且永远不会进 UPDATE 语句（T-1-10 白名单）。
+// 忽略且永远不会进 UPDATE 语句（T-1-10 白名单）。deptName 不在本结构键集（IN-03：
+// dept_name 是服务端查库冗余，随 deptId 变更联动覆写——客户端直写即违背 02-03
+// USER-01"冗余不可伪造"truth；请求体 deptName 键被忽略，恒不进 UPDATE）。
 type UpdateUserReq struct {
 	RealName *string       `json:"realName"`
 	Phone    *string       `json:"phone"`
@@ -32,7 +34,6 @@ type UpdateUserReq struct {
 	Avatar   *string       `json:"avatar"`
 	Gender   *types.Gender `json:"gender"`
 	DeptID   *ids.ID       `json:"deptId"`
-	DeptName *string       `json:"deptName"`
 	Builtin  *bool         `json:"builtin"`
 	Remark   *string       `json:"remark"`
 }
