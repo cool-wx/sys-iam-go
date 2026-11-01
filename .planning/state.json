@@ -1,0 +1,38 @@
+{
+  "contract": "1.0.0",
+  "flavor": "core",
+  "milestone": null,
+  "phases": [
+    {
+      "number": "1",
+      "name": "工程骨架与横切地基",
+      "status": "complete"
+    },
+    {
+      "number": "2",
+      "name": "认证会话与 RBAC 主链路",
+      "status": "complete"
+    },
+    {
+      "number": "3",
+      "name": "Casbin 授权与数据权限",
+      "status": "complete"
+    },
+    {
+      "number": "4",
+      "name": "业务域与操作日志",
+      "status": "in_progress"
+    },
+    {
+      "number": "5",
+      "name": "名称同步事件与验收收尾",
+      "status": "pending"
+    }
+  ],
+  "next": {
+    "command": "/gsd-progress --next",
+    "label": "Advance to the next step",
+    "reason": "Phase 4 of 5 · 60% · executing"
+  },
+  "updated_at": "2026-11-01T11:08:05.255Z"
+}
