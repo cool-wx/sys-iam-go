@@ -90,3 +90,18 @@ func (r *DeptRepo) FindByID(ctx context.Context, id int64) (*po.DeptPO, error) {
 	}
 	return &d, nil
 }
+
+// FindByIDs 批量按主键查询（WHERE id IN ?，照 MenuRepo.FindByIDs 模板）；供
+// 角色数据权限范围分配（AssignScopes，D-10）前置全量校验与 dept_name 冗余装配
+// 使用。缺失的 id 自然缺席结果集，由调用方对比求缺失集合。
+func (r *DeptRepo) FindByIDs(ctx context.Context, ids []int64) ([]po.DeptPO, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var depts []po.DeptPO
+	err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&depts).Error
+	if err != nil {
+		return nil, err
+	}
+	return depts, nil
+}

@@ -88,6 +88,11 @@ func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, az authz.Au
 	pri.DELETE("/api/v1/roles/:id", hs.Roles.Delete)
 	pri.GET("/api/v1/roles/:id/menus", hs.Roles.GetMenus)
 	pri.PUT("/api/v1/roles/:id/menus", hs.Roles.AssignMenus)
+	// 数据权限范围部门子资源（PERM-03 档位 4 存储面，D-10 sys_role_dept）：独立
+	// 子资源端点（与 roles/:id/menus 同形态，管理面先例是全删重建）；RequirePerm
+	// 挂载照 03-01 tracer 先例（D-08 逐路由显式，其余路由 03-03 全量收口）
+	pri.GET("/api/v1/roles/:id/scopes", middleware.RequirePerm(az, authz.PermRoleQuery), hs.Roles.GetScopes)
+	pri.PUT("/api/v1/roles/:id/scopes", middleware.RequirePerm(az, authz.PermRoleEdit), hs.Roles.AssignScopes)
 
 	// API Key 域（AKEY-01/02，02-03）：CRUD 五端点 + status 子资源（源 editApiKey
 	// 仅 status 单列语义）。至此 Phase 2 五域路由全量注册（D-11 六组齐备）

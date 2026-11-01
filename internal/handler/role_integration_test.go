@@ -29,7 +29,8 @@ type roleEnvelope struct {
 
 // TestRoleCRUD 角色 CRUD 全链（ROLE-01）：create 默认值（dataScope=1/status=
 // ENABLED/builtin=false）→ get → patch（roleName + builtin 显式覆写）→ 角色编码
-// 重复 400 → 三连删事务（关联表零残留）+ 404 域消息 + pri 组 401 保护。
+// 重复 400 → 四连删事务（user_role/role_menu/role_dept/role 关联表零残留）+
+// 404 域消息 + pri 组 401 保护。
 func TestRoleCRUD(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
 	token := adminToken()
@@ -87,14 +88,16 @@ func TestRoleCRUD(t *testing.T) {
 	assert.Equal(t, 10400, dupEnv.Code)
 	assert.Contains(t, dupEnv.Message, "角色编码已存在", "body=%s", body)
 
-	// --- 三连删前置：seed user_role / role_menu 关联行 ---
+	// --- 四连删前置：seed user_role / role_menu / role_dept 关联行 ---
 	checkDB := openCheckDB(t, dsn)
 	execMust(t, checkDB,
 		"INSERT INTO sys_user_role (id, user_id, username, role_id, role_name) VALUES (990501, 1, 'admin', ?, '测试角色（改）')", roleNum)
 	execMust(t, checkDB,
 		"INSERT INTO sys_role_menu (id, role_id, role_name, menu_id, menu_name) VALUES (990502, ?, '测试角色（改）', 990301, '菜单甲')", roleNum)
+	execMust(t, checkDB,
+		"INSERT INTO sys_role_dept (id, role_id, role_name, dept_id, dept_name) VALUES (990503, ?, '测试角色（改）', 990603, '四连删部门')", roleNum)
 
-	// --- delete：三连删事务 ---
+	// --- delete：四连删事务 ---
 	status, body = doAuthRequest(t, token, "DELETE", ts.URL+"/api/v1/roles/"+roleID, "")
 	require.Equal(t, http.StatusOK, status, "body=%s", body)
 
@@ -109,11 +112,13 @@ func TestRoleCRUD(t *testing.T) {
 	assert.Equal(t, 10300, nfEnv.Code)
 	assert.Contains(t, nfEnv.Message, "角色不存在: "+roleID, "404 消息应为域消息原文: body=%s", body)
 
-	var userRoleN, roleMenuN int64
+	var userRoleN, roleMenuN, roleDeptN int64
 	require.NoError(t, checkDB.Raw("SELECT COUNT(*) FROM sys_user_role WHERE role_id = ?", roleNum).Scan(&userRoleN).Error)
 	require.NoError(t, checkDB.Raw("SELECT COUNT(*) FROM sys_role_menu WHERE role_id = ?", roleNum).Scan(&roleMenuN).Error)
-	assert.Equal(t, int64(0), userRoleN, "sys_user_role 中该 role_id 必须零残留（三连删事务）")
-	assert.Equal(t, int64(0), roleMenuN, "sys_role_menu 中该 role_id 必须零残留（三连删事务）")
+	require.NoError(t, checkDB.Raw("SELECT COUNT(*) FROM sys_role_dept WHERE role_id = ?", roleNum).Scan(&roleDeptN).Error)
+	assert.Equal(t, int64(0), userRoleN, "sys_user_role 中该 role_id 必须零残留（四连删事务）")
+	assert.Equal(t, int64(0), roleMenuN, "sys_role_menu 中该 role_id 必须零残留（四连删事务）")
+	assert.Equal(t, int64(0), roleDeptN, "sys_role_dept 中该 role_id 必须零残留（四连删事务，D-10 第三删）")
 
 	// --- delete 不存在 id：404 ---
 	status, body = doAuthRequest(t, token, "DELETE", ts.URL+"/api/v1/roles/99002", "")
@@ -324,5 +329,120 @@ func TestRoleAssignMenus(t *testing.T) {
 
 	// --- 分配到不存在的角色：404 域消息 ---
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/99002/menus", `{"menuIds":[]}`)
+	require.Equal(t, http.StatusNotFound, status, "body=%s", body)
+}
+
+// TestRoleAssignScopes 角色数据权限范围部门分配（PERM-03 档位 4 存储面，D-10；
+// PUT/GET /api/v1/roles/:id/scopes 独立子资源端点）：分配→GET 回读→再分配反映
+// 全量替换→缺失 deptId 400「部门不存在: [...]」且不动存量→空数组全回收（直查
+// sys_role_dept 零行）→冗余列落库（dept_name 查库值非请求体，T-2-15）→非授权
+// 角色 403/10200（RequirePerm fail-closed）→删除持有 scopes 的角色后 sys_role_dept
+// 零残留（四连删直证）。部门 fixture 经 SQL 直插（固定 id，照 TestRoleAssignMenus）。
+func TestRoleAssignScopes(t *testing.T) {
+	ts, dsn, adminToken, _ := newTestApp(t)
+	token := adminToken()
+
+	checkDB := openCheckDB(t, dsn)
+	execMust(t, checkDB,
+		"INSERT INTO sys_dept (id, dept_name, sort, status, create_time, update_time) VALUES (990601, '范围部门甲', 0, 1, NOW(), NOW())")
+	execMust(t, checkDB,
+		"INSERT INTO sys_dept (id, dept_name, sort, status, create_time, update_time) VALUES (990602, '范围部门乙', 0, 1, NOW(), NOW())")
+
+	roleID := mustCreate(t, token, ts.URL+"/api/v1/roles", `{"roleName":"范围角色","roleCode":"assign_scopes_role"}`)
+	roleNum, err := strconv.ParseInt(roleID, 10, 64)
+	require.NoError(t, err)
+
+	getScopes := func() (int, []byte) {
+		return doAuthRequest(t, token, "GET", ts.URL+"/api/v1/roles/"+roleID+"/scopes", "")
+	}
+	var scopesEnv struct {
+		Data []string `json:"data"`
+	}
+
+	// --- 第一次分配：[甲, 乙] ---
+	status, body := doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID+"/scopes",
+		`{"deptIds":["990601","990602"]}`)
+	require.Equal(t, http.StatusOK, status, "分配应 200: body=%s", body)
+	status, body = getScopes()
+	require.Equal(t, http.StatusOK, status, "body=%s", body)
+	require.NoError(t, json.Unmarshal(body, &scopesEnv))
+	assert.ElementsMatch(t, []string{"990601", "990602"}, scopesEnv.Data, "GET 应回读已配置 deptIds")
+
+	// --- 第二次分配：[甲] —— 全量替换非追加（乙 被回收）---
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID+"/scopes",
+		`{"deptIds":["990601"]}`)
+	require.Equal(t, http.StatusOK, status, "body=%s", body)
+	status, body = getScopes()
+	require.NoError(t, json.Unmarshal(body, &scopesEnv))
+	assert.Equal(t, []string{"990601"}, scopesEnv.Data,
+		"第二次分配后 GET 必须精确等于第二次提交集（全量替换，乙 被回收）")
+
+	// --- 缺失 deptId：400 +「部门不存在: [999]」且不动存量（前置校验）---
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID+"/scopes",
+		`{"deptIds":["990601",999]}`)
+	require.Equal(t, http.StatusBadRequest, status, "缺失 deptId 应 400: body=%s", body)
+	var missEnv struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(body, &missEnv))
+	assert.Equal(t, 10400, missEnv.Code)
+	assert.Contains(t, missEnv.Message, "部门不存在: [", "message 应含列表前缀: body=%s", body)
+	assert.Contains(t, missEnv.Message, "999", "message 应含缺失 id: body=%s", body)
+	assert.NotContains(t, missEnv.Message, "990601", "message 只报缺失 id，已存在的 id 不得出现: body=%s", body)
+	status, body = getScopes()
+	require.NoError(t, json.Unmarshal(body, &scopesEnv))
+	assert.Equal(t, []string{"990601"}, scopesEnv.Data, "校验失败不得改动存量配置")
+
+	// --- 空数组=全回收（合法语义）：GET 空 [] 且 sys_role_dept 直查零行 ---
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID+"/scopes", `{"deptIds":[]}`)
+	require.Equal(t, http.StatusOK, status, "空数组回收应 200: body=%s", body)
+	status, body = getScopes()
+	require.NoError(t, json.Unmarshal(body, &scopesEnv))
+	assert.NotNil(t, scopesEnv.Data, "空列表必须序列化为 [] 而非 null")
+	assert.Empty(t, scopesEnv.Data, "空数组回收后 GET 应为空列表")
+	var cnt int64
+	require.NoError(t, checkDB.Raw("SELECT COUNT(*) FROM sys_role_dept WHERE role_id = ?", roleNum).Scan(&cnt).Error)
+	assert.Equal(t, int64(0), cnt, "空数组全回收后 sys_role_dept 必须零行（全删重建语义）")
+
+	// --- 重新分配 [甲, 乙] 后断言 role_dept 冗余列（dept_name 查库值，T-2-15）---
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID+"/scopes",
+		`{"deptIds":["990601","990602"]}`)
+	require.Equal(t, http.StatusOK, status, "body=%s", body)
+	var rows []struct {
+		RoleID   int64
+		RoleName string
+		DeptID   int64
+		DeptName string
+	}
+	require.NoError(t, checkDB.Raw(
+		"SELECT role_id, role_name, dept_id, dept_name FROM sys_role_dept WHERE role_id = ? ORDER BY dept_id",
+		roleNum,
+	).Scan(&rows).Error)
+	require.Len(t, rows, 2, "role_dept 应恰有 2 行")
+	assert.Equal(t, "范围角色", rows[0].RoleName, "role_name 冗余列必须落库")
+	assert.Equal(t, int64(990601), rows[0].DeptID)
+	assert.Equal(t, "范围部门甲", rows[0].DeptName, "dept_name 冗余列必须落库（查库值）")
+	assert.Equal(t, "范围部门乙", rows[1].DeptName)
+
+	// --- 非授权角色访问 scopes：403/10200（无角色普通 token，RequirePerm gate）---
+	seedUser(t, dsn, "scopes-no-role", testAdminHash, "无角色者", 1, false)
+	uToken := loginAs(t, ts, "scopes-no-role", testAdminPass)
+	status, body = doAuthRequest(t, uToken, "GET", ts.URL+"/api/v1/roles/"+roleID+"/scopes", "")
+	require.Equal(t, http.StatusForbidden, status, "无权限角色必须 403: body=%s", body)
+	var forbidden struct {
+		Code int `json:"code"`
+	}
+	require.NoError(t, json.Unmarshal(body, &forbidden))
+	assert.Equal(t, 10200, forbidden.Code, "body=%s", body)
+
+	// --- 四连删直证：删除持有 scopes 的角色后 sys_role_dept 无残留（D-10 第三删）---
+	status, body = doAuthRequest(t, token, "DELETE", ts.URL+"/api/v1/roles/"+roleID, "")
+	require.Equal(t, http.StatusOK, status, "删除角色应 200: body=%s", body)
+	require.NoError(t, checkDB.Raw("SELECT COUNT(*) FROM sys_role_dept WHERE role_id = ?", roleNum).Scan(&cnt).Error)
+	assert.Equal(t, int64(0), cnt, "角色删除四连删后 sys_role_dept 必须零残留（D-10）")
+
+	// --- 分配到不存在的角色：404 域消息 ---
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/99002/scopes", `{"deptIds":[]}`)
 	require.Equal(t, http.StatusNotFound, status, "body=%s", body)
 }

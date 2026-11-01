@@ -54,6 +54,12 @@ type AssignMenusReq struct {
 	MenuIDs []ids.ID `json:"menuIds"`
 }
 
+// AssignScopesReq 分配角色数据权限范围部门请求（D-10 档位 4 存储面）：deptIds
+// 全量替换语义（空数组=全回收，合法）——与 AssignMenusReq 同构。
+type AssignScopesReq struct {
+	DeptIDs []ids.ID `json:"deptIds"`
+}
+
 // ToRoleResp PO→DTO 手写转换（枚举经 FromInt 兜底；int64 ID→契约 ID 类型）。
 func ToRoleResp(r *po.RolePO) *RoleResp {
 	resp := &RoleResp{

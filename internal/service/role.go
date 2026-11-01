@@ -1,5 +1,6 @@
 // Package service 角色域业务逻辑：CRUD + builtin 守卫（409/10602 零删除前置拦截）
-// + 三连删事务（user_role→role_menu→role）+ assignMenus 全量替换（ROLE-01/02/03）。
+// + 四连删事务（user_role→role_menu→role_dept→role，D-10 第三删档位 4 存储）
+// + assignMenus/assignScopes 全量替换（ROLE-01/02/03 + PERM-03）。
 package service
 
 import (
@@ -21,21 +22,22 @@ import (
 	"github.com/cool-wx/sys-iam-go/internal/repository"
 )
 
-// RoleService 角色域服务。db 用于 service 层显式事务（三连删 / assignMenus
-// 全删重建——SkipDefaultTransaction 下唯一事务边界）；enf 用于业务事务提交
-// 成功后的 Casbin 策略双轨同步（D-13——adapter 独立 Session 物理上不在业务
-// 事务内，两独立提交）。
+// RoleService 角色域服务。db 用于 service 层显式事务（四连删 / assignMenus 与
+// assignScopes 全删重建——SkipDefaultTransaction 下唯一事务边界）；enf 用于业务
+// 事务提交成功后的 Casbin 策略双轨同步（D-13——adapter 独立 Session 物理上不在
+// 业务事务内，两独立提交）；deptRepo 供数据权限范围部门（D-10 档位 4）前置校验。
 type RoleService struct {
 	db           *gorm.DB
 	roleRepo     *repository.RoleRepo
 	menuRepo     *repository.MenuRepo
 	relationRepo *repository.RelationRepo
+	deptRepo     *repository.DeptRepo
 	enf          *authz.Enforcer
 }
 
 // NewRoleService 构造。
-func NewRoleService(db *gorm.DB, roleRepo *repository.RoleRepo, menuRepo *repository.MenuRepo, relationRepo *repository.RelationRepo, enf *authz.Enforcer) *RoleService {
-	return &RoleService{db: db, roleRepo: roleRepo, menuRepo: menuRepo, relationRepo: relationRepo, enf: enf}
+func NewRoleService(db *gorm.DB, roleRepo *repository.RoleRepo, menuRepo *repository.MenuRepo, relationRepo *repository.RelationRepo, deptRepo *repository.DeptRepo, enf *authz.Enforcer) *RoleService {
+	return &RoleService{db: db, roleRepo: roleRepo, menuRepo: menuRepo, relationRepo: relationRepo, deptRepo: deptRepo, enf: enf}
 }
 
 // Create 创建角色：服务端默认值 dataScope=1/status=ENABLED/builtin=false
@@ -128,9 +130,10 @@ func (s *RoleService) List(ctx context.Context, page, size int, roleName string)
 }
 
 // Delete 删除角色：builtin 守卫**前置拦截（零删除调用）**——builtin=true 直接
-// 409/10602「系统内置角色不可删除」，三连删一个都不触发（ROLE-02/D-14，源
-// removeById 语义）；否则 db.Transaction 三连删 user_role → role_menu → role
-// （源顺序；任一失败整体回滚，T-2-10——多步关联写绝不拆为多次独立提交）。
+// 409/10602「系统内置角色不可删除」，四连删一个都不触发（ROLE-02/D-14，源
+// removeById 语义）；否则 db.Transaction 四连删 user_role → role_menu →
+// role_dept（D-10 档位 4 存储随角色连带清理）→ role（前三步源顺序，第四删插在
+// 第三步；任一失败整体回滚，T-2-10——多步关联写绝不拆为多次独立提交）。
 func (s *RoleService) Delete(ctx context.Context, id int64) error {
 	role, err := s.roleRepo.FindByID(ctx, id)
 	if err != nil {
@@ -150,12 +153,16 @@ func (s *RoleService) Delete(ctx context.Context, id int64) error {
 		if err := relationTx.DeleteRoleMenus(ctx, id); err != nil {
 			return err
 		}
+		// 第四删（D-10）：sys_role_dept 与 sys_role_menu 同构关联，角色删除连带清理
+		if err := relationTx.DeleteRoleDepts(ctx, id); err != nil {
+			return err
+		}
 		roleTx := repository.NewRoleRepo(tx)
 		return roleTx.Delete(ctx, id)
 	}); err != nil {
 		return err
 	}
-	// 三连删事务提交成功后双清 casbin 该角色的 p 行 + g 行（D-13/T-3-01 级联
+	// 四连删事务提交成功后双清 casbin 该角色的 p 行 + g 行（D-13/T-3-01 级联
 	// 撤权——否则已删角色经 boot 对账前仍持有策略；builtin 守卫已保证不会对
 	// builtin 角色走到这里）。同步失败上抛 500 由客户端重试自愈（幂等全删）。
 	return s.enf.ClearRole(role.RoleCode)
@@ -246,6 +253,81 @@ func (s *RoleService) GetMenuIDs(ctx context.Context, roleID int64) ([]ids.ID, e
 	}
 	out := make([]ids.ID, 0, len(menuIDs))
 	for _, v := range menuIDs {
+		out = append(out, ids.ID(v))
+	}
+	return out, nil
+}
+
+// AssignScopes 分配角色数据权限范围部门（PERM-03 档位 4 存储面，D-10 方案 A；
+// 全量替换语义完全照 AssignMenus 同构——D-10 锁定 sys_role_menu 同构模式）：
+// 角色校验（404「角色不存在: {id}」）→ deptIDs 前置全量校验（缺失集合译 400
+// 「部门不存在: [逗号拼接]」，防脏关联）→ db.Transaction{ DeleteRoleDepts +
+// BatchCreateRoleDepts }——删旧插新同事务（T-2-11 同款）；dept_name 以查库值
+// 冗余写入（请求体不可伪造，T-2-15）。空数组=全回收（合法语义）。
+// 本写路径不经 casbin 双轨（sys_role_dept 非 enforcer 消费数据，D-14 双轨仅覆盖
+// 功能权限轴；档位变更的行过滤生效走 datascope 表驱动实时查询，无缓存）。
+func (s *RoleService) AssignScopes(ctx context.Context, roleID int64, deptIDs []ids.ID) error {
+	role, err := s.roleRepo.FindByID(ctx, roleID)
+	if err != nil {
+		if errors.Is(err, errcode.ErrNotFound) {
+			return errcode.New(errcode.CodeNotFound, fmt.Sprintf("角色不存在: %d", roleID))
+		}
+		return err
+	}
+	reqIDs := make([]int64, 0, len(deptIDs))
+	for _, did := range deptIDs {
+		reqIDs = append(reqIDs, int64(did))
+	}
+	deptNameOf := make(map[int64]string, len(reqIDs))
+	if len(reqIDs) > 0 {
+		depts, err := s.deptRepo.FindByIDs(ctx, reqIDs)
+		if err != nil {
+			return err
+		}
+		for i := range depts {
+			name := ""
+			if depts[i].DeptName != nil {
+				name = *depts[i].DeptName
+			}
+			deptNameOf[depts[i].ID] = name
+		}
+	}
+	var missing []string
+	for _, did := range reqIDs {
+		if _, ok := deptNameOf[did]; !ok {
+			missing = append(missing, strconv.FormatInt(did, 10))
+		}
+	}
+	if len(missing) > 0 {
+		return errcode.New(errcode.CodeInvalidParam, "部门不存在: ["+strings.Join(missing, ", ")+"]")
+	}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		relationTx := repository.NewRelationRepo(tx)
+		if err := relationTx.DeleteRoleDepts(ctx, roleID); err != nil {
+			return err
+		}
+		rows := make([]po.RoleDeptPO, 0, len(reqIDs))
+		for _, did := range reqIDs {
+			rows = append(rows, po.RoleDeptPO{
+				RoleID:   roleID,
+				RoleName: role.RoleName,
+				DeptID:   did,
+				DeptName: deptNameOf[did],
+			})
+		}
+		return relationTx.BatchCreateRoleDepts(ctx, rows)
+	})
+}
+
+// GetScopeDeptIDs 查询角色已配置的 deptId 列表（GET /roles/:id/scopes 契约）：
+// 照 GetMenuIDs（无角色存在性校验——未配置/不存在角色均返回空列表，同轴语义）。
+func (s *RoleService) GetScopeDeptIDs(ctx context.Context, roleID int64) ([]ids.ID, error) {
+	deptIDs, err := s.relationRepo.FindDeptIDsByRoleID(ctx, roleID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ids.ID, 0, len(deptIDs))
+	for _, v := range deptIDs {
 		out = append(out, ids.ID(v))
 	}
 	return out, nil

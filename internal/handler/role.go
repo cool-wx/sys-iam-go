@@ -122,3 +122,36 @@ func (h *RoleHandler) AssignMenus(c *gin.Context) {
 	}
 	resp.OK(c, nil)
 }
+
+// GetScopes 处理 GET /api/v1/roles/:id/scopes：返回角色已配置的数据权限范围
+// deptId 列表（PERM-03 档位 4 存储面，D-10）。
+func (h *RoleHandler) GetScopes(c *gin.Context) {
+	id, ok := parseID(c, "无效的角色 ID")
+	if !ok {
+		return
+	}
+	data, err := h.svc.GetScopeDeptIDs(c.Request.Context(), id)
+	if err != nil {
+		resp.Fail(c, err)
+		return
+	}
+	resp.OK(c, data)
+}
+
+// AssignScopes 处理 PUT /api/v1/roles/:id/scopes：全量替换语义（删旧插新同事务，
+// D-10 sys_role_menu 同构裁决）。
+func (h *RoleHandler) AssignScopes(c *gin.Context) {
+	id, ok := parseID(c, "无效的角色 ID")
+	if !ok {
+		return
+	}
+	var req dto.AssignScopesReq
+	if !bindJSON(c, &req) {
+		return
+	}
+	if err := h.svc.AssignScopes(c.Request.Context(), id, req.DeptIDs); err != nil {
+		resp.Fail(c, err)
+		return
+	}
+	resp.OK(c, nil)
+}

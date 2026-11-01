@@ -137,7 +137,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	authSvc := service.NewAuthService(userRepo, relationRepo, apiKeyRepo, sessionMgr)
 	menuSvc := service.NewMenuService(menuRepo)
 	deptSvc := service.NewDeptService(deptRepo)
-	roleSvc := service.NewRoleService(db, roleRepo, menuRepo, relationRepo, enf)
+	roleSvc := service.NewRoleService(db, roleRepo, menuRepo, relationRepo, deptRepo, enf)
 	apiKeySvc := service.NewApiKeyService(userRepo, apiKeyRepo, sessionMgr)
 	userHandler := handler.NewUserHandler(userSvc)
 	authHandler := handler.NewAuthHandler(authSvc)
