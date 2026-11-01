@@ -123,11 +123,11 @@ Plans:
   1. 修改部门/字典类型/菜单/角色名或用户名/真名后，所有关联表冗余名称字段同步更新（realName 变更波及 14 张表）
   2. 事件在事务提交后发布、handler 同步执行且使用独立事务（非 goroutine 异步，修正源"事务内发布 + REQUIRES_NEW"时序），UPDATE 带 `!= newName` 条件且名称为 NULL 的行不被更新（NULL 语义锁定测试）
   3. 全量验收回归：14 个功能域全部接口 + 自动化测试通过，"Looks Done But Isn't" 清单逐项过（存量 hash 登录、API Key 双路径、内置删除拦截、编辑不传字段不清空、分页边界不 500、枚举未知值兜底、失败请求有日志、SIGTERM 后日志完整落库）
-**Plans**: 0/3 plans complete
+**Plans**: 1/3 plans executed
 
 Plans:
 **Wave 1**
-- [ ] 05-01-PLAN.md — dispatcher 基建全量（internal/event 4 文件 + 6 handler × 35 条 `<>` UPDATE）+ app.go 装配一次到位（5 service 构造签名改齐）+ dept 域发布挂点 tracer + TestDeptNameSync 端到端（SYNC-01/02 机制与时序）
+- [x] 05-01-PLAN.md — dispatcher 基建全量（internal/event 4 文件 + 6 handler × 35 条 `<>` UPDATE）+ app.go 装配一次到位（5 service 构造签名改齐）+ dept 域发布挂点 tracer + TestDeptNameSync 端到端（SYNC-01/02 机制与时序）
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 05-02-PLAN.md — role/menu/dict/user 四域挂点实装 + 发布条件单测（fakePublisher 四负例）+ realName 14 表全量断言 + NULL 语义锁定 + 幂等自愈重放（SYNC-01 主体 + SYNC-02 锁定测试）
@@ -146,4 +146,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. 认证会话与 RBAC 主链路 | 3/3 | Complete    | 2026-11-01 |
 | 3. Casbin 授权与数据权限 | 3/3 | Complete    | 2026-11-01 |
 | 4. 业务域与操作日志 | 4/4 | Complete    | 2026-11-02 |
-| 5. 名称同步事件与验收收尾 | 0/TBD | Not started | - |
+| 5. 名称同步事件与验收收尾 | 1/3 | In Progress | - |

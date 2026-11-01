@@ -1,13 +1,13 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 5
+current_phase: 05
 current_phase_name: 名称同步事件与验收收尾
 status: executing
-stopped_at: Phase 5 context gathered
-last_updated: "2026-11-01T19:09:08.340Z"
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-11-01T23:53:06.976Z"
 last_activity: 2026-11-02
-last_activity_desc: Phase 04 complete, transitioned to Phase 5
-state_head: 3faa21c6801acc447c107954e8b735e64332f6b6
+last_activity_desc: Phase 05 execution started
+state_head: f974c4641c95b78dd974ab74c060de2982ddefbb
 progress:
   total_phases: 5
   completed_phases: 4
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-02, Phase 4 transition)
 
 **Core value:** 在工控机上以单个轻量 Go 服务完整复刻 sys-iam 的全部 IAM 能力，且接口实现与自动化测试全部通过。
-**Current focus:** Phase 5 — 名称同步事件与验收收尾
+**Current focus:** Phase 05 — 名称同步事件与验收收尾
 
 ## Current Position
 
-Phase: 5 (名称同步事件与验收收尾) — READY TO EXECUTE
-Plan: Not started
+Phase: 05 (名称同步事件与验收收尾) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-11-02 — Phase 04 complete, transitioned to Phase 5
+Last activity: 2026-11-02 — Phase 05 execution started
 
 Progress: [████████░░] 80%
 
@@ -72,6 +72,7 @@ Progress: [████████░░] 80%
 | Phase 04 P02 | 75min | 2 tasks | 24 files |
 | Phase 04 P03 | ~90min（含 429 中断） | 2 tasks | 15 files |
 | Phase 04 P04 | 36min | 2 tasks | 13 files |
+| Phase 05 P01 | 58min | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -120,6 +121,8 @@ Recent decisions affecting current work:
 - [Phase 04]: multipart 双层封顶：全局 BodyLimit 1MB 按 Content-Type 跳过 multipart + 路由级 BodyLimitWithMB(20)（外层先包内层恒失效）+ MaxMultipartMemory 8MB 落盘
 - [Phase 04]: 下载 Content-Disposition 手写 RFC 5987（filename*=UTF-8'' + url.PathEscape）承载中文并消除 CR/LF 头注入面（T-4-03），恒 attachment（T-4-05 缓解面）
 - [Phase 04]: FileCategory 上级分类不存在按 04-02 PLAN 拍板 404/10300（与部门域 400 不同）；Update 加 WR-04 成环拦截照 dept 同构
+- [Phase 05]: [Phase 05] 05-01: 事件机制零框架自建（map[Type][]Listener 同步逐个分发、首错即返、未注册 nil）——service 提交后发布+handler 独立事务+`<>` 幂等 UPDATE 三语义立稳，SYNC-02 源死锁时序修正如约落地
+- [Phase 05]: [Phase 05] 05-01: 5 个 service 构造签名一次改齐注入 Publisher（照 04-01 perms.go 先例），05-02 起零装配层改动；listeners 35 条 UPDATE 逐条内联不做 helper 收敛（逐条形态即审计面，与源监听器逐行对应）
 
 ### Pending Todos
 
@@ -146,6 +149,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-01T18:26:18.650Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-sync-events/05-CONTEXT.md
+Last session: 2026-11-01T23:53:06.810Z
+Stopped at: Completed 05-01-PLAN.md
+Resume file: None
