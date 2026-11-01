@@ -133,26 +133,33 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	menuRepo := repository.NewMenuRepo(db)
 	deptRepo := repository.NewDeptRepo(db)
 	roleRepo := repository.NewRoleRepo(db)
+	dictTypeRepo := repository.NewDictTypeRepo(db)
+	dictDataRepo := repository.NewDictDataRepo(db)
 	userSvc := service.NewUserService(db, userRepo, relationRepo, roleRepo, deptRepo, sessionMgr, enf)
 	authSvc := service.NewAuthService(userRepo, relationRepo, apiKeyRepo, sessionMgr)
 	menuSvc := service.NewMenuService(menuRepo)
 	deptSvc := service.NewDeptService(deptRepo)
 	roleSvc := service.NewRoleService(db, roleRepo, menuRepo, relationRepo, deptRepo, enf)
 	apiKeySvc := service.NewApiKeyService(userRepo, apiKeyRepo, sessionMgr)
+	dictSvc := service.NewDictService(dictTypeRepo, dictDataRepo)
 	userHandler := handler.NewUserHandler(userSvc)
 	authHandler := handler.NewAuthHandler(authSvc)
 	menuHandler := handler.NewMenuHandler(menuSvc)
 	deptHandler := handler.NewDeptHandler(deptSvc)
 	roleHandler := handler.NewRoleHandler(roleSvc)
 	apiKeyHandler := handler.NewApiKeyHandler(apiKeySvc)
+	dictTypeHandler := handler.NewDictTypeHandler(dictSvc)
+	dictDataHandler := handler.NewDictDataHandler(dictSvc)
 
 	engine := newRouter(h, handlers{
-		Auth:    authHandler,
-		Users:   userHandler,
-		Menus:   menuHandler,
-		Depts:   deptHandler,
-		Roles:   roleHandler,
-		ApiKeys: apiKeyHandler,
+		Auth:      authHandler,
+		Users:     userHandler,
+		Menus:     menuHandler,
+		Depts:     deptHandler,
+		Roles:     roleHandler,
+		ApiKeys:   apiKeyHandler,
+		DictTypes: dictTypeHandler,
+		DictDatas: dictDataHandler,
 	}, middleware.Auth(sessionMgr), enf, logger)
 
 	return &App{

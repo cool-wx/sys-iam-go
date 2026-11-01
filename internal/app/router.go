@@ -13,12 +13,14 @@ import (
 
 // handlers 路由聚合（Wave 2/3 扩域时按域增字段，newRouter 签名不再反复变化）。
 type handlers struct {
-	Auth    *handler.AuthHandler
-	Users   *handler.UserHandler
-	Menus   *handler.MenuHandler
-	Depts   *handler.DeptHandler
-	Roles   *handler.RoleHandler
-	ApiKeys *handler.ApiKeyHandler
+	Auth      *handler.AuthHandler
+	Users     *handler.UserHandler
+	Menus     *handler.MenuHandler
+	Depts     *handler.DeptHandler
+	Roles     *handler.RoleHandler
+	ApiKeys   *handler.ApiKeyHandler
+	DictTypes *handler.DictTypeHandler
+	DictDatas *handler.DictDataHandler
 }
 
 // newRouter 装配路由：四中间件全局链（RequestID→AccessLog→Recovery→BodyLimit）+
@@ -106,6 +108,22 @@ func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, az authz.Au
 	pri.GET("/api/v1/api-keys", middleware.RequirePerm(az, authz.PermApiKeyList), hs.ApiKeys.List)
 	pri.PUT("/api/v1/api-keys/:id/status", middleware.RequirePerm(az, authz.PermApiKeyEdit), hs.ApiKeys.UpdateStatus)
 	pri.DELETE("/api/v1/api-keys/:id", middleware.RequirePerm(az, authz.PermApiKeyRemove), hs.ApiKeys.Delete)
+
+	// 字典类型域五路由（DICT-01，Phase 4 04-01）：CRUD 全挂 RequirePerm（D-04
+	// Phase 3 收口纪律延续——无裸路由）
+	pri.POST("/api/v1/dict-types", middleware.RequirePerm(az, authz.PermDictTypeAdd), hs.DictTypes.Create)
+	pri.PUT("/api/v1/dict-types/:id", middleware.RequirePerm(az, authz.PermDictTypeEdit), hs.DictTypes.Update)
+	pri.GET("/api/v1/dict-types/:id", middleware.RequirePerm(az, authz.PermDictTypeQuery), hs.DictTypes.Get)
+	pri.GET("/api/v1/dict-types", middleware.RequirePerm(az, authz.PermDictTypeList), hs.DictTypes.List)
+	pri.DELETE("/api/v1/dict-types/:id", middleware.RequirePerm(az, authz.PermDictTypeRemove), hs.DictTypes.Delete)
+
+	// 字典数据域五路由（DICT-02/03）：与字典类型同构；共用 PermDictType* 五串
+	// （源 dictData 与 dictType 共用 dict:* 权限，不新增权限档）
+	pri.POST("/api/v1/dict-datas", middleware.RequirePerm(az, authz.PermDictTypeAdd), hs.DictDatas.Create)
+	pri.PUT("/api/v1/dict-datas/:id", middleware.RequirePerm(az, authz.PermDictTypeEdit), hs.DictDatas.Update)
+	pri.GET("/api/v1/dict-datas/:id", middleware.RequirePerm(az, authz.PermDictTypeQuery), hs.DictDatas.Get)
+	pri.GET("/api/v1/dict-datas", middleware.RequirePerm(az, authz.PermDictTypeList), hs.DictDatas.List)
+	pri.DELETE("/api/v1/dict-datas/:id", middleware.RequirePerm(az, authz.PermDictTypeRemove), hs.DictDatas.Delete)
 
 	return engine
 }
