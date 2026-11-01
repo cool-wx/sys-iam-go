@@ -157,6 +157,13 @@ func (s *UserService) Update(ctx context.Context, id int64, req *dto.UpdateUserR
 	if req.Gender != nil {
 		cols["gender"] = int8(*req.Gender)
 	}
+	// builtin 保留可写（IN-07 裁决记录，注释-only 无行为变更）：用户域 builtin 白
+	// 名单 = 源语义保真——源 User.java:126-127 withEdit 链接受 builtin 参数
+	// （UserApplicationService.java:135 editUser 原样传入），Go 版照搬；刻意与角色
+	// 域不对称（WR-01 已收紧角色域、偏离源 RoleApplicationService.java:77 可写语义
+	// ）——非遗漏，勿「对齐角色域」误改。残余锁死风险（system:user:edit + remove
+	// 组合可翻转唯一 super_admin 持有者 builtin=false 再删除）记录于
+	// 03-REVIEW iteration 2 IN-07 / 03-REVIEW-FIX。
 	if req.Builtin != nil {
 		cols["builtin"] = *req.Builtin
 	}
