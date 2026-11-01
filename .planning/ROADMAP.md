@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: 工程骨架与横切地基** - 可启动的单体服务 + 全库共享约定（R 响应/雪花 ID/JSON 契约/零值保护与审计填充/分页/健康检查/本地配置/单二进制交付） (completed 2026-10-31)
 - [x] **Phase 2: 认证会话与 RBAC 主链路** - 自建 token-session（登录/登出/踢人/TTL/白名单）+ User/Role/Menu/Dept/ApiKey 五域完整 CRUD (completed 2026-11-01)
-- [ ] **Phase 3: Casbin 授权与数据权限** - Casbin RBAC + 原生策略表 + 策略热重载（变更即时生效）+ requirePerm 中间件 + dataScope 五档行过滤
+- [x] **Phase 3: Casbin 授权与数据权限** - Casbin RBAC + 原生策略表 + 策略热重载（变更即时生效）+ requirePerm 中间件 + dataScope 五档行过滤 (completed 2026-11-01)
 - [ ] **Phase 4: 业务域与操作日志** - Dict/Config/File/Shift/FaultInfo 六域 + 存储抽象（本地磁盘/RustFS-S3）+ 操作日志中间件 + Excel 导入
 - [ ] **Phase 5: 名称同步事件与验收收尾** - 进程内事件 dispatcher + 6 个名称同步 handler + 全量接口与自动化测试回归
 
@@ -76,7 +76,7 @@ Plans:
   2. 管理员通过角色授权接口分配/回收功能权限，策略持久化到新建原生 Casbin 策略表（gorm adapter），现有 sys_role_menu/sys_menu 原样不动（双轨）
   3. 已登录用户在不重新登录的情况下，权限分配/回收后的下一请求即按新策略通过或被拒（即时生效）
   4. dataScope 五档（本人/本部门/本部门及以下/指定部门/全部）在列表查询上产生可观察的行过滤差异（如"本部门"管理员查询用户列表看不到其他部门用户，"全部"则可见）
-**Plans**: 3/3 plans executed
+**Plans**: 3/3 plans complete
 
 Plans:
 **Wave 1**
@@ -121,6 +121,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. 工程骨架与横切地基 | 3/3 | Complete    | 2026-10-31 |
 | 2. 认证会话与 RBAC 主链路 | 3/3 | Complete    | 2026-11-01 |
-| 3. Casbin 授权与数据权限 | 3/3 | In Progress | - |
+| 3. Casbin 授权与数据权限 | 3/3 | Complete    | 2026-11-01 |
 | 4. 业务域与操作日志 | 0/TBD | Not started | - |
 | 5. 名称同步事件与验收收尾 | 0/TBD | Not started | - |
