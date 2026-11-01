@@ -9,11 +9,23 @@ import (
 	"github.com/cool-wx/sys-iam-go/internal/model/po"
 )
 
-// RoleRef 角色引用（JOIN 投影）：登录会话 roles 载荷与用户详情角色装配共用。
+// RoleRef 角色引用（JOIN 投影）：登录会话 roles 装配与用户详情角色装配共用。
 type RoleRef struct {
 	RoleID   int64
 	RoleName string
 	RoleCode string
+}
+
+// UserRule boot 对账投影（casbin g 行原料，T-3-05）：user → role_code。
+type UserRule struct {
+	UserID   int64
+	RoleCode string
+}
+
+// RolePermRule boot 对账投影（casbin p 行原料）：role_code → perm 串。
+type RolePermRule struct {
+	RoleCode string
+	Perm     string
 }
 
 // RelationRepo 关联表数据访问（只读最小面；写路径随 Wave 2/3 角色分配需求扩展）。
@@ -55,6 +67,58 @@ func (r *RelationRepo) FindRolesByUserIDs(ctx context.Context, userIDs []int64) 
 			RoleName: row.RoleName,
 			RoleCode: row.RoleCode,
 		})
+	}
+	return out, nil
+}
+
+// FindUserRoleCodes boot 对账数据源一（casbin g 行导入，T-3-05）：sys_user_role
+// ur JOIN sys_role r 投影 user_id + role_code（照 FindRolesByUserIDs JOIN 模板）。
+// 行内 role 行已被 JOIN 过滤（不存在的 role_id 不产生行）。返回恒非 nil。
+func (r *RelationRepo) FindUserRoleCodes(ctx context.Context) ([]UserRule, error) {
+	var rows []struct {
+		UserID   int64
+		RoleCode string
+	}
+	err := r.db.WithContext(ctx).
+		Table("sys_user_role AS ur").
+		Select("ur.user_id, r.role_code").
+		Joins("JOIN sys_role r ON ur.role_id = r.id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]UserRule, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, UserRule{UserID: row.UserID, RoleCode: row.RoleCode})
+	}
+	return out, nil
+}
+
+// FindRolePerms boot 对账数据源二（casbin p 行导入）：sys_role_menu rm JOIN
+// sys_role r（取 role_code）JOIN sys_menu m（取 permission 串），仅投影非空
+// permission；内存 map 去重（Error 1869 防御第一道——MySQL 8.4 同批重复行整批
+// 失败，03-RESEARCH probe 实证）。返回恒非 nil。
+func (r *RelationRepo) FindRolePerms(ctx context.Context) ([]RolePermRule, error) {
+	var rows []RolePermRule
+	err := r.db.WithContext(ctx).
+		Table("sys_role_menu AS rm").
+		Select("r.role_code, m.permission AS perm").
+		Joins("JOIN sys_role r ON rm.role_id = r.id").
+		Joins("JOIN sys_menu m ON rm.menu_id = m.id").
+		Where("m.permission IS NOT NULL AND m.permission != ''").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]RolePermRule, 0, len(rows))
+	seen := make(map[string]struct{}, len(rows))
+	for _, row := range rows {
+		key := row.RoleCode + "\x00" + row.Perm
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, row)
 	}
 	return out, nil
 }

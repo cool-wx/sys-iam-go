@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -16,6 +17,7 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 
 	"github.com/cool-wx/sys-iam-go/internal/auth"
+	"github.com/cool-wx/sys-iam-go/internal/authz"
 	"github.com/cool-wx/sys-iam-go/internal/config"
 	"github.com/cool-wx/sys-iam-go/internal/handler"
 	"github.com/cool-wx/sys-iam-go/internal/health"
@@ -75,10 +77,58 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		return nil, fmt.Errorf("ping redis: %w", err)
 	}
 
+	// Casbin enforcer 装配（D-01/D-02/D-04）：复用既有 GORM 连接；初始化与
+	// LoadPolicy 失败 fail-fast return nil, error——授权基建不可用时服务绝不能
+	// 以"全量 403"状态静默启动（对齐上方 Redis Ping 先例）。enforcer 是
+	// requirePerm 中间件与 roleSvc/userSvc 的依赖，必须在 service 构造之前建好。
+	enf, err := authz.New(db)
+	if err != nil {
+		return nil, fmt.Errorf("init casbin enforcer: %w", err)
+	}
+
+	// boot 对账（T-3-05/PERM-01 落地前提）：casbin_rule 新表初始为空而存量
+	// sys_user_role/sys_role_menu 已有数据——启动全量导入 g/p 策略（ReplaceAll
+	// 幂等可重入），存量 admin 冷启动即可用；同时修复运行期同步失败残留（重启
+	// 自愈）。对账失败 fail-fast 拒绝启动（绝不全量 403 状态静默启动）。
+	relationRepo := repository.NewRelationRepo(db)
+	reconcileCtx, reconcileCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	userRules, err := relationRepo.FindUserRoleCodes(reconcileCtx)
+	if err == nil {
+		var rolePerms []repository.RolePermRule
+		rolePerms, err = relationRepo.FindRolePerms(reconcileCtx)
+		if err == nil {
+			pRules := make([][]string, 0, len(rolePerms))
+			seenP := make(map[string]struct{}, len(rolePerms))
+			for _, rp := range rolePerms {
+				key := rp.RoleCode + "\x00" + rp.Perm
+				if _, dup := seenP[key]; dup {
+					continue
+				}
+				seenP[key] = struct{}{}
+				pRules = append(pRules, []string{rp.RoleCode, rp.Perm})
+			}
+			gRules := make([][]string, 0, len(userRules))
+			seenG := make(map[string]struct{}, len(userRules))
+			for _, ur := range userRules {
+				uidStr := strconv.FormatInt(ur.UserID, 10)
+				key := uidStr + "\x00" + ur.RoleCode
+				if _, dup := seenG[key]; dup {
+					continue
+				}
+				seenG[key] = struct{}{}
+				gRules = append(gRules, []string{uidStr, ur.RoleCode})
+			}
+			err = enf.ReplaceAll(pRules, gRules)
+		}
+	}
+	reconcileCancel()
+	if err != nil {
+		return nil, fmt.Errorf("boot reconcile casbin policies: %w", err)
+	}
+
 	sessionMgr := auth.NewSessionManager(rdb, cfg.Auth.SessionTimeout)
 
 	userRepo := repository.NewUserRepo(db)
-	relationRepo := repository.NewRelationRepo(db)
 	apiKeyRepo := repository.NewApiKeyRepo(db)
 	menuRepo := repository.NewMenuRepo(db)
 	deptRepo := repository.NewDeptRepo(db)
@@ -103,7 +153,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		Depts:   deptHandler,
 		Roles:   roleHandler,
 		ApiKeys: apiKeyHandler,
-	}, middleware.Auth(sessionMgr), logger)
+	}, middleware.Auth(sessionMgr), enf, logger)
 
 	return &App{
 		cfg:    cfg,

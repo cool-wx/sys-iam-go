@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/cool-wx/sys-iam-go/internal/authz"
 	"github.com/cool-wx/sys-iam-go/internal/handler"
 	"github.com/cool-wx/sys-iam-go/internal/health"
 	"github.com/cool-wx/sys-iam-go/internal/middleware"
@@ -28,7 +29,7 @@ type handlers struct {
 //     （kickout 额外挂 RequireRoles("super_admin") 授权 gate，WR-05 过渡收口）
 //   - 既有 users 四路由 + menus/depts 全套业务路由（02-02 D-11/D-13：复数资源
 //     路由 + 树端点独立；gin 静态段 tree 与 :id 参数段共存，静态优先）。
-func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, logger *slog.Logger) *gin.Engine {
+func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, az authz.Authorizer, logger *slog.Logger) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
 	engine.Use(middleware.RequestID())
@@ -46,12 +47,14 @@ func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, logger *slo
 	pri.POST("/api/v1/auth/logout", hs.Auth.Logout)
 	// kickout 授权收口（WR-05/T-2-07 过渡态）：仅 super_admin 可调（会话 roles
 	// 快照判定）——不再"任何有效 token 可踢任意会话（含 admin）"；其余管理端点
-	// 的 requirePerm 全量收口在 Phase 3 Casbin 计划内
+	// 的 requirePerm 全量收口在 03-03（D-15：kickout 的 RequireRoles 保留叠加）
 	pri.POST("/api/v1/auth/kickout", middleware.RequireRoles("super_admin"), hs.Auth.Kickout)
 	pri.POST("/api/v1/users", hs.Users.Create)
 	pri.PUT("/api/v1/users/:id", hs.Users.Update)
 	pri.GET("/api/v1/users/:id", hs.Users.Get)
-	pri.GET("/api/v1/users", hs.Users.List)
+	// requirePerm tracer 首路由（D-08 逐路由显式挂载，路由与权限同屏）：casbin
+	// RBAC 判定（用户 g 行→角色→p 行 perm 串），权限变更下一请求即时生效（PERM-02）
+	pri.GET("/api/v1/users", middleware.RequirePerm(az, authz.PermUserList), hs.Users.List)
 	pri.DELETE("/api/v1/users/:id", hs.Users.Delete)
 	// 用户装配子资源（USER-04/02/03/07，02-03）：roles 全量替换、status 停用踢会话、
 	// reset-password 重置踢会话——gin 静态段（roles/status/reset-password）与 :id

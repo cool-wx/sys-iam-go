@@ -161,6 +161,9 @@ var idsOnce sync.Once
 
 // newTestApp 启动独立 MySQL+Redis 双容器（Phase 2 认证链依赖）+ 完整 app 装配 +
 // httptest server + 种子 admin（真实存量 BCrypt 哈希，D-10：每测试独立容器互不污染）。
+// Phase 3 起种子先于 app.New：boot 对账（app.New 内）从 sys_user_role/sys_role_menu
+// 导入 casbin g/p 策略——先有存量数据后启动服务即生产冷启动形态（super_admin 角色
+// + admin 关联必须在对账前落库，否则 admin 经 requirePerm 路由全量 403）。
 // 返回 ts、dsn、adminToken()（每次调用新登录一枚 token——多 token 并存语义，D-08）
 // 与 adminID（审计断言需要）。cleanup 链：关 HTTP → 关应用连接池 → 终止容器。
 func newTestApp(t *testing.T) (*httptest.Server, string, func() string, int64) {
@@ -171,6 +174,14 @@ func newTestApp(t *testing.T) (*httptest.Server, string, func() string, int64) {
 	redisAddr, stopRedis, err := testutil.RunRedis(ctx)
 	require.NoError(t, err, "redis testcontainer 启动失败")
 
+	// 进程级雪花单例只装配一次：跨测试共享同一节点实例，杜绝多实例同毫秒 seq 回绕撞 ID
+	// （Phase 3 起移到种子之前——seedUser/seedRole 直插行依赖 ids.NewID 生成主键）
+	idsOnce.Do(func() {
+		node, err := ids.NewNode(1)
+		require.NoError(t, err)
+		ids.SetDefault(node)
+	})
+
 	cfg := &config.Config{
 		Server:    config.ServerConfig{Port: 0},
 		MySQL:     config.MySQLConfig{DSN: dsn, MaxOpenConns: 5, MaxIdleConns: 2, ConnMaxLifetime: time.Minute},
@@ -180,17 +191,15 @@ func newTestApp(t *testing.T) (*httptest.Server, string, func() string, int64) {
 		Log:       config.LogConfig{Level: "error"},
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	// 种子三件套（boot 对账数据源，必须在 app.New 之前——对账读 sys_user_role）：
+	// super_admin 内置角色 + admin 用户 + 关联。data_scope 置 NULL（本 plan 不依赖）
+	superRoleID := seedRole(t, dsn, "超级管理员", "super_admin", true)
+	adminID := seedUser(t, dsn, testAdminName, testAdminHash, testAdminRealName, 1, true)
+	attachRoleToUser(t, dsn, adminID, superRoleID, "超级管理员")
+
 	application, err := app.New(cfg, logger)
 	require.NoError(t, err, "app 装配失败")
-
-	// 进程级雪花单例只装配一次：跨测试共享同一节点实例，杜绝多实例同毫秒 seq 回绕撞 ID
-	idsOnce.Do(func() {
-		node, err := ids.NewNode(1)
-		require.NoError(t, err)
-		ids.SetDefault(node)
-	})
-
-	adminID := seedUser(t, dsn, testAdminName, testAdminHash, testAdminRealName, 1, true)
 
 	ts := httptest.NewServer(application.Engine())
 	adminToken := func() string { return loginAs(t, ts, testAdminName, testAdminPass) }
