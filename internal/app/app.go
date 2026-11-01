@@ -30,7 +30,7 @@ import (
 // 优雅关停排空预算（P16；systemd TimeoutStopSec 须大于此值，Pattern 5）。
 const shutdownTimeout = 15 * time.Second
 
-// App 应用聚合：engine、db、rdb、health、config。
+// App 应用聚合：engine、db、rdb、health、config、ologW（操作日志异步写通道）。
 type App struct {
 	cfg    *config.Config
 	logger *slog.Logger
@@ -39,6 +39,7 @@ type App struct {
 	rdb    *redis.Client
 	health *health.State
 	srv    *http.Server
+	ologW  *middleware.OpLogWriter
 }
 
 // New 装配全部依赖：GORM 连接（绝不 AutoMigrate，schema 沿用源库）、连接池
@@ -150,6 +151,11 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	shiftRepo := repository.NewShiftRepo(db)
 	fileInfoRepo := repository.NewFileInfoRepo(db)
 	fileCategoryRepo := repository.NewFileCategoryRepo(db)
+	ologRepo := repository.NewOperationLogRepo(db)
+	// OpLogWriter 构造 + worker 启动（D-07 异步落库；D-05 声明制挂载的 sink 载体）。
+	// sink 注入 repo.InsertBatch——批量写收口数据访问层；chan 满丢弃不阻塞业务。
+	ologW := middleware.NewOpLogWriterWithSink(ologRepo.InsertBatch, logger)
+	ologW.Start()
 	userSvc := service.NewUserService(db, userRepo, relationRepo, roleRepo, deptRepo, sessionMgr, enf)
 	authSvc := service.NewAuthService(userRepo, relationRepo, apiKeyRepo, sessionMgr)
 	menuSvc := service.NewMenuService(menuRepo)
@@ -161,6 +167,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	shiftSvc := service.NewShiftService(shiftRepo)
 	fileSvc := service.NewFileService(db, fileInfoRepo, fileCategoryRepo, fileStorage)
 	fileCategorySvc := service.NewFileCategoryService(fileCategoryRepo)
+	ologSvc := service.NewOperationLogService(ologRepo)
 	userHandler := handler.NewUserHandler(userSvc)
 	authHandler := handler.NewAuthHandler(authSvc)
 	menuHandler := handler.NewMenuHandler(menuSvc)
@@ -173,6 +180,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	shiftHandler := handler.NewShiftHandler(shiftSvc)
 	fileHandler := handler.NewFileHandler(fileSvc)
 	fileCategoryHandler := handler.NewFileCategoryHandler(fileCategorySvc)
+	ologHandler := handler.NewOlogHandler(ologSvc)
 
 	engine := newRouter(h, handlers{
 		Auth:           authHandler,
@@ -187,7 +195,8 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		Shifts:         shiftHandler,
 		Files:          fileHandler,
 		FileCategories: fileCategoryHandler,
-	}, middleware.Auth(sessionMgr), enf, logger)
+		Ologs:          ologHandler,
+	}, middleware.Auth(sessionMgr), enf, logger, ologW)
 
 	return &App{
 		cfg:    cfg,
@@ -196,6 +205,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		db:     db,
 		rdb:    rdb,
 		health: h,
+		ologW:  ologW,
 		srv: &http.Server{
 			Addr:    fmt.Sprintf(":%d", cfg.Server.Port),
 			Handler: engine,
@@ -226,7 +236,8 @@ func (a *App) Run() error {
 	return nil
 }
 
-// Stop 优雅关停：先摘流（readyz 立即 503）→ 15s 排空在途请求 → 关 Redis/MySQL 连接。
+// Stop 优雅关停：先摘流（readyz 立即 503）→ 15s 排空在途请求 → drain 操作日志
+// chan 残留 → 关 Redis/MySQL 连接。
 func (a *App) Stop() {
 	a.health.SetNotReady()
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
@@ -234,6 +245,15 @@ func (a *App) Stop() {
 	if err := a.srv.Shutdown(ctx); err != nil {
 		a.logger.Error("http shutdown", "error", err.Error())
 	}
+	// Oplog flush（D-08 次序契约）：必须在 srv.Shutdown 之后（流量已停，无并发
+	// Enqueue，drain 语义严格成立）、sqlDB.Close 之前（chan 残留日志才能落库）——
+	// 先排空在途 HTTP 再 drain 日志，最后才关 DB。
+	flushCtx, flushCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer flushCancel()
+	if err := a.ologW.Flush(flushCtx); err != nil {
+		a.logger.Warn("oplog flush on shutdown", "error", err.Error())
+	}
+	a.ologW.Stop()
 	if sqlDB, err := a.db.DB(); err == nil {
 		_ = sqlDB.Close()
 	}
@@ -246,4 +266,10 @@ func (a *App) Stop() {
 // Engine 暴露 gin engine（供集成测试 httptest 复用真实装配，不经网络监听）。
 func (a *App) Engine() *gin.Engine {
 	return a.engine
+}
+
+// FlushOpLogs 同步排空操作日志 chan 并等待落库完成（D-08 flush 语义）。生产路径
+// 由 Stop 在 srv.Shutdown 之后调用；导出仅供集成测试做同步断言（免 sleep 轮询）。
+func (a *App) FlushOpLogs(ctx context.Context) error {
+	return a.ologW.Flush(ctx)
 }

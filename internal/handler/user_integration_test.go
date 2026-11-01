@@ -220,6 +220,7 @@ func newTestApp(t *testing.T) (*httptest.Server, string, func() string, int64) {
 
 	application, err := app.New(cfg, logger)
 	require.NoError(t, err, "app 装配失败")
+	testApplication = application // 供 Olog 集成测试 FlushOpLogs 同步断言（D-08）
 
 	ts := httptest.NewServer(application.Engine())
 	adminToken := func() string { return loginAs(t, ts, testAdminName, testAdminPass) }
