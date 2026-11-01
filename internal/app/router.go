@@ -13,16 +13,18 @@ import (
 
 // handlers 路由聚合（Wave 2/3 扩域时按域增字段，newRouter 签名不再反复变化）。
 type handlers struct {
-	Auth      *handler.AuthHandler
-	Users     *handler.UserHandler
-	Menus     *handler.MenuHandler
-	Depts     *handler.DeptHandler
-	Roles     *handler.RoleHandler
-	ApiKeys   *handler.ApiKeyHandler
-	DictTypes *handler.DictTypeHandler
-	DictDatas *handler.DictDataHandler
-	Configs   *handler.ConfigHandler
-	Shifts    *handler.ShiftHandler
+	Auth           *handler.AuthHandler
+	Users          *handler.UserHandler
+	Menus          *handler.MenuHandler
+	Depts          *handler.DeptHandler
+	Roles          *handler.RoleHandler
+	ApiKeys        *handler.ApiKeyHandler
+	DictTypes      *handler.DictTypeHandler
+	DictDatas      *handler.DictDataHandler
+	Configs        *handler.ConfigHandler
+	Shifts         *handler.ShiftHandler
+	Files          *handler.FileHandler
+	FileCategories *handler.FileCategoryHandler
 }
 
 // newRouter 装配路由：四中间件全局链（RequestID→AccessLog→Recovery→BodyLimit）+
@@ -38,6 +40,11 @@ type handlers struct {
 func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, az authz.Authorizer, logger *slog.Logger) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
+	// multipart 内存阈值（FILE-02 工控机 RSS 平稳验收）：超 8MB 的部分 multipart
+	// 自动落盘临时文件而非全量驻留内存（默认 32MB 过高）；全局 BodyLimit 对
+	// multipart 跳过后，大文件上传的内存上界由此阈值 + upload 路由级 20MB 独立
+	// 上限共同封顶。
+	engine.MaxMultipartMemory = 8 << 20
 	engine.Use(middleware.RequestID())
 	engine.Use(middleware.AccessLog(logger))
 	engine.Use(middleware.Recovery(logger))
@@ -144,6 +151,24 @@ func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, az authz.Au
 	pri.GET("/api/v1/shifts/:id", middleware.RequirePerm(az, authz.PermShiftQuery), hs.Shifts.Get)
 	pri.GET("/api/v1/shifts", middleware.RequirePerm(az, authz.PermShiftList), hs.Shifts.List)
 	pri.DELETE("/api/v1/shifts/:id", middleware.RequirePerm(az, authz.PermShiftRemove), hs.Shifts.Delete)
+
+	// 文件域四路由（FILE-01/02/03，Phase 4 04-02）：upload 叠加 20MB 路由级独立
+	// 上限（全局 1MB 对 multipart 跳过后该类请求的唯一封顶，T-4-06；
+	// download 挂 PermFileDownload——菜单存在此串非 super_admin 专属，D-16 核对结论）。
+	// file 域 perm 串 sys_menu 齐备（7 项），实际可经角色授权
+	pri.GET("/api/v1/files", middleware.RequirePerm(az, authz.PermFileList), hs.Files.List)
+	pri.POST("/api/v1/files/upload", middleware.BodyLimitWithMB(20), middleware.RequirePerm(az, authz.PermFileUpload), hs.Files.Upload)
+	pri.GET("/api/v1/files/download/:id", middleware.RequirePerm(az, authz.PermFileDownload), hs.Files.Download)
+	pri.DELETE("/api/v1/files/:id", middleware.RequirePerm(az, authz.PermFileRemove), hs.Files.Delete)
+
+	// 文件分类域五路由（FILE-04）：CRUD + 树端点（静态段 tree 与 :id 参数段共存；
+	// 树即列表档挂 PermFileList，GET :id 为 query 档——fileCategory 与 file 域
+	// 源共用 file:* 权限，不新增权限档）
+	pri.POST("/api/v1/file-categories", middleware.RequirePerm(az, authz.PermFileAdd), hs.FileCategories.Create)
+	pri.PUT("/api/v1/file-categories/:id", middleware.RequirePerm(az, authz.PermFileEdit), hs.FileCategories.Update)
+	pri.GET("/api/v1/file-categories/tree", middleware.RequirePerm(az, authz.PermFileList), hs.FileCategories.Tree)
+	pri.GET("/api/v1/file-categories/:id", middleware.RequirePerm(az, authz.PermFileQuery), hs.FileCategories.Get)
+	pri.DELETE("/api/v1/file-categories/:id", middleware.RequirePerm(az, authz.PermFileRemove), hs.FileCategories.Delete)
 
 	return engine
 }

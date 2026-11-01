@@ -164,6 +164,10 @@ var idsOnce sync.Once
 // 03-03 IN-14 双键直查断言引入）。
 var testRedisAddr string
 
+// testStorageRoot 当前测试的本地存储根目录（newTestApp 内赋值，同包测试可读）：
+// File 域集成测试经此直查 LocalStorage 落盘对象数（判重零副作用断言）。
+var testStorageRoot string
+
 // newTestApp 启动独立 MySQL+Redis 双容器（Phase 2 认证链依赖）+ 完整 app 装配 +
 // httptest server + 种子 admin（真实存量 BCrypt 哈希，D-10：每测试独立容器互不污染）。
 // Phase 3 起种子先于 app.New：boot 对账（app.New 内）从 sys_user_role/sys_role_menu
@@ -195,7 +199,14 @@ func newTestApp(t *testing.T) (*httptest.Server, string, func() string, int64) {
 		Auth:      config.AuthConfig{SessionTimeout: time.Hour},
 		Snowflake: config.SnowflakeConfig{Node: 1},
 		Log:       config.LogConfig{Level: "error"},
+		// File 域（04-02）：driver=local + 每测试独立临时根目录（PATTERNS 第 11 节
+		// 最小改动点；签名不变，落盘根经 testStorageRoot 供同包断言）
+		Storage: config.StorageConfig{
+			Driver: "local",
+			Local:  config.LocalStorageConfig{Root: t.TempDir()},
+		},
 	}
+	testStorageRoot = cfg.Storage.Local.Root
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// 种子三件套（boot 对账数据源，必须在 app.New 之前——对账读 sys_user_role）：

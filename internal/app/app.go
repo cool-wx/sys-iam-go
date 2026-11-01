@@ -24,6 +24,7 @@ import (
 	"github.com/cool-wx/sys-iam-go/internal/middleware"
 	"github.com/cool-wx/sys-iam-go/internal/repository"
 	"github.com/cool-wx/sys-iam-go/internal/service"
+	"github.com/cool-wx/sys-iam-go/internal/storage"
 )
 
 // 优雅关停排空预算（P16；systemd TimeoutStopSec 须大于此值，Pattern 5）。
@@ -128,6 +129,16 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 
 	sessionMgr := auth.NewSessionManager(rdb, cfg.Auth.SessionTimeout)
 
+	// FileStorage 构造（FILE-05，D-10）：插在 service 构造之前（照 enforcer/
+	// Redis Ping fail-fast 先例，存储基建不可用拒绝启动）；driver=local 时构造链
+	// 不触碰 minio（延迟形态），driver=s3 时构造内 EnsureBucket fail-fast。
+	storageCtx, storageCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	fileStorage, err := storage.New(storageCtx, cfg.Storage)
+	storageCancel()
+	if err != nil {
+		return nil, fmt.Errorf("init file storage: %w", err)
+	}
+
 	userRepo := repository.NewUserRepo(db)
 	apiKeyRepo := repository.NewApiKeyRepo(db)
 	menuRepo := repository.NewMenuRepo(db)
@@ -137,6 +148,8 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	dictDataRepo := repository.NewDictDataRepo(db)
 	configRepo := repository.NewSysConfigRepo(db)
 	shiftRepo := repository.NewShiftRepo(db)
+	fileInfoRepo := repository.NewFileInfoRepo(db)
+	fileCategoryRepo := repository.NewFileCategoryRepo(db)
 	userSvc := service.NewUserService(db, userRepo, relationRepo, roleRepo, deptRepo, sessionMgr, enf)
 	authSvc := service.NewAuthService(userRepo, relationRepo, apiKeyRepo, sessionMgr)
 	menuSvc := service.NewMenuService(menuRepo)
@@ -146,6 +159,8 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	dictSvc := service.NewDictService(dictTypeRepo, dictDataRepo)
 	configSvc := service.NewConfigService(configRepo)
 	shiftSvc := service.NewShiftService(shiftRepo)
+	fileSvc := service.NewFileService(db, fileInfoRepo, fileCategoryRepo, fileStorage)
+	fileCategorySvc := service.NewFileCategoryService(fileCategoryRepo)
 	userHandler := handler.NewUserHandler(userSvc)
 	authHandler := handler.NewAuthHandler(authSvc)
 	menuHandler := handler.NewMenuHandler(menuSvc)
@@ -156,18 +171,22 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	dictDataHandler := handler.NewDictDataHandler(dictSvc)
 	configHandler := handler.NewConfigHandler(configSvc)
 	shiftHandler := handler.NewShiftHandler(shiftSvc)
+	fileHandler := handler.NewFileHandler(fileSvc)
+	fileCategoryHandler := handler.NewFileCategoryHandler(fileCategorySvc)
 
 	engine := newRouter(h, handlers{
-		Auth:      authHandler,
-		Users:     userHandler,
-		Menus:     menuHandler,
-		Depts:     deptHandler,
-		Roles:     roleHandler,
-		ApiKeys:   apiKeyHandler,
-		DictTypes: dictTypeHandler,
-		DictDatas: dictDataHandler,
-		Configs:   configHandler,
-		Shifts:    shiftHandler,
+		Auth:           authHandler,
+		Users:          userHandler,
+		Menus:          menuHandler,
+		Depts:          deptHandler,
+		Roles:          roleHandler,
+		ApiKeys:        apiKeyHandler,
+		DictTypes:      dictTypeHandler,
+		DictDatas:      dictDataHandler,
+		Configs:        configHandler,
+		Shifts:         shiftHandler,
+		Files:          fileHandler,
+		FileCategories: fileCategoryHandler,
 	}, middleware.Auth(sessionMgr), enf, logger)
 
 	return &App{

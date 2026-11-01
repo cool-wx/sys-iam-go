@@ -71,6 +71,12 @@ func newShutdownApp(t *testing.T) (string, *app.App) {
 		Auth:      config.AuthConfig{SessionTimeout: time.Hour},
 		Snowflake: config.SnowflakeConfig{Node: 1},
 		Log:       config.LogConfig{Level: "error"},
+		// File 域（04-02）：app.New 无条件构造 FileStorage——测试 cfg 需 local driver
+		// + 独立临时根目录（与 handler 包 newTestApp 同构最小装配）
+		Storage: config.StorageConfig{
+			Driver: "local",
+			Local:  config.LocalStorageConfig{Root: t.TempDir()},
+		},
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	application, err := app.New(cfg, logger)
