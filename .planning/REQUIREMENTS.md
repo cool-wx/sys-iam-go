@@ -68,11 +68,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 文件管理（FILE）
 
-- [ ] **FILE-01**: 文件上传（MD5 判重，含 categoryId IS NULL 隐藏分支）
-- [ ] **FILE-02**: 文件流式下载（不整载内存，工控机友好增强）
-- [ ] **FILE-03**: 文件删除（存储端删除失败宽容继续删 DB 记录，源行为）
-- [ ] **FILE-04**: 文件分类 CRUD（FileCategory）
-- [ ] **FILE-05**: 存储后端可配置切换（本地磁盘默认 / RustFS-S3）
+- [x] **FILE-01**: 文件上传（MD5 判重，含 categoryId IS NULL 隐藏分支）
+- [x] **FILE-02**: 文件流式下载（不整载内存，工控机友好增强）
+- [x] **FILE-03**: 文件删除（存储端删除失败宽容继续删 DB 记录，源行为）
+- [x] **FILE-04**: 文件分类 CRUD（FileCategory）
+- [x] **FILE-05**: 存储后端可配置切换（本地磁盘默认 / RustFS-S3）
 
 ### 操作日志（OLOG）
 
@@ -182,11 +182,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DICT-02 | Phase 4 | Complete |
 | DICT-03 | Phase 4 | Complete |
 | CONF-01 | Phase 4 | Complete |
-| FILE-01 | Phase 4 | Pending |
-| FILE-02 | Phase 4 | Pending |
-| FILE-03 | Phase 4 | Pending |
-| FILE-04 | Phase 4 | Pending |
-| FILE-05 | Phase 4 | Pending |
+| FILE-01 | Phase 4 | Complete |
+| FILE-02 | Phase 4 | Complete |
+| FILE-03 | Phase 4 | Complete |
+| FILE-04 | Phase 4 | Complete |
+| FILE-05 | Phase 4 | Complete |
 | OLOG-01 | Phase 4 | Pending |
 | OLOG-02 | Phase 4 | Pending |
 | OLOG-03 | Phase 4 | Pending |

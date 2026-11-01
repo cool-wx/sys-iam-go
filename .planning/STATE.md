@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 4
 current_phase_name: 业务域与操作日志
 status: executing
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-11-01T09:49:11.933Z"
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-11-01T11:08:18.881Z"
 last_activity: 2026-11-01
 last_activity_desc: Phase 4 execution started
-state_head: a940b9a3a34a880e96004f486afd2e12b0c93831
+state_head: 6748849c5363590153e8a3ad9bce29b070c27df4
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 13
-  completed_plans: 10
+  completed_plans: 11
   percent: 60
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-01, Phase 3 transition)
 ## Current Position
 
 Phase: 4 (业务域与操作日志) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-11-01 — Phase 4 execution started
 
@@ -68,6 +68,7 @@ Progress: [██████░░░░] 60%
 | Phase 03 P03-02 | 36min | 2 tasks | 17 files |
 | Phase 03 P03-03 | 40min | 2 tasks | 8 files |
 | Phase 04 P01 | 37min | 2 tasks | 28 files |
+| Phase 04 P02 | 75min | 2 tasks | 24 files |
 
 ## Accumulated Context
 
@@ -111,6 +112,11 @@ Recent decisions affecting current work:
 - [Phase 04]: 04-01: 1062 翻译统一 400/10400 域文案（Phase 2 role.go 实证惯例非 409）；dict-datas 路由复用 PermDictType* 常量（源共用 dict:* 权限档）
 - [Phase 04]: 04-01: Shift list 全量数组直出保留（SHFT-01 源行为直译是验收点非缺陷）；shift/fault perm 发明串 v1 仅 super_admin（Phase 3 Q2 先例）
 - [Phase 04]: 04-01: perms.go 六域 29 常量一次加齐（后续 plan 零改动消除串行链文件冲突）；DDL 8 文件一次全落（glob 自动加载）
+- [Phase 04]: File 域判重五语义按源 FileUploadHashDedupTest 直译：categoryId eq/IS NULL 双分支（唯一索引对 NULL 互不相等），拒绝消息带本次上传原名，判重命中前零存储/DB 副作用
+- [Phase 04]: 上传链 Seek(0) 重放替代研究期 TeeReader 表述（D-12 语义不变）：流式 MD5 判重→拒绝零副作用→事务内 Create+Put（Put 失败回滚，源 save DB→存储同序）
+- [Phase 04]: multipart 双层封顶：全局 BodyLimit 1MB 按 Content-Type 跳过 multipart + 路由级 BodyLimitWithMB(20)（外层先包内层恒失效）+ MaxMultipartMemory 8MB 落盘
+- [Phase 04]: 下载 Content-Disposition 手写 RFC 5987（filename*=UTF-8'' + url.PathEscape）承载中文并消除 CR/LF 头注入面（T-4-03），恒 attachment（T-4-05 缓解面）
+- [Phase 04]: FileCategory 上级分类不存在按 04-02 PLAN 拍板 404/10300（与部门域 400 不同）；Update 加 WR-04 成环拦截照 dept 同构
 
 ### Pending Todos
 
@@ -136,6 +142,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-01T09:49:11.780Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-11-01T11:08:18.719Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None
