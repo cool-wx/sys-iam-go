@@ -9,7 +9,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/cool-wx/sys-iam-go/internal/middleware"
 	"github.com/cool-wx/sys-iam-go/internal/model/dto"
 	"github.com/cool-wx/sys-iam-go/internal/service"
 	"github.com/cool-wx/sys-iam-go/pkg/errcode"
@@ -34,10 +33,12 @@ func bindJSON(c *gin.Context, obj any) bool {
 	if err := c.ShouldBindJSON(obj); err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			// 文案由 middleware.MaxBodyMB 生成（单一事实源，IN-10）——上限调整时
-			// 文案随之更新，不会过期失真。
+			// 文案由实际触发的截断层 limit 生成（MaxBytesError.Limit，IN-02）——
+			// multipart Content-Type 打 JSON 路由超全局 multipart 兜底（CR-01，
+			// 20MB）时文案报 20 而非按 MaxBodyMB 固定生成的 1，与实际上限永不漂移；
+			// 各 BodyLimit 层上限均为整 MB（<<20 派生），右移整除安全。
 			resp.Fail(c, errcode.New(errcode.CodeValidation,
-				fmt.Sprintf("请求体超过 %dMB 上限", middleware.MaxBodyMB)))
+				fmt.Sprintf("请求体超过 %dMB 上限", tooLarge.Limit>>20)))
 			return false
 		}
 		resp.Fail(c, errcode.New(errcode.CodeValidation, "参数校验失败: "+err.Error()))
