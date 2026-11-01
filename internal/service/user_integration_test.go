@@ -17,6 +17,7 @@ import (
 	"github.com/cool-wx/sys-iam-go/internal/repository"
 	"github.com/cool-wx/sys-iam-go/internal/service"
 	"github.com/cool-wx/sys-iam-go/internal/testutil"
+	"github.com/cool-wx/sys-iam-go/pkg/ids"
 )
 
 // strPtr 返回字符串指针。
@@ -47,11 +48,17 @@ func TestUpdateAuditWithIdentity(t *testing.T) {
 	svc := service.NewUserService(db, repo,
 		repository.NewRelationRepo(db), repository.NewRoleRepo(db), repository.NewDeptRepo(db), nil)
 
-	// create（无 identity 上下文——create_by 保持 NULL，不影响本断言目标）
+	// create（无 identity 上下文——create_by 保持 NULL，不影响本断言目标）。
+	// 02-03 起 Create 强制部门校验链（deptId 必填且必须存在）——先 seed 部门再挂载。
+	require.NoError(t, db.Exec(
+		"INSERT INTO sys_dept (id, dept_name, sort, status, create_time, update_time) VALUES (100, '审计部', 0, 1, NOW(), NOW())",
+	).Error)
+	deptID := ids.ID(100)
 	created, err := svc.Create(context.Background(), &dto.UserCreateReq{
 		Username: strPtr("audit-identity"),
 		Password: strPtr("pw-123456"),
 		RealName: strPtr("审计更新"),
+		DeptID:   &deptID,
 	})
 	require.NoError(t, err, "service.Create 失败")
 
