@@ -20,21 +20,26 @@ const (
 	// Phase 2 builtin 冲突段：HTTP 409（D-14 builtin 守卫统一语义——USER-07/ROLE-02）。
 	CodeBuiltinUser = 10601 // 系统内置用户不可删除（02-03 User 域复用）
 	CodeBuiltinRole = 10602 // 系统内置角色不可删除
+	// Phase 3 builtin 分配守卫（CR-03 提权收口）：HTTP 403——非 super_admin 操作者
+	// 分配 builtin 角色属越权行为（非资源状态冲突），与 10601/10602 的 409 删除冲突
+	// 语义区分。
+	CodeBuiltinRoleAssign = 10603 // 系统内置角色仅 super_admin 可分配
 )
 
 // 分段错误单例（消息文案为出网固定文案）。
 var (
-	ErrInternal        = New(CodeInternal, "服务器内部错误")
-	ErrUnauthenticated = New(CodeUnauthenticated, "未登录")
-	ErrForbidden       = New(CodeForbidden, "无权限")
-	ErrNotFound        = New(CodeNotFound, "数据不存在")
-	ErrInvalidParam    = New(CodeInvalidParam, "参数无效")
-	ErrValidation      = New(CodeValidation, "参数校验失败")
-	ErrBadCredentials  = New(CodeBadCredentials, "用户名或密码错误")
-	ErrUserDisabled    = New(CodeUserDisabled, "用户已被禁用")
-	ErrApiKeyInvalid   = New(CodeApiKeyInvalid, "API Key 无效或已过期")
-	ErrBuiltinUser     = New(CodeBuiltinUser, "系统内置用户不可删除")
-	ErrBuiltinRole     = New(CodeBuiltinRole, "系统内置角色不可删除")
+	ErrInternal          = New(CodeInternal, "服务器内部错误")
+	ErrUnauthenticated   = New(CodeUnauthenticated, "未登录")
+	ErrForbidden         = New(CodeForbidden, "无权限")
+	ErrNotFound          = New(CodeNotFound, "数据不存在")
+	ErrInvalidParam      = New(CodeInvalidParam, "参数无效")
+	ErrValidation        = New(CodeValidation, "参数校验失败")
+	ErrBadCredentials    = New(CodeBadCredentials, "用户名或密码错误")
+	ErrUserDisabled      = New(CodeUserDisabled, "用户已被禁用")
+	ErrApiKeyInvalid     = New(CodeApiKeyInvalid, "API Key 无效或已过期")
+	ErrBuiltinUser       = New(CodeBuiltinUser, "系统内置用户不可删除")
+	ErrBuiltinRole       = New(CodeBuiltinRole, "系统内置角色不可删除")
+	ErrBuiltinRoleAssign = New(CodeBuiltinRoleAssign, "系统内置角色仅超级管理员可分配")
 )
 
 // Error 业务错误类型：经调用链传播，由 pkg/resp 统一出口写出。
@@ -62,7 +67,7 @@ func (e *Error) HTTPStatus() int {
 	case CodeUnauthenticated, CodeBadCredentials,
 		CodeUserDisabled, CodeApiKeyInvalid, CodeApiKeyNoUser, CodeApiKeyUserMissing, CodeApiKeyUserDisabled:
 		return 401
-	case CodeForbidden:
+	case CodeForbidden, CodeBuiltinRoleAssign:
 		return 403
 	case CodeBuiltinUser, CodeBuiltinRole:
 		return 409

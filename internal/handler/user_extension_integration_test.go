@@ -163,6 +163,62 @@ func TestUserRolesAssignReplace(t *testing.T) {
 	require.Equal(t, int64(0), userRoleCount(t, checkDB, uid))
 }
 
+// TestUserRolesBuiltinAssignGuard builtin 角色分配提权守卫（CR-03 回归）：
+// 仅持 system:user:edit 的操作者把 builtin 角色分配给任意用户 → 403/10603 且
+// sys_user_role 与 casbin g 行零变化（前置拦截零写调用）；super_admin 分配
+// builtin 角色 → 200（守卫不误伤特权路径）。
+func TestUserRolesBuiltinAssignGuard(t *testing.T) {
+	ts, dsn, adminToken, _ := newTestApp(t)
+	token := adminToken()
+	seedDept(t, dsn, 100, "总部")
+
+	uidStr := createRawUser(t, ts, token, `{"username":"guard-target","password":"pw-123456","realName":"守卫目标","deptId":"100"}`)
+	uid, _ := strconv.ParseInt(uidStr, 10, 64)
+
+	// 操作者：仅持 user:edit 的角色（无 super_admin）——CR-03 攻击链主体
+	editorID := seedUser(t, dsn, "guard-editor", testAdminHash, "编辑者", 1, false)
+	grantUserPerm(t, ts, token, dsn, editorID, "system:user:edit", "guard_editor_role")
+	editorToken := loginAs(t, ts, "guard-editor", testAdminPass)
+
+	// super_admin 角色行（builtin=true，seed 直插——不可经 API 创建）
+	superRoleID := seedRoleWithScope(t, dsn, "超级管理员", "guard_super_admin", true, 5)
+	superRoleIDStr := strconv.FormatInt(superRoleID, 10)
+
+	// 攻击尝试：editor 把 builtin super_admin 分配给目标用户 → 403/10603
+	status, body := assignRoles(t, ts, editorToken, uidStr, `"`+superRoleIDStr+`"`)
+	require.Equal(t, http.StatusForbidden, status, "非 super_admin 分配 builtin 角色必须 403: body=%s", body)
+	var forbidden struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(body, &forbidden))
+	assert.Equal(t, 10603, forbidden.Code, "业务码必须 10603: body=%s", body)
+	assert.Contains(t, forbidden.Message, "系统内置角色仅超级管理员可分配", "body=%s", body)
+
+	// 前置拦截零写调用：业务表与 casbin g 行均零变化
+	checkDB := openCheckDB(t, dsn)
+	require.Equal(t, int64(0), userRoleCount(t, checkDB, uid), "守卫必须前置拦截，sys_user_role 不得有写入")
+	var gRows int64
+	require.NoError(t, checkDB.Raw(
+		"SELECT COUNT(*) FROM casbin_rule WHERE ptype = 'g' AND v1 = 'guard_super_admin'",
+	).Scan(&gRows).Error)
+	assert.Equal(t, int64(0), gRows, "casbin g 行必须零变化（提权链整体封死）")
+
+	// 对比组：editor 分配普通角色 → 200（守卫不影响普通分配）
+	normalRole := createRole(t, ts, token, "普通角色", "guard_normal_role")
+	status, body = assignRoles(t, ts, editorToken, uidStr, `"`+normalRole+`"`)
+	require.Equal(t, http.StatusOK, status, "非 builtin 角色分配必须不受守卫影响: body=%s", body)
+
+	// 特权路径：super_admin 分配 builtin 角色 → 200（D-07 豁免者管理自有角色合法）
+	status, body = assignRoles(t, ts, token, uidStr, `"`+superRoleIDStr+`"`)
+	require.Equal(t, http.StatusOK, status, "super_admin 分配 builtin 角色必须放行: body=%s", body)
+	require.NoError(t, checkDB.Raw(
+		"SELECT COUNT(*) FROM casbin_rule WHERE ptype = 'g' AND v0 = ? AND v1 = 'guard_super_admin'",
+		uidStr,
+	).Scan(&gRows).Error)
+	assert.Equal(t, int64(1), gRows, "特权分配后 g 行必须同步写入")
+}
+
 // TestUserRolesInvalidRole 分配含不存在 roleId：400 + 消息精确含
 // 「角色不存在: [逗号拼接]」式串（缺失集合式，格式照源）；校验前置不动存量。
 func TestUserRolesInvalidRole(t *testing.T) {

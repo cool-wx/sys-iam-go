@@ -329,11 +329,32 @@ func userNotFound(id int64) *errcode.Error {
 	return errcode.New(errcode.CodeNotFound, fmt.Sprintf("用户不存在: %d", id))
 }
 
+// assignerIsSuperAdmin 判定当前操作者会话 roles 快照是否含 super_admin（CR-03
+// builtin 分配守卫判据）。与 enforcer 豁免判据（D-07 g 层）刻意区分：此处是
+// 【管理操作准入】判定（谁能分配 builtin 角色），非运行期授权判定——角色分配端点
+// 已被 RequirePerm(system:user:edit) gate，会话快照仅做提权收紧的第二判据（会话
+// roles 由登录装配，super_admin 角色回收后新登录即失去分配资格，窗口有限）。
+// identity 缺失（防御分支，正常装配不可达）返回 false fail-closed。
+func assignerIsSuperAdmin(ctx context.Context) bool {
+	identity, ok := auth.FromContext(ctx)
+	if !ok {
+		return false
+	}
+	for _, rc := range identity.Roles {
+		if rc == "super_admin" {
+			return true
+		}
+	}
+	return false
+}
+
 // AssignRoles 分配用户角色（全量替换语义，USER-04/D-12）：用户校验（「用户不存在:
 // {id}」）→ roleRepo.FindByIDs 前置全量校验（缺失集合译 400「角色不存在: [逗号拼接]」，
 // 消息格式照源；校验前置优于源"事务内先删后校验"，与 02-02 assignMenus 同决策）
-// → db.Transaction{ DeleteUserRolesByUserID + BatchCreateUserRoles }——删旧插新
-// 同事务，杜绝"删后插前"窗口期。空数组=全回收（合法语义）。
+// → builtin 提权守卫（CR-03：请求含 builtin 角色时要求操作者持 super_admin，否则
+// 403/10603 前置拦截零写调用）→ db.Transaction{ DeleteUserRolesByUserID +
+// BatchCreateUserRoles }——删旧插新同事务，杜绝"删后插前"窗口期。空数组=全回收
+// （合法语义）。
 //
 // 行冗余列：role_name=角色名；username 列存 **realName 非空白优先回退 username**
 // 的值——源 UserApplicationService.java:182-201 该列命名与内容不符（列名 username、
@@ -361,6 +382,8 @@ func (s *UserService) AssignRoles(ctx context.Context, userID int64, roleIDs []i
 	roleNameOf := make(map[int64]string, len(reqIDs))
 	// 同一次 FindByIDs 结果顺带收集 casbin g 行原料 roleCode（勿二次查库）
 	roleCodeOf := make(map[int64]string, len(reqIDs))
+	// builtin 标志（CR-03 提权守卫判定原料，同次查询顺带收集）
+	builtinOf := make(map[int64]*bool, len(reqIDs))
 	if len(reqIDs) > 0 {
 		roles, err := s.roleRepo.FindByIDs(ctx, reqIDs)
 		if err != nil {
@@ -369,6 +392,7 @@ func (s *UserService) AssignRoles(ctx context.Context, userID int64, roleIDs []i
 		for i := range roles {
 			roleNameOf[roles[i].ID] = roles[i].RoleName
 			roleCodeOf[roles[i].ID] = roles[i].RoleCode
+			builtinOf[roles[i].ID] = roles[i].Builtin
 		}
 	}
 	var missing []string
@@ -379,6 +403,20 @@ func (s *UserService) AssignRoles(ctx context.Context, userID int64, roleIDs []i
 	}
 	if len(missing) > 0 {
 		return errcode.New(errcode.CodeInvalidParam, "角色不存在: ["+strings.Join(missing, ", ")+"]")
+	}
+	// builtin 提权守卫（CR-03，前置拦截零写调用）：请求集合含 builtin 角色时要求
+	// 操作者会话 roles 快照含 super_admin，否则 403/10603——堵住仅持 system:user:edit
+	// 的操作者经合法角色分配端点把 super_admin 分配给自己/他人的提权链（g 行经
+	// SyncUserRoles 即时双写，下一请求即生效；D-07 豁免判据在 enforcer g 层，拿到
+	// super_admin g 行=拿到全权）。与 RoleService.Delete 的 builtin 守卫同哲学：
+	// 前置拦截，业务表与 casbin 双轨零写入。identity 缺失（防御分支，正常装配必有）
+	// 视为无 super_admin，fail-closed。普通角色分配完全不受影响。
+	if !assignerIsSuperAdmin(ctx) {
+		for _, rid := range reqIDs {
+			if b := builtinOf[rid]; b != nil && *b {
+				return errcode.ErrBuiltinRoleAssign
+			}
+		}
 	}
 	// 源命名错位：sys_user_role.username 列内容为展示名（realName 非空白优先，回退
 	// username）——等价源 SaTokenConfig.java:120-137 审计操作人同款语义。
