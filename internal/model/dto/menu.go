@@ -23,8 +23,9 @@ type MenuCreateReq struct {
 
 // MenuUpdateReq 更新菜单请求：全指针字段，nil=未提供（不写库），空串=显式清空。
 // parentId 显式传入时联动父校验 + parentName 重冗余（源 editMenu resolveParentName
-// 语义）；不显式传则不动父。白名单收敛于本结构键集（T-1-10），status 契约经
-// UsageStatus（未知兜底 ENABLED 落库）。
+// 语义）；不显式传则不动父。白名单收敛于本结构键集（T-1-10）；status 经 UsageStatus
+// 严格解析——非空未知值 400/10401（WR-03 收紧：此前的「未知兜底 ENABLED 落库」会把
+// 拼错的停用值静默反转回启用），null/缺失落 nil 指针由更新分支承接（不写库）。
 type MenuUpdateReq struct {
 	Name       *string            `json:"name"`
 	Type       *types.MenuType    `json:"type"`
