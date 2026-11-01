@@ -19,11 +19,11 @@ Requirements for initial release. Each maps to roadmap phases.
 ### 权限体系 Casbin（PERM）
 
 - [x] **PERM-01**: Casbin RBAC 模型落地：用户-角色-功能权限（菜单/按钮级权限串）
-- [ ] **PERM-02**: 权限变更即时生效（策略热重载，无需重新登录）
+- [x] **PERM-02**: 权限变更即时生效（策略热重载，无需重新登录）
 - [x] **PERM-03**: 数据权限 dataScope 行过滤：本人/本部门/本部门及以下/指定部门/全部，五档
 - [x] **PERM-04**: Casbin 策略持久化到新建原生策略表（现有 sys_role_menu/sys_menu 不动，双轨）
 - [x] **PERM-05**: 管理员可通过角色授权接口管理策略（分配/回收功能权限，写 Casbin 策略）
-- [ ] **PERM-06**: 路由级权限声明中间件（requirePerm）拦截无权访问并返回 403
+- [x] **PERM-06**: 路由级权限声明中间件（requirePerm）拦截无权访问并返回 403
 
 ### 用户管理（USER）
 
@@ -173,11 +173,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AKEY-01 | Phase 2 | Complete |
 | AKEY-02 | Phase 2 | Complete |
 | PERM-01 | Phase 3 | Complete |
-| PERM-02 | Phase 3 | Pending |
+| PERM-02 | Phase 3 | Complete |
 | PERM-03 | Phase 3 | Complete |
 | PERM-04 | Phase 3 | Complete |
 | PERM-05 | Phase 3 | Complete |
-| PERM-06 | Phase 3 | Pending |
+| PERM-06 | Phase 3 | Complete |
 | DICT-01 | Phase 4 | Pending |
 | DICT-02 | Phase 4 | Pending |
 | DICT-03 | Phase 4 | Pending |

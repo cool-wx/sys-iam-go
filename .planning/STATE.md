@@ -2,17 +2,17 @@
 gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: Casbin 授权与数据权限
-status: executing
-stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-11-01T05:37:59.002Z"
+status: verifying
+stopped_at: Completed 03-03-PLAN.md
+last_updated: "2026-11-01T06:20:25.515Z"
 last_activity: 2026-11-01
 last_activity_desc: Phase 3 execution started
-state_head: 7ccbbf8b6b73a87f815a3f11acff7243ec7b0bfb
+state_head: 41bfa981191e6c69711e54fe0164d56c5a566d8e
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 9
-  completed_plans: 8
+  completed_plans: 9
   percent: 40
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-01, Phase 2 transition)
 
 Phase: 3 (Casbin 授权与数据权限) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-01 — Phase 3 execution started
 
 Progress: [████░░░░░░] 40%
@@ -65,6 +65,7 @@ Progress: [████░░░░░░] 40%
 | Phase 02 P03 | 50 min | 2 tasks | 17 files |
 | Phase 03 P03-01 | 50min | 2 tasks | 19 files |
 | Phase 03 P03-02 | 36min | 2 tasks | 17 files |
+| Phase 03 P03-03 | 40min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -103,6 +104,8 @@ Recent decisions affecting current work:
 - [Phase 03]: super_admin 不做档位特判——严格表驱动；测试种子 data_scope=5 保既有列表行为，生产存量 NULL 行修正走 PUT /roles/:id（现场部署清单项） — 03-02 裁决记录 1/3：档位语义走表驱动实时查询无缓存，super_admin 无豁免分支
 - [Phase 03]: '无角色 fail-closed' 经授权面的可观察形态 = 仅 NULL 档角色持 list perm → 本人档；Widest 对域外档位值按 max 语义原样参与、经 Apply default 落 1=0 双保险 — D-10/D-11 值域锁定 + T-3-07/T-3-09 fail-closed 兜底；纯无角色在 RequirePerm 层即 403
 - [Phase 03]: dataScope 域接入模板确立——service resolveScope 编排（identity→行→档位聚合→部门集装配）+ repo 闭包 filter.Apply（Count/Find 同闭包防 total 漂移）；Phase 4 各域照此复制 — D-09/D-12 通用件定位：internal/datascope table 参数化无 user 域耦合
+- [Phase 03]: [Phase 03] 03-03: 全量收口后既有测试适配走授权链不拆 gate——grantUserPerm 经 API 链同步 enforcer（03-01 的"改探未挂 gate 端点"绕行方式在全量收口后失效，prohibition「修测试种子授权」落地形态）
+- [Phase 03]: [Phase 03] 03-03: IN-14 撤销粒度 user 轴（KickoutUser 连坐密码登录会话）为 D-16 拍板语义——反查键无 TTL 恒可反查，apikey-token 映射 TTL 过期恰是缺口本身；撤销尽力而为不阻断 10503（T-3-11 accept）
 
 ### Pending Todos
 
@@ -113,8 +116,8 @@ None yet.
 - [现场部署] arm64 真实工控机首启 healthz 200 确认（qemu 全链路已代证，随部署三步执行）
 - [现场部署] 生产库 20 条 BCrypt hash 抽样验证（开发库活体直证已代证 D-16；MySQL collation 已实证 utf8mb4_general_ci）
 - [现场部署] Nacos craft-satoken.yaml timeout 真值校正（D-06 已 30d 代理 + IAM_AUTH_SESSION_TIMEOUT 可覆盖；rnacos 空实例确认永不可得）
-- [Phase 3] IN-14 过期 key 存量会话无自动撤销触发点（补偿路径充分：显式停用走 Kick 链 + 用户轴兜底）——反向索引落地时收口
-- [Phase 3] 管理端点全量授权（kickout 已收紧 super_admin 过渡态；requirePerm 全量收口）
+- ~~[Phase 3] IN-14 过期 key 存量会话无自动撤销触发点~~ — 03-03 收口（iam:apikey-user: 反查键三件落地，过期 key 登录拒绝即撤销存量会话）
+- ~~[Phase 3] 管理端点全量授权~~ — 03-03 收口（34+2 路由逐路由 requirePerm，RequireRoles 仅 kickout 叠加保留）
 
 ## Deferred Items
 
@@ -126,6 +129,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-01T05:37:48.527Z
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-11-01T06:20:25.409Z
+Stopped at: Completed 03-03-PLAN.md
 Resume file: None
