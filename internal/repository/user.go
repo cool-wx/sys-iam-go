@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/cool-wx/sys-iam-go/internal/auth"
+	"github.com/cool-wx/sys-iam-go/internal/datascope"
 	"github.com/cool-wx/sys-iam-go/internal/model/po"
 	"github.com/cool-wx/sys-iam-go/pkg/errcode"
 )
@@ -68,14 +69,19 @@ func (r *UserRepo) Patch(ctx context.Context, id int64, cols map[string]any) err
 	return nil
 }
 
-// List 分页查询：Count 与记录查询经同一闭包构造（Phase 1 无过滤条件，条件集
-// 天然一致，防 total 漂移，P15）；排序 create_time DESC, id DESC——稳定 tiebreaker
-// 保证同秒插入时翻页不漂移；排序串为代码常量，无 ORDER 注入面（T-1-10）。
+// List 分页查询：Count 与记录查询经同一闭包构造（条件集天然一致，防 total 漂移，
+// P15）；datascope.Filter 统一在闭包内 Apply——**total 与行集出自同一过滤闭包**
+// （PERM-03：dataScope 档位同时约束 Count 与 Find，列表页 total 不漂移，T-3-06/
+// T-3-07 缓解）；排序 create_time DESC, id DESC——稳定 tiebreaker 保证同秒插入时
+// 翻页不漂移；排序串为代码常量，无 ORDER 注入面（T-1-10）。
 // page/size 已由 paging.Parse 钳位（≥1 且 page ≤ maxPage）；Offset 计算后仍防负
-// （int 溢出双保险，WR-03，P8）。
-func (r *UserRepo) List(ctx context.Context, page, size int) ([]po.UserPO, int64, error) {
+// （int 溢出双保险，WR-03，P8）。filter 为 datascope 五档解析产物；Apply 零条件
+// 档（ModeAll）返回原 query，闭包语义不变。
+func (r *UserRepo) List(ctx context.Context, page, size int, filter datascope.Filter) ([]po.UserPO, int64, error) {
 	q := func() *gorm.DB {
-		return r.db.WithContext(ctx).Model(&po.UserPO{})
+		// table "sys_user" 为代码常量调用（列名白名单在 datascope 包内硬编码，
+		// 值全占位符参数化——T-3-06/T-1-03）
+		return filter.Apply(r.db.WithContext(ctx).Model(&po.UserPO{}), "sys_user")
 	}
 	var total int64
 	if err := q().Count(&total).Error; err != nil {

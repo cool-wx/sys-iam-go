@@ -64,7 +64,8 @@ func apikeyLogin(t *testing.T, ts *httptest.Server, apiKey string) (int, []byte)
 }
 
 // seedRole 直插 sys_role 行，返回 roleId（WR-05 kickout 授权测试种子：角色在
-// 登录时装入会话 roles 快照）。
+// 登录时装入会话 roles 快照）。data_scope 不写（NULL 列）——03-02 起档位驱动的
+// 行过滤测试用 seedRoleWithScope 变体。
 func seedRole(t *testing.T, dsn, roleName, roleCode string, builtin bool) int64 {
 	t.Helper()
 	db := openCheckDB(t, dsn)
@@ -74,6 +75,35 @@ func seedRole(t *testing.T, dsn, roleName, roleCode string, builtin bool) int64 
 		id, roleName, roleCode, builtin,
 	)
 	require.EqualValues(t, 1, rows, "seedRole 必须插入 1 行")
+	return id
+}
+
+// seedRoleWithScope seedRole 的档位变体（PERM-03：data_scope 直插——档位驱动的
+// 行过滤断言需要非 NULL 档位行）。
+func seedRoleWithScope(t *testing.T, dsn, roleName, roleCode string, builtin bool, dataScope int8) int64 {
+	t.Helper()
+	db := openCheckDB(t, dsn)
+	id := int64(ids.NewID())
+	rows := execMust(t, db,
+		"INSERT INTO sys_role (id, role_name, role_code, data_scope, status, builtin, create_time, update_time) VALUES (?, ?, ?, ?, 1, ?, NOW(), NOW())",
+		id, roleName, roleCode, dataScope, builtin,
+	)
+	require.EqualValues(t, 1, rows, "seedRoleWithScope 必须插入 1 行")
+	return id
+}
+
+// seedUserWithDeptCreator seedUser 的数据面变体（PERM-03 五档行集断言）：dept_id
+// 与 create_by_id 直插——档 2/3/4 按 dept_id 过滤、档 1 按 create_by_id 过滤的
+// 行集数据源。deptID/creatorID 可 nil（NULL 列）。
+func seedUserWithDeptCreator(t *testing.T, dsn, username, passwordHash, realName string, status int8, builtin bool, deptID *int64, creatorID *int64) int64 {
+	t.Helper()
+	db := openCheckDB(t, dsn)
+	id := int64(ids.NewID())
+	rows := execMust(t, db,
+		"INSERT INTO sys_user (id, username, password, real_name, dept_id, create_by_id, status, builtin, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())",
+		id, username, passwordHash, realName, deptID, creatorID, status, builtin,
+	)
+	require.EqualValues(t, 1, rows, "seedUserWithDeptCreator 必须插入 1 行")
 	return id
 }
 

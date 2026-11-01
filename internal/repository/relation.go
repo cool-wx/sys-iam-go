@@ -28,6 +28,13 @@ type RolePermRule struct {
 	Perm     string
 }
 
+// RoleScope 用户角色档位投影（datascope Resolve 数据源，PERM-03）：role_id +
+// data_scope 指针列——NULL 精确保留（存量行为 NULL 的角色不贡献档位，Widest 跳过）。
+type RoleScope struct {
+	RoleID    int64
+	DataScope *int8
+}
+
 // RelationRepo 关联表数据访问（只读最小面；写路径随 Wave 2/3 角色分配需求扩展）。
 type RelationRepo struct {
 	db *gorm.DB
@@ -67,6 +74,36 @@ func (r *RelationRepo) FindRolesByUserIDs(ctx context.Context, userIDs []int64) 
 			RoleName: row.RoleName,
 			RoleCode: row.RoleCode,
 		})
+	}
+	return out, nil
+}
+
+// FindRoleScopesByUserIDs 一次 IN 查询返回 user→(roleID, data_scope) 映射（照
+// FindRolesByUserIDs JOIN 模板）：datascope 档位聚合（Widest）与档位 4 角色部门
+// 集查询（FindDeptIDsByRoleIDs）的单一数据源（service Resolve 挂接，PERM-03）。
+// 行内 role 行已被 JOIN 过滤（不存在的 role_id 不产生行）。返回 map 恒非 nil
+// （无角色用户缺席即可）。
+func (r *RelationRepo) FindRoleScopesByUserIDs(ctx context.Context, userIDs []int64) (map[int64][]RoleScope, error) {
+	out := make(map[int64][]RoleScope, len(userIDs))
+	if len(userIDs) == 0 {
+		return out, nil
+	}
+	var rows []struct {
+		UserID    int64
+		RoleID    int64
+		DataScope *int8
+	}
+	err := r.db.WithContext(ctx).
+		Table("sys_user_role AS ur").
+		Select("ur.user_id, r.id AS role_id, r.data_scope").
+		Joins("JOIN sys_role r ON ur.role_id = r.id").
+		Where("ur.user_id IN ?", userIDs).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out[row.UserID] = append(out[row.UserID], RoleScope{RoleID: row.RoleID, DataScope: row.DataScope})
 	}
 	return out, nil
 }

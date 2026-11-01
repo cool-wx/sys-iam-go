@@ -193,8 +193,11 @@ func newTestApp(t *testing.T) (*httptest.Server, string, func() string, int64) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// 种子三件套（boot 对账数据源，必须在 app.New 之前——对账读 sys_user_role）：
-	// super_admin 内置角色 + admin 用户 + 关联。data_scope 置 NULL（本 plan 不依赖）
-	superRoleID := seedRole(t, dsn, "超级管理员", "super_admin", true)
+	// super_admin 内置角色 + admin 用户 + 关联。super_admin data_scope=5（03-02
+	// 裁决记录 3：GET /users 挂 dataScope 过滤后，档 NULL 的 admin 会回退最窄档
+	// 本人——既有全量列表断言将崩溃；档 5 无过滤保持 Phase 2 行为。生产存量
+	// super_admin 行的修正走既有 PUT /roles/:id，属现场部署清单项）
+	superRoleID := seedRoleWithScope(t, dsn, "超级管理员", "super_admin", true, 5)
 	adminID := seedUser(t, dsn, testAdminName, testAdminHash, testAdminRealName, 1, true)
 	attachRoleToUser(t, dsn, adminID, superRoleID, "超级管理员")
 
@@ -310,6 +313,16 @@ func seedDept(t *testing.T, dsn string, id int64, name string) {
 	execMust(t, db,
 		"INSERT INTO sys_dept (id, dept_name, sort, status, create_time, update_time) VALUES (?, ?, 0, 1, NOW(), NOW())",
 		id, name,
+	)
+}
+
+// seedDeptChild seedDept 的子节点变体（PERM-03 档 3 子树展开断言的三层树数据面）。
+func seedDeptChild(t *testing.T, dsn string, id, parentID int64, name string) {
+	t.Helper()
+	db := openCheckDB(t, dsn)
+	execMust(t, db,
+		"INSERT INTO sys_dept (id, parent_id, dept_name, sort, status, create_time, update_time) VALUES (?, ?, ?, 0, 1, NOW(), NOW())",
+		id, parentID, name,
 	)
 }
 

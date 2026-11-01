@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -204,4 +205,147 @@ func TestPermDeleteCascades(t *testing.T) {
 		roleCode, roleCode,
 	).Scan(&before).Error)
 	assert.Equal(t, int64(0), before.Cnt, "删除角色后 casbin_rule 必须无该角色任何 p/g 行（ClearRole 双清）")
+}
+
+// TestUserDataScope dataScope 五档行差异（PERM-03 验收核心，03-RESEARCH 四步断言
+// 法第 4 步）。种子数据集：dept 三层树 D1(根)←D1a←D1a1 + 独立 D2；用户 C 挂 D1、
+// A 挂 D1a1、B 挂 D2（create_by_id=admin），另有 create_by_id=C 的自建行落 D2
+// （档 1 只认 create_by_id 不认 dept——落 D2 以与档 2/4 行集区分）。对 C 依次配
+// 单一角色五档断言（每档角色 seed 后 AssignRoles，**同一 C token 不重登录**逐档
+// 验证）：
+//
+//	档 1 → 恰 create_by_id=C 的行；档 2 → 恰 D1 用户（含 C 不含 A/B——跨部门
+//	不可见验收明文）；档 3 → 恰 {D1,D1a,D1a1} 用户（含 A）；档 4 → PUT
+//	/roles/:id/scopes [D2] 后恰 D2 用户（含 B）；档 5 → 全量。
+//
+// 补充断言：多角色取宽（档 2+档 5 并存 → 全量，D-11 max）；无有效档位 fail-closed
+// （仅 NULL 档角色持 list perm → 本人档——纯无角色被 RequirePerm 403 挡在授权层，
+// 本断言是其经授权面的可观察形态）；total 与 items 行数一致（P15 同过滤闭包）；
+// 档位变更即时（PUT /roles/:id 改 dataScope 2→5 后同一 token 下一请求即全量，
+// 表驱动实时查询无缓存）。
+func TestUserDataScope(t *testing.T) {
+	ts, dsn, adminToken, adminID := newTestApp(t)
+	db := openCheckDB(t, dsn)
+	token := adminToken()
+
+	// --- 种子：dept 三层树 + 独立部门 ---
+	var d1, d1a, d1a1, d2 int64 = 990701, 990702, 990703, 990704
+	seedDept(t, dsn, d1, "根部门")
+	seedDeptChild(t, dsn, d1a, d1, "子部门")
+	seedDeptChild(t, dsn, d1a1, d1a, "孙部门")
+	seedDept(t, dsn, d2, "独立部门")
+
+	// --- 种子：用户 C/A/B（creator=admin）+ C 的自建行（create_by_id=C，落 D2）---
+	cID := seedUserWithDeptCreator(t, dsn, "ds-user-c", testAdminHash, "用户C", 1, false, &d1, &adminID)
+	_ = seedUserWithDeptCreator(t, dsn, "ds-user-a", testAdminHash, "用户A", 1, false, &d1a1, &adminID)
+	_ = seedUserWithDeptCreator(t, dsn, "ds-user-b", testAdminHash, "用户B", 1, false, &d2, &adminID)
+	_ = seedUserWithDeptCreator(t, dsn, "ds-self-row", testAdminHash, "自建行", 1, false, &d2, &cID)
+
+	// --- 种子：含 system:user:list perm 的菜单 M（各档角色的授权入口）---
+	menuID := int64(ids.NewID())
+	menuIDStr := strconv.FormatInt(menuID, 10)
+	execMust(t, db,
+		"INSERT INTO sys_menu (id, name, permission, create_time, update_time) VALUES (?, '用户列表', 'system:user:list', NOW(), NOW())",
+		menuID,
+	)
+
+	// --- 种子：五档角色 + NULL 档角色（全部先挂 M 授 list perm）---
+	role1 := seedRoleWithScope(t, dsn, "档一角色", "ds_mode1_role", false, 1)
+	role2 := seedRoleWithScope(t, dsn, "档二角色", "ds_mode2_role", false, 2)
+	role3 := seedRoleWithScope(t, dsn, "档三角色", "ds_mode3_role", false, 3)
+	role4 := seedRoleWithScope(t, dsn, "档四角色", "ds_mode4_role", false, 4)
+	role5 := seedRoleWithScope(t, dsn, "档五角色", "ds_mode5_role", false, 5)
+	roleNull := seedRole(t, dsn, "空档角色", "ds_null_role", false)
+	for _, rid := range []int64{role1, role2, role3, role4, role5, roleNull} {
+		status, body := doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+strconv.FormatInt(rid, 10)+"/menus",
+			`{"menuIds":["`+menuIDStr+`"]}`)
+		require.Equal(t, http.StatusOK, status, "授菜单必须成功: body=%s", body)
+	}
+
+	// --- helper：C 登录一次（五档逐档验证同一 token 不重登录——PERM-02 同轴）---
+	cToken := loginAs(t, ts, "ds-user-c", testAdminPass)
+
+	assignRoles := func(roleIDs ...int64) {
+		t.Helper()
+		ids := make([]string, 0, len(roleIDs))
+		for _, r := range roleIDs {
+			ids = append(ids, strconv.FormatInt(r, 10))
+		}
+		status, body := doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/users/"+strconv.FormatInt(cID, 10)+"/roles",
+			`{"roleIds":["`+strings.Join(ids, `","`)+`"]}`)
+		require.Equal(t, http.StatusOK, status, "分配角色必须成功: body=%s", body)
+	}
+	listAs := func() (map[string]bool, int64) {
+		t.Helper()
+		status, body := doAuthRequest(t, cToken, "GET", ts.URL+"/api/v1/users?page=1&size=50", "")
+		require.Equal(t, http.StatusOK, status, "C 列表必须 200: body=%s", body)
+		var env struct {
+			Data struct {
+				Items []struct {
+					Username string `json:"username"`
+				} `json:"items"`
+				Total int64 `json:"total"`
+			} `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(body, &env), "body=%s", body)
+		set := make(map[string]bool, len(env.Data.Items))
+		for _, it := range env.Data.Items {
+			set[it.Username] = true
+		}
+		assert.Equal(t, env.Data.Total, int64(len(env.Data.Items)), "total 与 items 行数必须一致（P15 同过滤闭包）: body=%s", body)
+		return set, env.Data.Total
+	}
+
+	// --- 档 1：本人档 → 恰 create_by_id=C 的行 ---
+	assignRoles(role1)
+	set, total := listAs()
+	assert.Equal(t, int64(1), total, "档 1 必须恰 1 行: set=%v", set)
+	assert.Equal(t, map[string]bool{"ds-self-row": true}, set, "档 1 行集必须恰为 create_by_id=C 的行: %v", set)
+
+	// --- 档 2：本部门 → 恰 D1 用户（含 C 不含 A/B——跨部门不可见验收明文）---
+	assignRoles(role2)
+	set, total = listAs()
+	assert.Equal(t, int64(1), total, "档 2 必须恰 1 行: set=%v", set)
+	assert.Equal(t, map[string]bool{"ds-user-c": true}, set, "档 2 行集必须恰为本部门 D1 用户（他部门 A/B 不可见）: %v", set)
+
+	// --- 档 3：本部门及以下 → 恰 {D1, D1a, D1a1} 用户（含孙部门 A）---
+	assignRoles(role3)
+	set, total = listAs()
+	assert.Equal(t, int64(2), total, "档 3 必须恰 2 行: set=%v", set)
+	assert.Equal(t, map[string]bool{"ds-user-c": true, "ds-user-a": true}, set, "档 3 行集必须恰为 D1 子树用户: %v", set)
+
+	// --- 档 4：先 PUT scopes [D2] 配部门集合 → 恰 D2 用户（含 B）---
+	status, body := doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+strconv.FormatInt(role4, 10)+"/scopes",
+		`{"deptIds":["`+strconv.FormatInt(d2, 10)+`"]}`)
+	require.Equal(t, http.StatusOK, status, "配置档 4 scopes 必须成功: body=%s", body)
+	assignRoles(role4)
+	set, total = listAs()
+	assert.Equal(t, int64(2), total, "档 4 必须恰 2 行: set=%v", set)
+	assert.Equal(t, map[string]bool{"ds-user-b": true, "ds-self-row": true}, set, "档 4 行集必须恰为 sys_role_dept 集合 D2 用户: %v", set)
+
+	// --- 档 5：全部 → 全量（admin 种子 + 4 创建行 = 5 行）---
+	assignRoles(role5)
+	set, total = listAs()
+	assert.Equal(t, int64(5), total, "档 5 必须全量 5 行: set=%v", set)
+	assert.True(t, set["ds-user-a"] && set["ds-user-b"] && set["ds-user-c"] && set["ds-self-row"], "档 5 必须含全部测试用户: %v", set)
+
+	// --- 多角色取宽（D-11）：档 2 + 档 5 并存 → max=5 全量 ---
+	assignRoles(role2, role5)
+	set, total = listAs()
+	assert.Equal(t, int64(5), total, "多角色必须取最宽档 max(dataScope)=5 → 全量: set=%v", set)
+
+	// --- 无有效档位 fail-closed：仅 NULL 档角色（有 list perm）→ 本人档 ---
+	assignRoles(roleNull)
+	set, total = listAs()
+	assert.Equal(t, int64(1), total, "无有效档位必须回退最窄档恰 1 行: set=%v", set)
+	assert.Equal(t, map[string]bool{"ds-self-row": true}, set, "全部角色档位 NULL 必须按最窄档（本人）fail-closed: %v", set)
+
+	// --- 档位变更即时（表驱动实时查询无缓存）：role2 dataScope 2→5，同一 token 下一请求全量 ---
+	assignRoles(role2)
+	set, total = listAs()
+	assert.Equal(t, int64(1), total, "变更前必须仍为档 2 行集: set=%v", set)
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+strconv.FormatInt(role2, 10), `{"dataScope":5}`)
+	require.Equal(t, http.StatusOK, status, "改档位必须成功: body=%s", body)
+	set, total = listAs()
+	assert.Equal(t, int64(5), total, "档位变更后同一 token 下一请求必须按新档全量（无缓存直证）: set=%v", set)
 }

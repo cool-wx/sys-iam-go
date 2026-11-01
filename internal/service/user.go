@@ -13,6 +13,7 @@ import (
 
 	"github.com/cool-wx/sys-iam-go/internal/auth"
 	"github.com/cool-wx/sys-iam-go/internal/authz"
+	"github.com/cool-wx/sys-iam-go/internal/datascope"
 	"github.com/cool-wx/sys-iam-go/internal/model/dto"
 	"github.com/cool-wx/sys-iam-go/internal/model/po"
 	"github.com/cool-wx/sys-iam-go/internal/repository"
@@ -195,11 +196,16 @@ func (s *UserService) assembleRoles(ctx context.Context, users []po.UserPO) ([]d
 	return items, nil
 }
 
-// List 用户列表：repo 分页查询 → 角色两查询装配（USER-05）→ paging.PageData
-// envelope（排序与钳位由 repo/paging 承担，P15）。role 条件过滤本阶段不做
-// （源 selectPage 无 role 条件）。
+// List 用户列表：dataScope 档位解析（resolveScope）→ repo 分页过滤查询（Filter
+// 注入 Count/Find 同闭包，P15）→ 角色两查询装配（USER-05）→ paging.PageData
+// envelope（排序与钳位由 repo/paging 承担）。role 条件过滤本阶段不做（源
+// selectPage 无 role 条件）。
 func (s *UserService) List(ctx context.Context, page, size int) (*paging.PageData[dto.UserResp], error) {
-	users, total, err := s.repo.List(ctx, page, size)
+	filter, err := s.resolveScope(ctx)
+	if err != nil {
+		return nil, err
+	}
+	users, total, err := s.repo.List(ctx, page, size, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -208,6 +214,95 @@ func (s *UserService) List(ctx context.Context, page, size int) (*paging.PageDat
 		return nil, err
 	}
 	return &paging.PageData[dto.UserResp]{Items: items, Total: total, Page: page, Size: size}, nil
+}
+
+// resolveScope 解析当前调用者的 dataScope Filter（PERM-03，D-09/D-12——service
+// 传档位、repo 层 Apply 注入，不侵入既有查询代码）：
+//
+//  1. identity 缺失（理论不可达——pri 组已挂 Auth）→ 零值 Filter（Mode 零值经
+//     Apply 落 "1 = 0" 空结果 fail-closed，与 T-2-04 纪律一致）；
+//  2. 查询者行缺失（删除踢会话的竞态窗口）→ 同上 fail-closed 空结果；
+//  3. relationRepo.FindRoleScopesByUserIDs 单用户 IN → datascope.Widest 聚合
+//     （多角色取 max，D-11；无角色/全 NULL → ModeSelf 最窄档 fail-closed）；
+//  4. 档 3 → deptRepo.List + CollectSubtreeIDs 子树展开；档 4 → 对 DataScope=4
+//     的角色集 FindDeptIDsByRoleIDs 取部门集**并集**（多角色档 4 集合并，去重）；
+//     档 2 → 查询者部门单元素；查询者无部门时 DeptIDs 留空按 Apply "1 = 0"
+//     fail-closed。
+//
+// 角色档位与部门集每次 List 实时查表（无缓存）——档位/部门集变更下一请求即按新
+// 档位过滤（PERM-02 即时语义同轴）。super_admin 不做档位特判——严格表驱动
+// （03-02 规划裁决记录 1；存量 super_admin 行 data_scope=NULL 由现场经既有
+// PUT /roles/:id 修正）。
+func (s *UserService) resolveScope(ctx context.Context) (datascope.Filter, error) {
+	identity, ok := auth.FromContext(ctx)
+	if !ok {
+		return datascope.Filter{}, nil
+	}
+	u, err := s.repo.FindByID(ctx, identity.UserID)
+	if err != nil {
+		if errors.Is(err, errcode.ErrNotFound) {
+			return datascope.Filter{}, nil
+		}
+		return datascope.Filter{}, err
+	}
+	scopes, err := s.relationRepo.FindRoleScopesByUserIDs(ctx, []int64{identity.UserID})
+	if err != nil {
+		return datascope.Filter{}, err
+	}
+	roleScopes := scopes[identity.UserID]
+	dsPtrs := make([]*int8, 0, len(roleScopes))
+	for _, sc := range roleScopes {
+		dsPtrs = append(dsPtrs, sc.DataScope)
+	}
+	mode := datascope.Widest(dsPtrs)
+	filter := datascope.Filter{Mode: mode, UserID: identity.UserID}
+	switch mode {
+	case datascope.ModeSelf, datascope.ModeAll:
+		// 档 1 只认 create_by_id 无需部门集；档 5 无过滤
+		return filter, nil
+	case datascope.ModeDept:
+		if u.DeptID != nil {
+			filter.DeptIDs = []int64{*u.DeptID}
+		}
+		return filter, nil
+	case datascope.ModeDeptSubtree:
+		if u.DeptID == nil {
+			return filter, nil // 部门集空 → Apply "1 = 0" fail-closed
+		}
+		depts, err := s.deptRepo.List(ctx)
+		if err != nil {
+			return datascope.Filter{}, err
+		}
+		filter.DeptIDs = datascope.CollectSubtreeIDs(depts, *u.DeptID)
+		return filter, nil
+	case datascope.ModeCustomDepts:
+		roleIDs := make([]int64, 0, len(roleScopes))
+		for _, sc := range roleScopes {
+			if sc.DataScope != nil && *sc.DataScope == int8(datascope.ModeCustomDepts) {
+				roleIDs = append(roleIDs, sc.RoleID)
+			}
+		}
+		if len(roleIDs) == 0 {
+			return filter, nil // 无档 4 角色配置 → 部门集空 → fail-closed
+		}
+		deptMap, err := s.relationRepo.FindDeptIDsByRoleIDs(ctx, roleIDs)
+		if err != nil {
+			return datascope.Filter{}, err
+		}
+		seen := make(map[int64]struct{}, len(deptMap))
+		for _, ids := range deptMap {
+			for _, did := range ids {
+				if _, dup := seen[did]; !dup {
+					seen[did] = struct{}{}
+					filter.DeptIDs = append(filter.DeptIDs, did)
+				}
+			}
+		}
+		return filter, nil
+	default:
+		// 未知档（data_scope 域外值）——Filter 原样传 repo，Apply default 落 "1 = 0"
+		return filter, nil
+	}
 }
 
 // Get 用户详情：按主键查询后经同一装配路径（两查询）输出（未命中 404/10300，
