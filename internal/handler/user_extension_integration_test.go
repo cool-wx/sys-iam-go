@@ -326,7 +326,9 @@ func TestDeleteBuiltinUser409(t *testing.T) {
 }
 
 // TestDeleteUserCleansRelations 普通用户删除清理关联：分配角色后 DELETE → 200、
-// sys_user_role 该 user_id 行数 0、GET 404 域消息（先删关联再删用户，源顺序）。
+// sys_user_role 该 user_id 行数 0、casbin g 行（用户→角色）同步清零（CR-01 预清
+// 模式回归——预清在事务前执行，删除成功即策略已撤）、GET 404 域消息（先删关联
+// 再删用户，源顺序）。
 func TestDeleteUserCleansRelations(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
 	token := adminToken()
@@ -341,12 +343,24 @@ func TestDeleteUserCleansRelations(t *testing.T) {
 
 	checkDB := openCheckDB(t, dsn)
 	require.Equal(t, int64(1), userRoleCount(t, checkDB, uid), "删除前应有 1 行关联")
+	// 双轨前置：casbin g 行已随 AssignRoles 同步写入
+	var gRows int64
+	require.NoError(t, checkDB.Raw(
+		"SELECT COUNT(*) FROM casbin_rule WHERE ptype = 'g' AND v0 = ? AND v1 = 'role_del'",
+		uidStr,
+	).Scan(&gRows).Error)
+	require.Equal(t, int64(1), gRows, "删除前 casbin g 行必须存在（D-13 双轨）")
 
 	status, body = doAuthRequest(t, token, "DELETE", ts.URL+"/api/v1/users/"+uidStr, "")
 	require.Equal(t, http.StatusOK, status, "普通用户删除应 200: body=%s", body)
 
-	// 关联零残留 + 用户行已删
+	// 关联零残留 + 用户行已删 + casbin g 行同步清零（预清模式，CR-01）
 	require.Equal(t, int64(0), userRoleCount(t, checkDB, uid), "sys_user_role 关联必须清零")
+	require.NoError(t, checkDB.Raw(
+		"SELECT COUNT(*) FROM casbin_rule WHERE ptype = 'g' AND v0 = ? AND v1 = 'role_del'",
+		uidStr,
+	).Scan(&gRows).Error)
+	assert.Equal(t, int64(0), gRows, "删除后 casbin g 行必须清零（预清模式，g 行不得残留至 TTL/重启）")
 	var userCnt int64
 	require.NoError(t, checkDB.Raw("SELECT COUNT(*) FROM sys_user WHERE id = ?", uid).Scan(&userCnt).Error)
 	assert.Equal(t, int64(0), userCnt, "用户行必须已删")

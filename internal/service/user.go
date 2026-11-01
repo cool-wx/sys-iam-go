@@ -25,8 +25,9 @@ import (
 
 // UserService 用户域服务。db 用于 service 层显式事务（AssignRoles 全删重建 /
 // Delete 先删关联再删用户——SkipDefaultTransaction 下唯一事务边界）；sm 用于
-// 停用/重置密码踢存量会话（D-09 安全增强，CONTEXT.md 决策非漂移）；enf 用于
-// 业务事务提交成功后的 Casbin g 策略双轨同步（D-13）。
+// 停用/重置密码/删除踢存量会话（D-09 安全增强，CONTEXT.md 决策非漂移）；enf 用于
+// Casbin g 策略双轨同步（D-13：AssignRoles 事务提交后写、Delete 事务提交前预清——
+// CR-01 裁决，post-commit 清理失败不可自愈）。
 type UserService struct {
 	db           *gorm.DB
 	repo         *repository.UserRepo
@@ -477,11 +478,21 @@ func (s *UserService) ResetPassword(ctx context.Context, id int64) error {
 }
 
 // Delete 删除用户（USER-07）：builtin=true → errcode 单例 10601/409 **零删除调用**
-// 前置拦截（源 removeById 语义，D-14）；否则 db.Transaction{ DeleteUserRolesByUserID
-// + user Delete }——先删关联再删用户（源顺序），任一失败整体回滚。事务成功后
-// sm.KickoutUser 即刻踢存量会话（CR-01 修复，D-09 语义对齐 UpdateStatus/ResetPassword）：
-// 认证中间件仅校验 Redis 会话存在性、不回查 DB 用户存在性——删除后不踢则旧 token
-// 在整个会话 TTL 内继续完全可用（删除是比停用更彻底的撤销，反而不能是唯一不踢路径）。
+// 前置拦截（源 removeById 语义，D-14）；否则**预清模式**（CR-01 修复裁决）：业务事务
+// 提交前先撤销全部运行态授权——① sm.KickoutUser 踢存量会话 ② enf.ClearUser 清
+// casbin g 行——再 db.Transaction{ DeleteUserRolesByUserID + user Delete }（先删关联
+// 再删用户，源顺序，任一失败整体回滚）。
+//
+// 预清为何不可后置（原 post-commit 级联缺陷）：清理步骤放在事务提交后时，任一步失败
+// 即 500 且用户行已删——客户端重试 DELETE 命中 FindByID→404，踢会话/清策略永远无法
+// 补执行；认证中间件仅校验 Redis 会话存在性、不回查 DB（T-3-01 威胁模型），被删账号
+// 的存量 token 在整个滚动 TTL 内继续完全可用（认证逃逸窗口）。预清模式下清理失败时
+// 用户行仍在，重试必重新进入本函数，清理原语幂等（KickoutUser 惰性清理 + ClearUser
+// 全删），重试即收敛；DB 删除成功后无任何 post-commit 步骤，重试 404 不再挡死清理。
+//
+// 已知代价（方向安全，可接受）：清理成功而 DB 删除失败时，用户行仍在但会话/g 行已被
+// 撤——删除本就是全面收权操作，暂扣方向 fail-closed；重新登录可恢复会话，g 行经管理
+// 员重新 AssignRoles 重建（同 UpdateStatus 踢会话的既有可逆语义）。
 func (s *UserService) Delete(ctx context.Context, id int64) error {
 	u, err := s.repo.FindByID(ctx, id)
 	if err != nil {
@@ -493,21 +504,20 @@ func (s *UserService) Delete(ctx context.Context, id int64) error {
 	if u.Builtin != nil && *u.Builtin {
 		return errcode.ErrBuiltinUser
 	}
-	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	// 预清第一步：踢存量会话（安全关键步骤，认证链只认 Redis 不回查 DB——先踢先失效）
+	if err := s.sm.KickoutUser(ctx, id); err != nil {
+		return err
+	}
+	// 预清第二步：清 casbin g 行（策略撤销，D-13 双轨的用户轴；T-3-01 删除即刻收权）
+	if err := s.enf.ClearUser(id); err != nil {
+		return err
+	}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		relationTx := repository.NewRelationRepo(tx)
 		if err := relationTx.DeleteUserRolesByUserID(ctx, id); err != nil {
 			return err
 		}
 		userTx := repository.NewUserRepo(tx)
 		return userTx.Delete(ctx, id)
-	}); err != nil {
-		return err
-	}
-	// 事务提交成功后先清 casbin g 行（策略撤销）再踢存量会话（03-RESEARCH 四写
-	// 路径挂点表顺序：先策略后踢——D-13；T-3-01 删除用户即刻收权）。
-	if err := s.enf.ClearUser(id); err != nil {
-		return err
-	}
-	// 用户已删除，存量会话必须即刻失效（同 UpdateStatus/ResetPassword 的 D-09 语义）
-	return s.sm.KickoutUser(ctx, id)
+	})
 }
