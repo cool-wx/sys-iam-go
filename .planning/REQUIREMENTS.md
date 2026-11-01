@@ -53,13 +53,13 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 字典管理（DICT）
 
-- [ ] **DICT-01**: 字典类型 CRUD
-- [ ] **DICT-02**: 字典数据 CRUD
-- [ ] **DICT-03**: 按类型查询字典数据集
+- [x] **DICT-01**: 字典类型 CRUD
+- [x] **DICT-02**: 字典数据 CRUD
+- [x] **DICT-03**: 按类型查询字典数据集
 
 ### 系统配置（CONF）
 
-- [ ] **CONF-01**: 系统参数读写（SysConfig CRUD）
+- [x] **CONF-01**: 系统参数读写（SysConfig CRUD）
 
 ### API Key（AKEY）
 
@@ -82,8 +82,8 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 排班（SHFT）
 
-- [ ] **SHFT-01**: 排班全量查询（无分页，源行为）
-- [ ] **SHFT-02**: 排班 CRUD
+- [x] **SHFT-01**: 排班全量查询（无分页，源行为）
+- [x] **SHFT-02**: 排班 CRUD
 
 ### 故障信息（FAUL）
 
@@ -178,10 +178,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PERM-04 | Phase 3 | Complete |
 | PERM-05 | Phase 3 | Complete |
 | PERM-06 | Phase 3 | Complete |
-| DICT-01 | Phase 4 | Pending |
-| DICT-02 | Phase 4 | Pending |
-| DICT-03 | Phase 4 | Pending |
-| CONF-01 | Phase 4 | Pending |
+| DICT-01 | Phase 4 | Complete |
+| DICT-02 | Phase 4 | Complete |
+| DICT-03 | Phase 4 | Complete |
+| CONF-01 | Phase 4 | Complete |
 | FILE-01 | Phase 4 | Pending |
 | FILE-02 | Phase 4 | Pending |
 | FILE-03 | Phase 4 | Pending |
@@ -190,8 +190,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OLOG-01 | Phase 4 | Pending |
 | OLOG-02 | Phase 4 | Pending |
 | OLOG-03 | Phase 4 | Pending |
-| SHFT-01 | Phase 4 | Pending |
-| SHFT-02 | Phase 4 | Pending |
+| SHFT-01 | Phase 4 | Complete |
+| SHFT-02 | Phase 4 | Complete |
 | FAUL-01 | Phase 4 | Pending |
 | FAUL-02 | Phase 4 | Pending |
 | SYNC-01 | Phase 5 | Pending |

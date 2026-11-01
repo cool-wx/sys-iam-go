@@ -99,11 +99,11 @@ Plans:
   3. 操作日志中间件自动记录写操作：module/operation 显式元数据、敏感参数 7 字段掩码为 `******`、errorMsg 截 500、失败请求也记录（status=0）且日志落库失败静默不影响业务、body 回放后接口正常
   4. 操作日志分页查询可用（默认 1/10 钳位例外，与源一致）
   5. 排班全量查询（无分页，源行为）与 CRUD；故障信息 CRUD 与 Excel 导入（name+bitIndex+location 三键 upsert、整批事务、返回 ImportResult insertCount/updateCount，用源系统真实导出文件回测）
-**Plans**: 4/4 plans defined
+**Plans**: 1/4 plans executed defined
 
 Plans:
 **Wave 1**
-- [ ] 04-01-PLAN.md — 轻三域 tracer：8 表 DDL 全落 + 六域 perm 常量 + Dict 全链端到端（1062 翻译/类型校验冗余/按类型过滤）+ Config（key 查询）+ Shift（全量无分页）（DICT-01..03、CONF-01、SHFT-01/02）
+- [x] 04-01-PLAN.md — 轻三域 tracer：8 表 DDL 全落 + 六域 perm 常量 + Dict 全链端到端（1062 翻译/类型校验冗余/按类型过滤）+ Config（key 查询）+ Shift（全量无分页）（DICT-01..03、CONF-01、SHFT-01/02）
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 04-02-PLAN.md — FileStorage 抽象（local/S3 配置切换 + rustfs smoke）+ File 域（判重五语义/流式下载/宽容删除）+ FileCategory 树 + BodyLimit 独立上限（FILE-01..05）
@@ -135,5 +135,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. 工程骨架与横切地基 | 3/3 | Complete    | 2026-10-31 |
 | 2. 认证会话与 RBAC 主链路 | 3/3 | Complete    | 2026-11-01 |
 | 3. Casbin 授权与数据权限 | 3/3 | Complete    | 2026-11-01 |
-| 4. 业务域与操作日志 | 0/TBD | Not started | - |
+| 4. 业务域与操作日志 | 1/4 | In Progress | - |
 | 5. 名称同步事件与验收收尾 | 0/TBD | Not started | - |

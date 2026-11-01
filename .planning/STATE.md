@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 4
 current_phase_name: 业务域与操作日志
 status: executing
-stopped_at: Phase 3 complete, ready to plan Phase 4
-last_updated: "2026-11-01T09:08:24.863Z"
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-11-01T09:49:11.933Z"
 last_activity: 2026-11-01
-last_activity_desc: Phase 3 complete, transitioned to Phase 4
-state_head: c1629d938b90d5eff43fa1d99f30d814f90bb7c4
+last_activity_desc: Phase 4 execution started
+state_head: a940b9a3a34a880e96004f486afd2e12b0c93831
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 13
-  completed_plans: 9
+  completed_plans: 10
   percent: 60
 ---
 
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-01, Phase 3 transition)
 
 **Core value:** 在工控机上以单个轻量 Go 服务完整复刻 sys-iam 的全部 IAM 能力，且接口实现与自动化测试全部通过。
-**Current focus:** Phase 3 — Casbin 授权与数据权限
+**Current focus:** Phase 4 — 业务域与操作日志
 
 ## Current Position
 
-Phase: 4 (业务域与操作日志) — READY TO EXECUTE
-Plan: Not started
+Phase: 4 (业务域与操作日志) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-11-01 — Phase 3 complete, transitioned to Phase 4
+Last activity: 2026-11-01 — Phase 4 execution started
 
 Progress: [██████░░░░] 60%
 
@@ -67,6 +67,7 @@ Progress: [██████░░░░] 60%
 | Phase 03 P03-01 | 50min | 2 tasks | 19 files |
 | Phase 03 P03-02 | 36min | 2 tasks | 17 files |
 | Phase 03 P03-03 | 40min | 2 tasks | 8 files |
+| Phase 04 P01 | 37min | 2 tasks | 28 files |
 
 ## Accumulated Context
 
@@ -107,6 +108,9 @@ Recent decisions affecting current work:
 - [Phase 03]: dataScope 域接入模板确立——service resolveScope 编排（identity→行→档位聚合→部门集装配）+ repo 闭包 filter.Apply（Count/Find 同闭包防 total 漂移）；Phase 4 各域照此复制 — D-09/D-12 通用件定位：internal/datascope table 参数化无 user 域耦合
 - [Phase 03]: [Phase 03] 03-03: 全量收口后既有测试适配走授权链不拆 gate——grantUserPerm 经 API 链同步 enforcer（03-01 的"改探未挂 gate 端点"绕行方式在全量收口后失效，prohibition「修测试种子授权」落地形态）
 - [Phase 03]: [Phase 03] 03-03: IN-14 撤销粒度 user 轴（KickoutUser 连坐密码登录会话）为 D-16 拍板语义——反查键无 TTL 恒可反查，apikey-token 映射 TTL 过期恰是缺口本身；撤销尽力而为不阻断 10503（T-3-11 accept）
+- [Phase 04]: 04-01: 1062 翻译统一 400/10400 域文案（Phase 2 role.go 实证惯例非 409）；dict-datas 路由复用 PermDictType* 常量（源共用 dict:* 权限档）
+- [Phase 04]: 04-01: Shift list 全量数组直出保留（SHFT-01 源行为直译是验收点非缺陷）；shift/fault perm 发明串 v1 仅 super_admin（Phase 3 Q2 先例）
+- [Phase 04]: 04-01: perms.go 六域 29 常量一次加齐（后续 plan 零改动消除串行链文件冲突）；DDL 8 文件一次全落（glob 自动加载）
 
 ### Pending Todos
 
@@ -132,6 +136,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-01T06:20:25.409Z
-Stopped at: Phase 3 complete, ready to plan Phase 4
+Last session: 2026-11-01T09:49:11.780Z
+Stopped at: Completed 04-01-PLAN.md
 Resume file: None
