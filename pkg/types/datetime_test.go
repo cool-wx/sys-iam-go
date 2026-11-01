@@ -41,3 +41,23 @@ func TestCSTLocation(t *testing.T) {
 	assert.Equal(t, "CST", name, "Asia/Shanghai 标准时区名")
 	assert.Equal(t, 8*60*60, offset, "UTC+8 偏移")
 }
+
+// TestLocalDateTimeUnmarshalJSON 请求侧反序列化（02-03 补全，与 MarshalJSON 对称）：
+// 主格式 yyyy-MM-dd HH:mm:ss（源 DATE_TIME_FORMAT）；RFC3339 兜底；空串置零值；
+// 非法格式报错不静默。
+func TestLocalDateTimeUnmarshalJSON(t *testing.T) {
+	var t1 types.LocalDateTime
+	require.NoError(t, json.Unmarshal([]byte(`"2027-01-02 03:04:05"`), &t1))
+	assert.Equal(t, "2027-01-02 03:04:05", time.Time(t1).Format(types.TimeFormat), "主格式应解析（CST 墙钟）")
+
+	var t2 types.LocalDateTime
+	require.NoError(t, json.Unmarshal([]byte(`"2027-01-02T03:04:05Z"`), &t2))
+	assert.Equal(t, "2027-01-02 11:04:05", time.Time(t2).In(types.CST()).Format(types.TimeFormat), "RFC3339 兜底应换算 CST")
+
+	var t3 types.LocalDateTime
+	require.NoError(t, json.Unmarshal([]byte(`""`), &t3))
+	assert.True(t, time.Time(t3).IsZero(), "空串应置零值")
+
+	var t4 types.LocalDateTime
+	require.Error(t, json.Unmarshal([]byte(`"not-a-time"`), &t4), "非法格式必须报错")
+}

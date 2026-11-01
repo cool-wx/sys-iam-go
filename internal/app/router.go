@@ -12,11 +12,12 @@ import (
 
 // handlers 路由聚合（Wave 2/3 扩域时按域增字段，newRouter 签名不再反复变化）。
 type handlers struct {
-	Auth  *handler.AuthHandler
-	Users *handler.UserHandler
-	Menus *handler.MenuHandler
-	Depts *handler.DeptHandler
-	Roles *handler.RoleHandler
+	Auth    *handler.AuthHandler
+	Users   *handler.UserHandler
+	Menus   *handler.MenuHandler
+	Depts   *handler.DeptHandler
+	Roles   *handler.RoleHandler
+	ApiKeys *handler.ApiKeyHandler
 }
 
 // newRouter 装配路由：四中间件全局链（RequestID→AccessLog→Recovery→BodyLimit）+
@@ -80,6 +81,14 @@ func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, logger *slo
 	pri.DELETE("/api/v1/roles/:id", hs.Roles.Delete)
 	pri.GET("/api/v1/roles/:id/menus", hs.Roles.GetMenus)
 	pri.PUT("/api/v1/roles/:id/menus", hs.Roles.AssignMenus)
+
+	// API Key 域（AKEY-01/02，02-03）：CRUD 五端点 + status 子资源（源 editApiKey
+	// 仅 status 单列语义）。至此 Phase 2 五域路由全量注册（D-11 六组齐备）
+	pri.POST("/api/v1/api-keys", hs.ApiKeys.Create)
+	pri.GET("/api/v1/api-keys/:id", hs.ApiKeys.Get)
+	pri.GET("/api/v1/api-keys", hs.ApiKeys.List)
+	pri.PUT("/api/v1/api-keys/:id/status", hs.ApiKeys.UpdateStatus)
+	pri.DELETE("/api/v1/api-keys/:id", hs.ApiKeys.Delete)
 
 	return engine
 }
