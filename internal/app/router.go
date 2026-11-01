@@ -49,8 +49,8 @@ func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, az authz.Au
 	engine := gin.New()
 	// multipart 内存阈值（FILE-02 工控机 RSS 平稳验收）：超 8MB 的部分 multipart
 	// 自动落盘临时文件而非全量驻留内存（默认 32MB 过高）；全局 BodyLimit 对
-	// multipart 跳过后，大文件上传的内存上界由此阈值 + upload 路由级 20MB 独立
-	// 上限共同封顶。
+	// multipart 套 MaxMultipartMB 兜底上限（CR-01 收紧：上限豁免而非防护豁免），
+	// 大文件上传的内存上界由此阈值 + upload 路由级独立上限共同封顶。
 	engine.MaxMultipartMemory = 8 << 20
 	engine.Use(middleware.RequestID())
 	engine.Use(middleware.AccessLog(logger))
@@ -165,12 +165,13 @@ func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, az authz.Au
 	pri.DELETE("/api/v1/shifts/:id", middleware.RequirePerm(az, authz.PermShiftRemove), middleware.Oplog(ologW, "ShiftController", "delete"), hs.Shifts.Delete)
 
 	// 文件域四路由（FILE-01/02/03，Phase 4 04-02）：upload 叠加 20MB 路由级独立
-	// 上限（全局 1MB 对 multipart 跳过后该类请求的唯一封顶，T-4-06；
+	// 上限（与全局 multipart 兜底同值 MaxMultipartMB，CR-01 单一事实源——内层
+	// 生效值不变，仍为大 payload 实际封顶，T-4-06；
 	// download 挂 PermFileDownload——菜单存在此串非 super_admin 专属，D-16 核对结论）。
 	// file 域 perm 串 sys_menu 齐备（7 项），实际可经角色授权；upload/delete 记
 	// 操作日志（upload 为 multipart——中间件跳过缓存 params 空串，仅元数据落库）
 	pri.GET("/api/v1/files", middleware.RequirePerm(az, authz.PermFileList), hs.Files.List)
-	pri.POST("/api/v1/files/upload", middleware.BodyLimitWithMB(20), middleware.RequirePerm(az, authz.PermFileUpload), middleware.Oplog(ologW, "FileController", "upload"), hs.Files.Upload)
+	pri.POST("/api/v1/files/upload", middleware.BodyLimitWithMB(middleware.MaxMultipartMB), middleware.RequirePerm(az, authz.PermFileUpload), middleware.Oplog(ologW, "FileController", "upload"), hs.Files.Upload)
 	pri.GET("/api/v1/files/download/:id", middleware.RequirePerm(az, authz.PermFileDownload), hs.Files.Download)
 	pri.DELETE("/api/v1/files/:id", middleware.RequirePerm(az, authz.PermFileRemove), middleware.Oplog(ologW, "FileController", "delete"), hs.Files.Delete)
 
@@ -197,9 +198,10 @@ func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, az authz.Au
 	pri.GET("/api/v1/faults", middleware.RequirePerm(az, authz.PermFaultList), hs.Faults.List)
 	pri.DELETE("/api/v1/faults/:id", middleware.RequirePerm(az, authz.PermFaultRemove), middleware.Oplog(ologW, "FaultInfoController", "delete"), hs.Faults.Delete)
 	// Excel 导入（FAUL-02，静态段 import 与 :id 参数段共存静态优先——与 files/upload
-	// 同构）：独立 20MB 体积上限（全局 1MB 对 multipart 跳过后该类请求的唯一封顶，
-	// T-4-11）→ 权限 → 日志 → handler 次序；multipart 无 body 缓存，Oplog params 空串
-	pri.POST("/api/v1/faults/import", middleware.BodyLimitWithMB(20), middleware.RequirePerm(az, authz.PermFaultImport), middleware.Oplog(ologW, "FaultInfoController", "import"), hs.Faults.Import)
+	// 同构）：独立 20MB 体积上限（与全局 multipart 兜底同值 MaxMultipartMB，
+	// CR-01 单一事实源，T-4-11）→ 权限 → 日志 → handler 次序；multipart 无 body
+	// 缓存，Oplog params 空串
+	pri.POST("/api/v1/faults/import", middleware.BodyLimitWithMB(middleware.MaxMultipartMB), middleware.RequirePerm(az, authz.PermFaultImport), middleware.Oplog(ologW, "FaultInfoController", "import"), hs.Faults.Import)
 
 	return engine
 }
