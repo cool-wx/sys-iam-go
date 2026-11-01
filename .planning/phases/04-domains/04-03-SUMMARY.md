@@ -62,7 +62,21 @@ key-files:
     - internal/app/router.go
     - internal/handler/user_integration_test.go
 
-# Verification evidence
+# Metrics
+duration: ~90min（含 429 中断）
+completed: 2026-11-01
+status: complete
+---
+
+# Phase 4 Plan 03: Oplog 中间件（掩码/异步/flush）+ 日志分页查询域 Summary
+
+## Task Commits
+
+- 5080fd9 feat(04-03): Oplog 中间件核心（8 字段掩码/body 回放/chan 512 异步/Flush）+ resp c.Error 透出 + paging 特例分页
+- 82cf1d5 feat(04-03): Olog 查询域（三 like + 1/10 特例分页）+ 41 写路由声明制挂载 + Stop 链 Flush 次序 + 集成五断言
+
+## Verification evidence
+
 verification:
   - gate: "go build ./... && go vet ./... && go test ./internal/middleware/ ./pkg/resp/ ./pkg/paging/ -count=1"
     result: PASS（掩码八字段逐字段/截断顺序/Enqueue 不阻塞/Flush drain/Parse 零回归）
@@ -73,15 +87,19 @@ verification:
   - gate: "TZ=UTC go test -tags=integration -count=1 ./...（全量回归）"
     result: PASS 15 包全绿（handler 886s——Oplog 叠加后既有路由含 shutdown 链全部不回归）
 
-# Deviations from plan
+## Deviations from Plan
+
 deviations: []
 
-# Interruption record
+## Interruption record
+
 notes: >-
   Task 2 执行中途遭 API 429 限额中断（Task 1 已独立提交 5080fd9，Task 2 半成品留工作区）。
   恢复走 quota-interruption playbook：盘点（git log/status + grep 计数定位断点深浅：41/67 已命中）→
   build/vet 权威校验（gopls 中断期误报不采信）→ 四 gate 复验全绿 → 按 task 边界原子提交。
   executor 侧无代码返工，工作区产物质量完整。
+
+## Requirements
 
 requirements:
   - OLOG-01 SATISFIED（写操作自动落库七要素 + body 回放不破坏业务 200——TestOpLogWriteRecorded 双断言）

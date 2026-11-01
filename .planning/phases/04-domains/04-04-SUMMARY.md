@@ -62,7 +62,21 @@ key-files:
     - go.mod
     - go.sum
 
-# Verification evidence
+# Metrics
+duration: 36min
+completed: 2026-11-01
+status: complete
+---
+
+# Phase 4 Plan 04: Fault 域 CRUD + Excel 三键 upsert 导入 Summary
+
+## Task Commits
+
+- db4bed0 feat(04-04): Fault 域 CRUD 全链 + FaultType 枚举 + excelize 引入
+- 5e7ca71 feat(04-04): Excel 三键 upsert 导入（8 列契约/整批事务/ImportResult）+ 构造等价回测
+
+## Verification evidence
+
 verification:
   - gate: "go build ./... && go vet ./... && go test ./pkg/types/ -count=1"
     result: PASS（Task 1：枚举 name|int/中文/int 串双形态/未知兜底 3 全断言绿）
@@ -79,14 +93,18 @@ verification:
   - gate: "TZ=UTC go test -tags=integration -count=1 ./...（Phase 1-4 全量回归，phase gate）"
     result: PASS 15 包全绿（handler 988s；EXIT=0 零 FAIL——16 项需求验收面最终回归）
 
-# Deviations from plan
+## Deviations from Plan
+
 deviations:
   - "**[笔误修正] Task 1 verify gate「Oplog 计数 43（04-03 收口 40 + fault 3）」的 40 为笔误**——04-03 实际收口 Oplog=41（20+4+17，已实测 router.go）。按 orchestrator 裁定以实测基线递推：Task 1 后 Oplog=44（41+3，acceptance_criteria 正确）、Task 2 后 45（+import 1）；RequirePerm 演进 67→72→73 无笔误。执行期实测与修正值全一致，零返工"
 
-# Interruption record
+## Interruption record
+
 notes: >-
   无中断。两 task 按 boundary 原子提交（db4bed0/5e7ca71），全量回归后台跑毕（15 包
   EXIT=0）后才收 Task 2 尾。
+
+## Requirements
 
 requirements:
   - FAUL-01 SATISFIED（五路由 CRUD + list 1/15 分页 + code eq 过滤 + 服务端默认 bitIndex=-1/type=3 落库直证 + perm/Oplog 齐挂——TestFaultCRUD 全绿）
@@ -95,5 +113,4 @@ requirements:
 ## Self-Check: PASSED
 
 - 10 个 created/关键文件全部存在（FOUND）
-- db4bed0/5e7ca71 均为 HEAD 祖先；git rev-list --count 6aa5ac8..HEAD = 2 与 frontmatter commits: 2 实测一致
-
+- db4bed0/5e7ca7 均为 HEAD 祖先；git rev-list --count 6aa5ac8..HEAD = 2 与 frontmatter commits: 2 实测一致
