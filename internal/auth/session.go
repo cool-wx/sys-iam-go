@@ -123,7 +123,16 @@ func (sm *SessionManager) Resolve(ctx context.Context, token string) (Identity, 
 	if name == "" {
 		name = vals["userName"]
 	}
-	return Identity{UserID: uid, Name: name}, nil
+	// roles 快照出会话（WR-05：RequireRoles 授权 gate 判定依据）。载荷损坏/缺失
+	// 不视为错误——roles=nil 即无任何角色，授权 gate 自然拒绝，比 fail-closed 到
+	// 500 更贴合"会话本体有效、角色为空"的语义。
+	var roles []string
+	if raw := vals["roles"]; raw != "" {
+		if err := json.Unmarshal([]byte(raw), &roles); err != nil {
+			roles = nil
+		}
+	}
+	return Identity{UserID: uid, Name: name, Roles: roles}, nil
 }
 
 // Logout 登出：DEL 会话 + SREM 索引（单 MULTI/EXEC 原子块）。幂等——会话已不存在

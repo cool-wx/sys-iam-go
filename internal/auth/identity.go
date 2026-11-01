@@ -6,10 +6,13 @@ package auth
 import "context"
 
 // Identity 请求操作者身份：由认证中间件注入（Phase 1 无中间件注入，D-02
-// 白名单直通；本包供测试注入与 Phase 2 复用）。
+// 白名单直通；本包供测试注入与 Phase 2 复用）。Roles 为登录时会话内的角色码
+// 快照（WR-05：授权 gate 依据——RequireRoles 按此判定，Phase 3 Casbin 落地前
+// 的过渡语义），可能为 nil（无角色用户）。
 type Identity struct {
 	UserID int64
 	Name   string
+	Roles  []string
 }
 
 // ctxKey 私有类型 key——绝不用 string key。

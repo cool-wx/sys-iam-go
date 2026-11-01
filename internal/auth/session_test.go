@@ -42,17 +42,19 @@ func TestSessionLoginResolve(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(42), id.UserID)
 	assert.Equal(t, "管理员", id.Name, "realName 非空白优先")
+	assert.Equal(t, []string{"super_admin", "ops"}, id.Roles, "roles 快照必须经 Resolve 往返（WR-05 RequireRoles 授权判定依据）")
 
 	// 会话 Hash 载荷四键齐备（D-10：userId/userName/realName/roles）+ roles JSON 往返
 	vals := mr.HGet(keySessionPrefix+token, "roles")
 	assert.JSONEq(t, `["super_admin","ops"]`, vals)
 
-	// realName 空白 → 回退 userName
+	// realName 空白 → 回退 userName；无角色 payload → Roles 为 nil（非报错）
 	token2, err := sm.Login(ctx, SessionPayload{UserID: 43, UserName: "fallback-user", RealName: "  "})
 	require.NoError(t, err)
 	id2, err := sm.Resolve(ctx, token2)
 	require.NoError(t, err)
 	assert.Equal(t, "fallback-user", id2.Name, "realName 空白必须回退 userName")
+	assert.Empty(t, id2.Roles, "无角色会话 Resolve 的 Roles 必须为空而非报错")
 
 	// 未知 token → ErrSessionNotFound（401 语义）
 	_, err = sm.Resolve(ctx, "deadbeef")

@@ -60,3 +60,32 @@ func Auth(sm *auth.SessionManager) gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+// RequireRoles 授权 gate（WR-05：Phase 3 Casbin requirePerm 落地前的过渡收口）：
+// 依据会话内登录时 roles 快照（auth.Identity.Roles，Auth 中间件已注入）判定——
+// 命中任一允许角色即放行，否则 403/10200 ErrForbidden Abort。必须挂在 Auth 之后
+// （依赖 identity 注入）；identity 缺失按未登录 401 收敛（防御性分支，正常装配
+// 不可达）。快照语义：授权随登录时角色即时生效，角色变更后需重登录——与源
+// StpInterface 从 session 读权限的行为一致。
+func RequireRoles(allowed ...string) gin.HandlerFunc {
+	allowedSet := make(map[string]struct{}, len(allowed))
+	for _, r := range allowed {
+		allowedSet[r] = struct{}{}
+	}
+	return func(c *gin.Context) {
+		identity, ok := auth.FromContext(c.Request.Context())
+		if !ok {
+			resp.Fail(c, errcode.ErrUnauthenticated)
+			c.Abort()
+			return
+		}
+		for _, r := range identity.Roles {
+			if _, hit := allowedSet[r]; hit {
+				c.Next()
+				return
+			}
+		}
+		resp.Fail(c, errcode.ErrForbidden)
+		c.Abort()
+	}
+}

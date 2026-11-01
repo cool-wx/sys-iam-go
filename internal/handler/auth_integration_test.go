@@ -63,6 +63,32 @@ func apikeyLogin(t *testing.T, ts *httptest.Server, apiKey string) (int, []byte)
 	return doRequest(t, "POST", ts.URL+"/api/v1/auth/apikey-login", `{"apiKey":"`+apiKey+`"}`)
 }
 
+// seedRole 直插 sys_role 行，返回 roleId（WR-05 kickout 授权测试种子：角色在
+// 登录时装入会话 roles 快照）。
+func seedRole(t *testing.T, dsn, roleName, roleCode string, builtin bool) int64 {
+	t.Helper()
+	db := openCheckDB(t, dsn)
+	id := int64(ids.NewID())
+	rows := execMust(t, db,
+		"INSERT INTO sys_role (id, role_name, role_code, status, builtin, create_time, update_time) VALUES (?, ?, ?, 1, ?, NOW(), NOW())",
+		id, roleName, roleCode, builtin,
+	)
+	require.EqualValues(t, 1, rows, "seedRole 必须插入 1 行")
+	return id
+}
+
+// attachRoleToUser 直插 sys_user_role 关联行（username 列测试种子不较真——源命名
+// 错位语义与登录快照无关）。必须在被测用户登录【之前】调用——roles 是登录时快照。
+func attachRoleToUser(t *testing.T, dsn string, userID, roleID int64, roleName string) {
+	t.Helper()
+	db := openCheckDB(t, dsn)
+	rows := execMust(t, db,
+		"INSERT INTO sys_user_role (id, user_id, username, role_id, role_name, create_time, update_time) VALUES (?, ?, '', ?, ?, NOW(), NOW())",
+		int64(ids.NewID()), userID, roleID, roleName,
+	)
+	require.EqualValues(t, 1, rows, "attachRoleToUser 必须插入 1 行")
+}
+
 // extractToken 从登录响应 envelope 提取 token。
 func extractToken(t *testing.T, body []byte) string {
 	t.Helper()
@@ -180,8 +206,13 @@ func TestApikeyLoginReuseRejectsDisabledUser(t *testing.T) {
 
 // TestKickoutFlow 踢下线端到端（AUTH-04/D-08）：目标用户双端登录两 token →
 // kickout {userId} → 两 token 访问均 401 → 该用户可重新登录（踢下线非封禁）。
+// WR-05 起 kickout 仅 super_admin 可调——操作者 admin 须先挂该角色再登录
+// （roles 是登录时快照）。
 func TestKickoutFlow(t *testing.T) {
-	ts, _, adminToken, adminID := newTestApp(t)
+	ts, dsn, adminToken, adminID := newTestApp(t)
+
+	rid := seedRole(t, dsn, "超级管理员", "super_admin", true)
+	attachRoleToUser(t, dsn, adminID, rid, "超级管理员")
 
 	tokenA := adminToken()
 	tokenB := adminToken()
@@ -193,7 +224,8 @@ func TestKickoutFlow(t *testing.T) {
 	status, body = doAuthRequest(t, tokenB, "GET", ts.URL+"/api/v1/users", "")
 	require.Equal(t, http.StatusOK, status, "body=%s", body)
 
-	// kickout：目标 = admin 自己（源语义：kickout 是管理面操作，任何有效 token 可调）
+	// kickout：目标 = admin 自己（WR-05 起 kickout 仅 super_admin 可调——本测试
+	// 操作者已持该角色快照）
 	kickBody := `{"userId":"` + strconv.FormatInt(adminID, 10) + `"}`
 	status, body = doAuthRequest(t, tokenB, "POST", ts.URL+"/api/v1/auth/kickout", kickBody)
 	require.Equal(t, http.StatusOK, status, "kickout 应 200: body=%s", body)
@@ -208,6 +240,40 @@ func TestKickoutFlow(t *testing.T) {
 	status, body = doRequest(t, "POST", ts.URL+"/api/v1/auth/login",
 		`{"username":"`+testAdminName+`","password":"`+testAdminPass+`"}`)
 	require.Equal(t, http.StatusOK, status, "被踢用户必须可重新登录: body=%s", body)
+}
+
+// TestKickoutRequiresSuperAdmin kickout 授权收紧（WR-05/T-2-07 过渡收口回归）：
+// 无角色普通用户 token 调 kickout → 403/10200（不再"任何有效 token 可踢任意
+// 会话"——此前任意低权用户可踢掉 admin 全部会话）；super_admin token → 200。
+func TestKickoutRequiresSuperAdmin(t *testing.T) {
+	ts, dsn, adminToken, adminID := newTestApp(t)
+
+	rid := seedRole(t, dsn, "超级管理员", "super_admin", true)
+	attachRoleToUser(t, dsn, adminID, rid, "超级管理员")
+
+	// 低权用户（无任何角色）登录
+	seedUser(t, dsn, "low-user", testAdminHash, "低权者", 1, false)
+	lowToken := loginAs(t, ts, "low-user", testAdminPass)
+
+	kickBody := `{"userId":"` + strconv.FormatInt(adminID, 10) + `"}`
+	status, body := doAuthRequest(t, lowToken, "POST", ts.URL+"/api/v1/auth/kickout", kickBody)
+	require.Equal(t, http.StatusForbidden, status, "无角色用户 kickout 必须 403: body=%s", body)
+	var envelope struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(body, &envelope))
+	assert.Equal(t, 10200, envelope.Code, "body=%s", body)
+	assert.Equal(t, "无权限", envelope.Message)
+
+	// 403 不得有副作用：admin 会话仍有效
+	tk := adminToken()
+	status, body = doAuthRequest(t, tk, "GET", ts.URL+"/api/v1/users", "")
+	require.Equal(t, http.StatusOK, status, "403 拒绝不得影响目标会话: body=%s", body)
+
+	// super_admin → 200（踢 admin 自己）
+	status, body = doAuthRequest(t, tk, "POST", ts.URL+"/api/v1/auth/kickout", kickBody)
+	require.Equal(t, http.StatusOK, status, "super_admin kickout 必须 200: body=%s", body)
 }
 
 // TestAuthFlow 登录→带 token 访问→登出→401 端到端（AUTH-01/03/06 主链路）。

@@ -35,7 +35,7 @@ func newAuthTestEnv(t *testing.T) (*gin.Engine, *auth.SessionManager, *miniredis
 			c.JSON(http.StatusOK, gin.H{"identity": false})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"identity": true, "userId": id.UserID, "name": id.Name})
+		c.JSON(http.StatusOK, gin.H{"identity": true, "userId": id.UserID, "name": id.Name, "roles": id.Roles})
 	})
 	return engine, sm, mr
 }
@@ -102,6 +102,61 @@ func TestAuthMiddlewarePassesIdentity(t *testing.T) {
 	assert.True(t, got.Identity, "identity 必须经 WithIdentity 注入 ctx")
 	assert.Equal(t, int64(66), got.UserID)
 	assert.Equal(t, "中间件用户", got.Name)
+
+	// roles 快照随 Identity 注入（WR-05 RequireRoles 判定依据）
+	var withRoles struct {
+		Roles []string `json:"roles"`
+	}
+	require.NoError(t, json.Unmarshal(body, &withRoles))
+	assert.Equal(t, []string{"ops"}, withRoles.Roles, "会话 roles 快照必须注入 Identity")
+}
+
+// TestRequireRolesMiddleware 角色 gate（WR-05 kickout 收紧直证）：命中允许角色
+// 放行；角色不符 403/10200 Abort；无 token 401（Auth 先拦）。
+func TestRequireRolesMiddleware(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	sm := auth.NewSessionManager(rdb, 30*time.Minute)
+
+	engine := gin.New()
+	engine.POST("/guarded", Auth(sm), RequireRoles("super_admin"), func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	post := func(authHeader string) (int, []byte) {
+		req := httptest.NewRequest(http.MethodPost, "/guarded", nil)
+		if authHeader != "" {
+			req.Header.Set("Authorization", authHeader)
+		}
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+		return w.Code, w.Body.Bytes()
+	}
+
+	// super_admin 会话 → 200
+	tokAdmin, err := sm.Login(t.Context(), auth.SessionPayload{UserID: 1, UserName: "root", Roles: []string{"super_admin"}})
+	require.NoError(t, err)
+	status, body := post("Bearer " + tokAdmin)
+	require.Equal(t, http.StatusOK, status, "命中允许角色必须放行: body=%s", body)
+
+	// 无角色会话 → 403/10200 Abort（handler 不得执行）
+	tokLow, err := sm.Login(t.Context(), auth.SessionPayload{UserID: 2, UserName: "low"})
+	require.NoError(t, err)
+	status, body = post("Bearer " + tokLow)
+	require.Equal(t, http.StatusForbidden, status, "角色不符必须 403: body=%s", body)
+	var env struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(body, &env))
+	assert.Equal(t, 10200, env.Code)
+	assert.Equal(t, "无权限", env.Message)
+
+	// 无 token → 401（Auth 中间件先拦）
+	status, body = post("")
+	require.Equal(t, http.StatusUnauthorized, status, "无 token 必须 401: body=%s", body)
 }
 
 // TestAuthMiddlewareFailsClosedOnRedisError miniredis Close 后请求得 500
