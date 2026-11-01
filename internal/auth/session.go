@@ -177,6 +177,14 @@ func (sm *SessionManager) BindAPIKey(ctx context.Context, apiKey, token string) 
 	return sm.rdb.Set(ctx, keyAPIKeyPrefix+apiKey, token, sm.timeout).Err()
 }
 
+// UnbindAPIKey 解除 apiKey→token 映射（WR-02：复用分支发现关联用户被禁用/已删时
+// 清理——映射指向的会话不再可信，不得留作禁用身份的续命通道）。幂等：键不存在
+// DEL 为 no-op；Redis 故障原样上抛由调用方取舍（清映射失败最坏退化为旧行为——
+// 下次复用分支再次拒绝并重试清理，无放大效应）。
+func (sm *SessionManager) UnbindAPIKey(ctx context.Context, apiKey string) error {
+	return sm.rdb.Del(ctx, keyAPIKeyPrefix+apiKey).Err()
+}
+
 // ResolveAPIKey apiKey→token 解析：映射命中且指向会话仍存活才返回 token（双检）；
 // 映射缺失或指向死 token 均返回 ok=false——调用方走完整登录路径并覆盖该键。
 func (sm *SessionManager) ResolveAPIKey(ctx context.Context, apiKey string) (string, bool) {

@@ -136,6 +136,48 @@ func TestApiKeyLoginFlow(t *testing.T) {
 	assert.Equal(t, 10504, orphanEnvelope.Code, "未关联用户 key 必须 10504: body=%s", body)
 }
 
+// TestApikeyLoginReuseRejectsDisabledUser 复用分支状态校验（WR-02 回归）：有效 key
+// 登录建立映射 → 库内直改禁用关联用户（绕过 UpdateStatus 的 kick——模拟 IN-06
+// "禁用已落库但 kick 未发生"窗口/外部禁用）→ 同 key 再 apikey-login 必须拒绝
+// 10506（不得复用确认）；随后库内恢复启用（token 仍存活）→ 再次登录必须发新
+// token——直证禁用拒绝时已清旧映射（若未清，此处会原样复用旧 token）。
+func TestApikeyLoginReuseRejectsDisabledUser(t *testing.T) {
+	ts, dsn, adminToken, _ := newTestApp(t)
+	_ = adminToken()
+
+	uid := seedUser(t, dsn, "apikey-victim", testAdminHash, "受害者", 1, false)
+	seedApiKey(t, dsn, "ak-disabled-reuse", "apikey-victim", &uid, nil, 1)
+
+	// 首次完整登录：映射建立
+	status, body := apikeyLogin(t, ts, "ak-disabled-reuse")
+	require.Equal(t, http.StatusOK, status, "首次登录应 200: body=%s", body)
+	tokenA := extractToken(t, body)
+	require.NotEmpty(t, tokenA)
+
+	// 库内直改禁用（不触发 kick——tokenA 会话仍存活）
+	checkDB := openCheckDB(t, dsn)
+	execMust(t, checkDB, "UPDATE sys_user SET status = 0 WHERE id = ?", uid)
+
+	// 复用分支必须校验状态：拒绝复用，顺延完整路径 10506
+	status, body = apikeyLogin(t, ts, "ak-disabled-reuse")
+	require.Equal(t, http.StatusUnauthorized, status, "禁用用户的复用登录必须 401: body=%s", body)
+	var envelope struct {
+		Code int `json:"code"`
+	}
+	require.NoError(t, json.Unmarshal(body, &envelope))
+	assert.Equal(t, 10506, envelope.Code, "禁用关联用户必须 10506: body=%s", body)
+
+	// 库内恢复启用（tokenA 仍存活，未 kick）
+	execMust(t, checkDB, "UPDATE sys_user SET status = 1 WHERE id = ?", uid)
+
+	// 再次登录：旧映射已在禁用拒绝时被清——必须完整登录发新 token；
+	// 若清映射缺失，此处会命中复用分支原样返回 tokenA（直证清理生效）
+	status, body = apikeyLogin(t, ts, "ak-disabled-reuse")
+	require.Equal(t, http.StatusOK, status, "恢复启用后应可登录: body=%s", body)
+	tokenB := extractToken(t, body)
+	assert.NotEqual(t, tokenA, tokenB, "旧映射必须已被清——不得复用禁用期间确认过的 tokenA")
+}
+
 // TestKickoutFlow 踢下线端到端（AUTH-04/D-08）：目标用户双端登录两 token →
 // kickout {userId} → 两 token 访问均 401 → 该用户可重新登录（踢下线非封禁）。
 func TestKickoutFlow(t *testing.T) {

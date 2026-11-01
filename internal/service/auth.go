@@ -81,9 +81,10 @@ func (s *AuthService) Logout(ctx context.Context, token string) error {
 }
 
 // ApikeyLogin API Key 登录（分支顺序与消息照源 AuthApplicationService.java:63-77，
-// D-03）：①key 无效/停用/过期 → 10503 ②apiKey→token 映射命中且会话存活 → 复用
-// 同一 token（会话内 roles 即权威快照，不重查重装配）③未关联用户 10504 ④关联用户
-// 不存在 10505 ⑤关联用户禁用 10506 ⑥完整登录 + 绑定 apiKey→token 映射。
+// D-03）：①key 无效/停用/过期 → 10503 ②apiKey→token 映射命中且会话存活且关联
+// 用户仍 ENABLED → 复用同一 token（会话内 roles 即权威快照，不重查重装配）③未关联
+// 用户 10504 ④关联用户不存在 10505 ⑤关联用户禁用 10506 ⑥完整登录 + 绑定
+// apiKey→token 映射。
 //
 // 并发竞态显式决策（AUTH-02 边缘，02-CONTEXT.md 认可）：两个并发 apikeyLogin 同时
 // miss 映射时各自完整登录——两个 token 各自有效、互不污染，映射 SET 最后写者赢；
@@ -98,11 +99,23 @@ func (s *AuthService) ApikeyLogin(ctx context.Context, req *dto.ApiKeyLoginReq) 
 		return nil, errcode.ErrApiKeyInvalid
 	}
 
-	// 复用分支（②）：映射命中且指向会话仍存活 → 复用同一 token。
-	// 注：复用路径不做 ③④⑤ 用户态校验（源语义：跳过重查库装配）；若复用路径查
-	// 用户落空（用户已被删）则顺延走完整路径，由 ④⑤ 给出精确错误。
+	// 复用分支（②）：映射命中且指向会话仍存活 → 复用同一 token。关联用户必须仍为
+	// ENABLED（WR-02 修复：既然已回查存在性，不校验状态自相矛盾——禁用用户可经
+	// 旧映射无限续用禁用身份的存活会话；覆盖两处绕过场景：绕过 API 的库内直改
+	// 禁用、UpdateStatus 落库后 KickoutUser 因 Redis 故障失败 IN-06）。禁用/已删
+	// 则清映射并顺延完整路径，由 ④⑤ 给出精确错误（10505/10506）。
 	if reused, ok := s.sm.ResolveAPIKey(ctx, derefStr(req.ApiKey)); ok && key.UserID != nil {
-		if u, err := s.userRepo.FindByID(ctx, *key.UserID); err == nil && u != nil {
+		u, uerr := s.userRepo.FindByID(ctx, *key.UserID)
+		switch {
+		case uerr != nil && !errors.Is(uerr, errcode.ErrNotFound):
+			// 暂时性 DB 故障：不清映射（映射本身无害），顺延完整路径 fail-closed
+		case u == nil:
+			// 用户已删：会话指向死身份，清映射防续命，完整路径返回 10505
+			_ = s.sm.UnbindAPIKey(ctx, derefStr(req.ApiKey))
+		case u.Status == nil || *u.Status != 1:
+			// 禁用：同上清映射，完整路径返回 10506
+			_ = s.sm.UnbindAPIKey(ctx, derefStr(req.ApiKey))
+		default:
 			return &dto.LoginResp{Token: reused, User: dto.ToUserResp(u)}, nil
 		}
 	}
