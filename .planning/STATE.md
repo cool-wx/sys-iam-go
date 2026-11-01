@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: Casbin 授权与数据权限
 status: executing
-stopped_at: Phase 2 complete, ready to plan Phase 3
-last_updated: "2026-11-01T03:57:32.300Z"
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-11-01T04:57:06.497Z"
 last_activity: 2026-11-01
-last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: b702f9eb8f4eae2d7dae91e4f98b3e0d26b77bcf
+last_activity_desc: Phase 3 execution started
+state_head: 40143b70f07d03a5668a6076aedc8a2631994063
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 9
-  completed_plans: 6
+  completed_plans: 7
   percent: 40
 ---
 
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-01, Phase 2 transition)
 
 **Core value:** 在工控机上以单个轻量 Go 服务完整复刻 sys-iam 的全部 IAM 能力，且接口实现与自动化测试全部通过。
-**Current focus:** Phase 03 — Casbin 授权与数据权限
+**Current focus:** Phase 3 — Casbin 授权与数据权限
 
 ## Current Position
 
-Phase: 3 (Casbin 授权与数据权限) — READY TO EXECUTE
-Plan: Not started
+Phase: 3 (Casbin 授权与数据权限) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-11-01 — Phase 2 complete, transitioned to Phase 3
+Last activity: 2026-11-01 — Phase 3 execution started
 
 Progress: [████░░░░░░] 40%
 
@@ -63,6 +63,7 @@ Progress: [████░░░░░░] 40%
 | Phase 02 P02-01 | 43min | 2 tasks | 33 files |
 | Phase 02 P02-02 | 35min | 2 tasks | 25 files |
 | Phase 02 P03 | 50 min | 2 tasks | 17 files |
+| Phase 03 P03-01 | 50min | 2 tasks | 19 files |
 
 ## Accumulated Context
 
@@ -95,6 +96,9 @@ Recent decisions affecting current work:
 - [Phase 02]: ApiKey create userId 引用不存在译 400（CodeInvalidParam）——请求参数引用实体 400、操作主体 404 双轨译码惯例成文（同部门/角色校验链）
 - [Phase 02]: types.LocalDateTime 补 UnmarshalJSON（主格式源 DATE_TIME_FORMAT + RFC3339 兜底）——契约对称性缺口修复，请求侧时间键自此全域可用
 - [Phase 02]: sys_user_role.username 列存 realName 与 ApiKey.username 冗余取 username 两处相反语义均照源移植并双向注释防混
+- [Phase 03]: [Phase 03] 03-01: casbin sub 用 role_code（不可改名 + builtin super_admin 恒定）——策略行不因角色改名失效；super_admin 豁免唯一判据在 enforcer g 层 matcher 首位短路（D-07），会话快照判据废弃
+- [Phase 03]: [Phase 03] 03-01: 双轨同步纪律确立——业务 db.Transaction 提交成功后调 enforcer API（adapter 独立 Session 不在事务内），失败上抛 500 重试自愈（幂等全删全加）；AddPolicies 前业务层 map 去重防 MySQL 8.4 Error 1869
+- [Phase 03]: [Phase 03] 03-01: boot 对账 fail-fast——启动时关系表全量导入 casbin g/p 策略（ReplaceAll 幂等可重入），存量 admin 冷启动即可用；对账失败拒绝启动绝不静默全量 403
 
 ### Pending Todos
 
@@ -118,6 +122,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-01T00:42:50.966Z
-Stopped at: Phase 2 complete, ready to plan Phase 3
+Last session: 2026-11-01T04:57:06.404Z
+Stopped at: Completed 03-01-PLAN.md
 Resume file: None

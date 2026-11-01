@@ -76,11 +76,11 @@ Plans:
   2. 管理员通过角色授权接口分配/回收功能权限，策略持久化到新建原生 Casbin 策略表（gorm adapter），现有 sys_role_menu/sys_menu 原样不动（双轨）
   3. 已登录用户在不重新登录的情况下，权限分配/回收后的下一请求即按新策略通过或被拒（即时生效）
   4. dataScope 五档（本人/本部门/本部门及以下/指定部门/全部）在列表查询上产生可观察的行过滤差异（如"本部门"管理员查询用户列表看不到其他部门用户，"全部"则可见）
-**Plans**: 0/3 plans complete
+**Plans**: 1/3 plans executed
 
 Plans:
 **Wave 1**
-- [ ] 03-01-PLAN.md — Casbin enforcer tracer：casbin_rule DDL + authz 包装配（NewSyncedEnforcer fail-fast）+ boot 对账（存量关系表导入策略）+ RequirePerm 中间件 + GET /users 首路由 + 四写路径双轨同步 + 同 token 即时生效断言（PERM-01/02/04/05，PERM-06 中间件本体）
+- [x] 03-01-PLAN.md — Casbin enforcer tracer：casbin_rule DDL + authz 包装配（NewSyncedEnforcer fail-fast）+ boot 对账（存量关系表导入策略）+ RequirePerm 中间件 + GET /users 首路由 + 四写路径双轨同步 + 同 token 即时生效断言（PERM-01/02/04/05，PERM-06 中间件本体）
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 03-02-PLAN.md — dataScope 五档：sys_role_dept 存储（D-10 增量表）+ scopes 端点 + 角色四连删 + internal/datascope 通用件（Filter/Widest/子树展开）+ 用户列表挂接 + 五档行差异断言（PERM-03）
@@ -121,6 +121,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. 工程骨架与横切地基 | 3/3 | Complete    | 2026-10-31 |
 | 2. 认证会话与 RBAC 主链路 | 3/3 | Complete    | 2026-11-01 |
-| 3. Casbin 授权与数据权限 | 0/TBD | Not started | - |
+| 3. Casbin 授权与数据权限 | 1/3 | In Progress | - |
 | 4. 业务域与操作日志 | 0/TBD | Not started | - |
 | 5. 名称同步事件与验收收尾 | 0/TBD | Not started | - |
