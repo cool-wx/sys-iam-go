@@ -369,20 +369,23 @@ Wave 0 gaps：无框架缺口（全部复用既有基建）；仅需新测试文
 | 过期凭据存续 | IN-14 反查撤销（过期 key 登录拒绝即撤 user 轴会话） |
 | matcher 逻辑洞 | super_admin 豁免唯一判据 = enforcer g 层（会话快照判据废弃——撤销角色即时失效，probe 直证） |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> 三问均已在规划期裁决收口（2026-11-01），逐问 RESOLVED 出处附后。
 
 1. **档位 4（指定部门）的部门集合存储——需用户/planner 裁决**
    - 实证：sys_role 无此列（容器 DDL 直证）、源系统无此概念（grep 零命中）。
    - 方案 A（推荐）：新关联表 `sys_role_dept`（id/role_id/dept_id + 时间冗余列，模式同 sys_role_menu 同构）；辩护：与"新增 Casbin 策略表属增量扩展"同类（纯新增不动既有表）；PUT /roles/:id 扩展 scopeDeptIds 字段（API 契约允许重设计，CLAUDE.md 锁定）；data_scope=4 时表驱动。
    - 方案 B：sys_role 加一列（varchar 存逗号分隔 ID 或 JSON）——最小查询成本但破坏"schema 沿用"例外清单的严格性（REQUIREMENTS.md Out of Scope 例外仅点名 Casbin 表）。
    - 方案 C：复用 casbin_rule 存 `d` 行——被 D-14"Casbin 策略表仅作 enforcer 持久化"否决（d 行非 enforcer 消费，LoadPolicy 对未知 ptype 的行为未实证，风险高）。**不推荐**。
-   - 建议：planner 按 A 起草，discuss/人工确认时向用户报备一句"档位 4 需要一张新关联表 sys_role_dept（源系统没有这个功能，属增量扩展）"。
+   - **RESOLVED → CONTEXT D-10（2026-11-01 自主拍板）**：方案 A 采纳——新增 sys_role_dept 同构关联表（角色删除三连删扩四连删）；管理面形态经 03-02 规划裁决记录修正为独立子资源端点 PUT/GET /api/v1/roles/:id/scopes（存储裁决本身遵 D-10 不变）。
 
 2. **api-keys / auth(kickout) 域 perm 串"发明"**
    - 实证：sys_menu 41 行无 apiKey/auth 域 permission 串；assignMenus 只能授菜单存在的串 → 发明的 perm 串仅 super_admin（matcher 豁免）可过，其他角色 v1 无授权入口（D-14 禁独立策略管理面）。
-   - 建议：按挂载清单发明（`system:apiKey:*`、`system:auth:kickout`），v1 接受"仅 super_admin 可管 api-keys"现实（Phase 2 前 api-keys 就无菜单联动），前端菜单未来补充时 assignMenus 自然打通。记录为已知边界，不需阻塞。
+   - **RESOLVED → CONTEXT D-06 + 03-01 Task 1**：按挂载清单发明六串（`system:` 前缀，perms.go 常量注释标注），v1 已知边界 = 仅 super_admin 可管 apiKey/auth 域——记录不阻塞。
 
 3. **（已裁决，记录备用）casbin v3 路线**：官方主线已迁 v3（adapter v3.36.0+），若未来多实例/watcher 生态需要 v3 特性，需推翻 D-01 用户决策升级——v1 不动。
+   - **RESOLVED → CONTEXT D-01/D-02**：v1 锁定 casbin/v2 v2.135.0 + gorm-adapter v3.35.0（版本锁死防 v3.36+ 破坏）；单机单进程无 watcher 需求，v3 升级仅作未来记录备用。
 
 ## Assumptions Log
 
