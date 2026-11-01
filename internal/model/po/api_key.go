@@ -14,10 +14,10 @@ import (
 type ApiKeyPO struct {
 	BaseWithOperator
 
-	ID       int64      `gorm:"column:id;primaryKey"`
-	ApiKey   string     `gorm:"column:api_key"`
-	Username string     `gorm:"column:username"`
-	UserID   *int64     `gorm:"column:user_id"`
+	ID       int64  `gorm:"column:id;primaryKey"`
+	ApiKey   string `gorm:"column:api_key"`
+	Username string `gorm:"column:username"`
+	UserID   *int64 `gorm:"column:user_id"`
 	// ExpireTime 过期时间（NULL=永不过期；登录过滤语义 expire_time > NOW()）。
 	ExpireTime *time.Time `gorm:"column:expire_time"`
 	Status     *int8      `gorm:"column:status"`

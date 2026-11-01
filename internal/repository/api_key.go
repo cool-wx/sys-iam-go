@@ -121,4 +121,3 @@ func (r *ApiKeyRepo) List(ctx context.Context, page, size int) ([]po.ApiKeyPO, i
 func (r *ApiKeyRepo) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&po.ApiKeyPO{}).Error
 }
-
