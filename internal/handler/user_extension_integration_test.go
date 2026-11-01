@@ -303,6 +303,57 @@ func TestUserRolesBuiltinAssignGuardRevokedSession(t *testing.T) {
 	assert.Equal(t, int64(0), urCnt, "被拒请求不得写入 sys_user_role 关联（前置拦截零写）")
 }
 
+// TestAssignRolesDisabledRoleRejected 停用角色写路径封口（WR-07 回归，用户轴）：
+// 请求集合含停用角色时 AssignRoles 必须 400 前置拒绝——否则 SyncUserRoles 会把 g
+// 行写回，停用语义被合法 API 复活（matcher 只看 casbin 行、无 status 概念，g 行即
+// 权限）。断言单停用角色与混合集合（正常+停用）均整体拒绝、casbin g 行与
+// sys_user_role 零写入；恢复 ENABLED 后分配照常（守卫不误伤正常路径）。
+func TestAssignRolesDisabledRoleRejected(t *testing.T) {
+	ts, dsn, adminToken, _ := newTestApp(t)
+	token := adminToken()
+	seedDept(t, dsn, 100, "总部")
+	checkDB := openCheckDB(t, dsn)
+
+	uidStr := createRawUser(t, ts, token, `{"username":"assign-disabled","password":"pw-123456","realName":"停用分配","deptId":"100"}`)
+	uid, _ := strconv.ParseInt(uidStr, 10, 64)
+	roleA := createRole(t, ts, token, "正常角色", "wronly_role_a")
+	disabledRole := createRole(t, ts, token, "将停用角色", "wronly_role_b")
+
+	// 停用 disabledRole（基线：尚未有任何关联，停用后 ClearRole 无行可清）
+	status, body := doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+disabledRole, `{"status":"DISABLED"}`)
+	require.Equal(t, http.StatusOK, status, "停用必须成功: body=%s", body)
+
+	// WR-07 核心：单停用角色分配 → 400
+	status, body = assignRoles(t, ts, token, uidStr, `"`+disabledRole+`"`)
+	require.Equal(t, http.StatusBadRequest, status, "含停用角色的分配必须 400: body=%s", body)
+	var rejEnv struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(body, &rejEnv))
+	assert.Equal(t, 10400, rejEnv.Code, "body=%s", body)
+	assert.Contains(t, rejEnv.Message, "角色已停用", "body=%s", body)
+	assert.Contains(t, rejEnv.Message, disabledRole, "message 应含停用角色 id: body=%s", body)
+
+	// 混合集合（正常+停用）同样整体拒绝（任一停用即拒，不含糊放行）
+	status, body = assignRoles(t, ts, token, uidStr, `"`+roleA+`", "`+disabledRole+`"`)
+	require.Equal(t, http.StatusBadRequest, status, "混合集合必须整体拒绝: body=%s", body)
+
+	// 零写证明：sys_user_role 与 casbin g 行零写入
+	require.Equal(t, int64(0), userRoleCount(t, checkDB, uid), "停用角色分配必须前置拦截，sys_user_role 零写入")
+	var gCnt int64
+	require.NoError(t, checkDB.Raw(
+		"SELECT COUNT(*) FROM casbin_rule WHERE ptype = 'g' AND v0 = ?", uidStr,
+	).Scan(&gCnt).Error)
+	assert.Equal(t, int64(0), gCnt, "停用角色分配必须前置拦截，casbin g 行零写入")
+
+	// 恢复后分配照常（守卫不误伤正常路径）
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+disabledRole, `{"status":"ENABLED"}`)
+	require.Equal(t, http.StatusOK, status, "恢复必须成功: body=%s", body)
+	status, body = assignRoles(t, ts, token, uidStr, `"`+roleA+`", "`+disabledRole+`"`)
+	require.Equal(t, http.StatusOK, status, "恢复后含该角色的分配必须放行: body=%s", body)
+}
+
 // TestUserRolesInvalidRole 分配含不存在 roleId：400 + 消息精确含
 // 「角色不存在: [逗号拼接]」式串（缺失集合式，格式照源）；校验前置不动存量。
 func TestUserRolesInvalidRole(t *testing.T) {

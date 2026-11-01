@@ -381,6 +381,8 @@ func (s *UserService) AssignRoles(ctx context.Context, userID int64, roleIDs []i
 	roleCodeOf := make(map[int64]string, len(reqIDs))
 	// builtin 标志（CR-03 提权守卫判定原料，同次查询顺带收集）
 	builtinOf := make(map[int64]*bool, len(reqIDs))
+	// status 标志（WR-07 停用写路径封口判定原料，同次查询顺带收集）
+	statusOf := make(map[int64]*int8, len(reqIDs))
 	if len(reqIDs) > 0 {
 		roles, err := s.roleRepo.FindByIDs(ctx, reqIDs)
 		if err != nil {
@@ -390,6 +392,7 @@ func (s *UserService) AssignRoles(ctx context.Context, userID int64, roleIDs []i
 			roleNameOf[roles[i].ID] = roles[i].RoleName
 			roleCodeOf[roles[i].ID] = roles[i].RoleCode
 			builtinOf[roles[i].ID] = roles[i].Builtin
+			statusOf[roles[i].ID] = roles[i].Status
 		}
 	}
 	var missing []string
@@ -400,6 +403,21 @@ func (s *UserService) AssignRoles(ctx context.Context, userID int64, roleIDs []i
 	}
 	if len(missing) > 0 {
 		return errcode.New(errcode.CodeInvalidParam, "角色不存在: ["+strings.Join(missing, ", ")+"]")
+	}
+	// 停用角色写路径封口（WR-07，前置拦截零写调用，RoleService.AssignMenus 同款）：
+	// 停用即 ClearRole 双清授权（WR-04 语义），运行期 matcher 只看 casbin p/g 行、
+	// 无 status 概念——对停用角色再分配会经 SyncUserRoles 把 g 行写回，停用状态被
+	// 合法 API 复活。任一角色停用即整体拒绝（混合集合不含糊放行），消息沿域 400
+	// 缺失集合风格（「角色不存在: [逗号拼接]」同款）。NULL status 视作启用（照
+	// UsageStatusFromInt「非 0 一律 ENABLED」读路径兜底；DDL DEFAULT '1' 实际不可达）。
+	var disabledIDs []string
+	for _, rid := range reqIDs {
+		if st := statusOf[rid]; st != nil && *st != 1 {
+			disabledIDs = append(disabledIDs, strconv.FormatInt(rid, 10))
+		}
+	}
+	if len(disabledIDs) > 0 {
+		return errcode.New(errcode.CodeInvalidParam, "角色已停用，不可分配: ["+strings.Join(disabledIDs, ", ")+"]")
 	}
 	// builtin 提权守卫（CR-03，前置拦截零写调用）：请求集合含 builtin 角色时要求
 	// 操作者 enforcer g 层实时持有 super_admin，否则 403/10603——堵住仅持

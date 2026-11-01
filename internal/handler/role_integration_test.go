@@ -446,6 +446,69 @@ func TestRoleAssignMenus(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, status, "body=%s", body)
 }
 
+// TestRoleAssignMenusDisabledRejected 停用角色写路径封口（WR-07 回归，角色轴）：
+// 停用角色的 AssignMenus 必须 400 前置拒绝——否则 SyncRolePerms 会把 p 行写回，
+// 停用语义（WR-04 授权即刻撤销）被合法 API 复活（运行期 matcher 无 status 概念）。
+// 断言 casbin p 行零复活 + sys_role_menu 零变化（前置拦截零写调用）；恢复 ENABLED
+// 后分配照常（守卫不误伤正常路径）。
+func TestRoleAssignMenusDisabledRejected(t *testing.T) {
+	ts, dsn, adminToken, _ := newTestApp(t)
+	token := adminToken()
+
+	checkDB := openCheckDB(t, dsn)
+	execMust(t, checkDB,
+		"INSERT INTO sys_menu (id, name, permission, create_time, update_time) VALUES (990471, '封口菜单', 'system:perm:sealed', NOW(), NOW())")
+
+	roleID := mustCreate(t, token, ts.URL+"/api/v1/roles", `{"roleName":"停用分配角色","roleCode":"assign_disabled_role"}`)
+	roleNum, err := strconv.ParseInt(roleID, 10, 64)
+	require.NoError(t, err)
+
+	// 停用前分配 [990471] → 200（p 行 + sys_role_menu 写入基线）
+	status, body := doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID+"/menus",
+		`{"menuIds":["990471"]}`)
+	require.Equal(t, http.StatusOK, status, "停用前分配必须成功: body=%s", body)
+	countRolePRows := func() int64 {
+		var cnt int64
+		require.NoError(t, checkDB.Raw(
+			"SELECT COUNT(*) FROM casbin_rule WHERE ptype = 'p' AND v0 = 'assign_disabled_role'",
+		).Scan(&cnt).Error)
+		return cnt
+	}
+	require.Equal(t, int64(1), countRolePRows(), "前置条件：停用前 p 行必须已写入")
+
+	// 停用（WR-04：ClearRole 双清 casbin，业务表 sys_role_menu 保持不动）
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID, `{"status":"DISABLED"}`)
+	require.Equal(t, http.StatusOK, status, "停用必须成功: body=%s", body)
+	require.Equal(t, int64(0), countRolePRows(), "前置条件：停用必须双清 p 行（WR-04 语义基线）")
+
+	// WR-07 核心：对停用角色 AssignMenus → 400 前置拒绝
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID+"/menus",
+		`{"menuIds":["990471"]}`)
+	require.Equal(t, http.StatusBadRequest, status, "停用角色分配菜单必须 400: body=%s", body)
+	var rejEnv struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(body, &rejEnv))
+	assert.Equal(t, 10400, rejEnv.Code, "body=%s", body)
+	assert.Contains(t, rejEnv.Message, "角色已停用", "body=%s", body)
+	assert.Contains(t, rejEnv.Message, roleID, "message 应含停用角色 id: body=%s", body)
+
+	// 零写证明：p 行零复活；sys_role_menu 保持停用前关联（业务表不动，WR-04 事实源语义）
+	require.Equal(t, int64(0), countRolePRows(), "被拒请求不得把 p 行写回（WR-07 封口直证）")
+	var rmCnt int64
+	require.NoError(t, checkDB.Raw("SELECT COUNT(*) FROM sys_role_menu WHERE role_id = ?", roleNum).Scan(&rmCnt).Error)
+	assert.Equal(t, int64(1), rmCnt, "被拒请求不得改动 sys_role_menu（业务表停用期间不动）")
+
+	// 恢复 ENABLED 后分配照常（守卫不误伤；p 行按业务表重建）
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID, `{"status":"ENABLED"}`)
+	require.Equal(t, http.StatusOK, status, "恢复必须成功: body=%s", body)
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID+"/menus",
+		`{"menuIds":["990471"]}`)
+	require.Equal(t, http.StatusOK, status, "恢复后分配必须放行: body=%s", body)
+	require.Equal(t, int64(1), countRolePRows(), "恢复后 p 行必须重建")
+}
+
 // TestRoleAssignScopes 角色数据权限范围部门分配（PERM-03 档位 4 存储面，D-10；
 // PUT/GET /api/v1/roles/:id/scopes 独立子资源端点）：分配→GET 回读→再分配反映
 // 全量替换→缺失 deptId 400「部门不存在: [...]」且不动存量→空数组全回收（直查

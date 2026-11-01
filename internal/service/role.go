@@ -244,11 +244,11 @@ func (s *RoleService) Delete(ctx context.Context, id int64) error {
 	})
 }
 
-// AssignMenus 分配角色菜单（全量替换语义）：角色校验 → menuIds 前置全量校验
-// （缺失集合译 400「菜单不存在: [逗号拼接]」，防脏关联）→ db.Transaction{
-// DeleteRoleMenus + BatchCreateRoleMenus }——删旧插新同事务，杜绝"删后插前"
-// 窗口期角色权限全空的可见态（T-2-11）；role_name/menu_name 冗余逐行写入
-// （源 RoleMenu.create 语义）。空数组=全回收（合法语义）。
+// AssignMenus 分配角色菜单（全量替换语义）：角色校验 → 停用写路径封口（WR-07）→
+// menuIds 前置全量校验（缺失集合译 400「菜单不存在: [逗号拼接]」，防脏关联）→
+// db.Transaction{ DeleteRoleMenus + BatchCreateRoleMenus }——删旧插新同事务，杜绝
+// "删后插前"窗口期角色权限全空的可见态（T-2-11）；role_name/menu_name 冗余逐行
+// 写入（源 RoleMenu.create 语义）。空数组=全回收（合法语义）。
 func (s *RoleService) AssignMenus(ctx context.Context, roleID int64, menuIDs []ids.ID) error {
 	role, err := s.roleRepo.FindByID(ctx, roleID)
 	if err != nil {
@@ -256,6 +256,14 @@ func (s *RoleService) AssignMenus(ctx context.Context, roleID int64, menuIDs []i
 			return errcode.New(errcode.CodeNotFound, fmt.Sprintf("角色不存在: %d", roleID))
 		}
 		return err
+	}
+	// 停用角色写路径封口（WR-07，前置拦截零写调用）：停用即 ClearRole 双清授权
+	// （WR-04 语义），而运行期 matcher 只看 casbin p/g 行、无 status 概念——对停用
+	// 角色再分配菜单会经 SyncRolePerms 把 p 行写回，停用状态被合法 API 复活。NULL
+	// status 视作启用（照 UsageStatusFromInt「非 0 一律 ENABLED」读路径兜底；DDL
+	// status DEFAULT '1'，NULL 实际不可达）。消息沿域 400 风格（「角色不存在」同款）。
+	if role.Status != nil && *role.Status != 1 {
+		return errcode.New(errcode.CodeInvalidParam, fmt.Sprintf("角色已停用，不可分配: %d", roleID))
 	}
 	// reqIDs map 去重（WR-02，照 AssignRoles reqSeen 模板）：请求体重复 menuID 会让
 	// BatchCreateRoleMenus 在 sys_role_menu 插入完全重复行（两表仅普通索引无唯一键），
