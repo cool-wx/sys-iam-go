@@ -87,6 +87,14 @@ func (s *MenuService) Update(ctx context.Context, id int64, req *dto.MenuUpdateR
 			cols["parent_id"] = 0
 			cols["parent_name"] = nil
 		} else {
+			// WR-04 成环拦截：自引用/挂到自身子孙均拒绝——落库后环上节点在
+			// tree.Build 中互不归根，整条子树从树查询静默消失（持久脏数据）
+			if pid == id {
+				return nil, errcode.New(errcode.CodeInvalidParam, "父菜单不能是自己")
+			}
+			if err := s.ensureNotDescendant(ctx, pid, id); err != nil {
+				return nil, err
+			}
 			parent, err := s.resolveParent(ctx, pid)
 			if err != nil {
 				return nil, err
@@ -196,6 +204,27 @@ func (s *MenuService) Tree(ctx context.Context) ([]*dto.MenuTreeResp, error) {
 // 孤儿子节点经树查询孤儿提升语义仍可见）。
 func (s *MenuService) Delete(ctx context.Context, id int64) error {
 	return s.repo.Delete(ctx, id)
+}
+
+// ensureNotDescendant 成环拦截（WR-04）：把 id 挂到 pid 下前，沿 pid 的父链向上
+// 上溯（visited 集防存量环数据死循环 + 深度上限冗余兜底）——若途中遇到 id，说明
+// pid 位于 id 的子链上，挂接将成环，报 400。父链中断（节点不存在/到根）即无环。
+func (s *MenuService) ensureNotDescendant(ctx context.Context, pid, id int64) error {
+	visited := make(map[int64]bool)
+	const maxDepth = 100
+	cur := pid
+	for depth := 0; depth < maxDepth && !visited[cur]; depth++ {
+		if cur == id {
+			return errcode.New(errcode.CodeInvalidParam, fmt.Sprintf("父菜单不能是当前菜单的子孙节点: %d", pid))
+		}
+		visited[cur] = true
+		p, err := s.repo.FindByID(ctx, cur)
+		if err != nil || p.ParentID == nil || *p.ParentID == 0 {
+			break // 父链中断（不存在/根）→ 无环
+		}
+		cur = *p.ParentID
+	}
+	return nil
 }
 
 // resolveParent 父校验（源 resolveParentName 逐字语义）：父不存在或父 name 为

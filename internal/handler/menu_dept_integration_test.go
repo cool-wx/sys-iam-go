@@ -318,3 +318,96 @@ func TestDeptTreeOrphanPromotion(t *testing.T) {
 	assert.NotNil(t, env.Data[0].Children[0].Children, "叶子 children 必须是 [] 而非 null")
 	assert.Empty(t, env.Data[0].Children[0].Children)
 }
+
+// TestMenuDeptUpdateParentCycleGuard Update parentId 自指/成环 400（WR-04 回归）：
+// ①pid==id 自指 ②pid 为当前节点子节点 ③pid 为当前节点孙节点——均 400 且存量不动
+// （若落库成环，tree.Build 对环上节点互不归根、整条子树从树查询静默消失——持久
+// 脏数据，必须前置拦截）；合法移动（挂到无祖先关系的节点）仍 200。menu/dept 两域
+// 同构各直证一遍。
+func TestMenuDeptUpdateParentCycleGuard(t *testing.T) {
+	ts, _, adminToken, _ := newTestApp(t)
+	token := adminToken()
+
+	// --- menu 域：root ← child ← grand ---
+	rootID := mustCreate(t, token, ts.URL+"/api/v1/menus", `{"name":"环根","type":"DIR","sort":1}`)
+	childID := mustCreate(t, token, ts.URL+"/api/v1/menus", `{"name":"环子","type":"DIR","parentId":`+rootID+`,"sort":1}`)
+	grandID := mustCreate(t, token, ts.URL+"/api/v1/menus", `{"name":"环孙","type":"MENU","parentId":`+childID+`,"sort":1}`)
+	otherID := mustCreate(t, token, ts.URL+"/api/v1/menus", `{"name":"无关联根","type":"DIR","sort":9}`)
+
+	// ①自指 → 400「父菜单不能是自己」
+	status, body := doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/menus/"+rootID, `{"parentId":`+rootID+`}`)
+	require.Equal(t, http.StatusBadRequest, status, "自指必须 400: body=%s", body)
+	var env1 struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(body, &env1))
+	assert.Equal(t, 10400, env1.Code)
+	assert.Contains(t, env1.Message, "父菜单不能是自己", "body=%s", body)
+
+	// ②挂到直接子节点 → 400（成环）
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/menus/"+rootID, `{"parentId":`+childID+`}`)
+	require.Equal(t, http.StatusBadRequest, status, "挂到子节点必须 400: body=%s", body)
+	var env2 struct {
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(body, &env2))
+	assert.Contains(t, env2.Message, "父菜单不能是当前菜单的子孙节点: ", "body=%s", body)
+
+	// ③挂到孙节点 → 400（隔代成环，上溯两跳命中）
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/menus/"+rootID, `{"parentId":`+grandID+`}`)
+	require.Equal(t, http.StatusBadRequest, status, "挂到孙节点必须 400: body=%s", body)
+
+	// 拒绝后存量不动 + 树查询不消失：root 仍为根、child 仍在 root 下
+	status, body = doAuthRequest(t, token, "GET", ts.URL+"/api/v1/menus/tree", "")
+	require.Equal(t, http.StatusOK, status, "body=%s", body)
+	var treeEnv struct {
+		Data []treeNode `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(body, &treeEnv), "body=%s", body)
+	found := false
+	for _, r := range treeEnv.Data {
+		if r.ID == rootID {
+			found = true
+			require.Len(t, r.Children, 1, "拒绝后 child 必须仍在 root 下")
+			assert.Equal(t, childID, r.Children[0].ID)
+		}
+	}
+	assert.True(t, found, "拒绝后 root 不得从树中消失（未成环证明）")
+
+	// 合法移动：child 挂到无祖先关系的 other 根 → 200 + DB parent_id 联动
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/menus/"+childID, `{"parentId":`+otherID+`}`)
+	require.Equal(t, http.StatusOK, status, "合法移动必须 200: body=%s", body)
+	var moved struct {
+		Data struct {
+			ParentID string `json:"parentId"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(body, &moved))
+	assert.Equal(t, otherID, moved.Data.ParentID, "合法移动后 parentId 应为新父")
+
+	// --- dept 域同构：dRoot ← dChild ← dGrand ---
+	dRootID := mustCreate(t, token, ts.URL+"/api/v1/depts", `{"deptName":"环部门根","sort":1}`)
+	dChildID := mustCreate(t, token, ts.URL+"/api/v1/depts", `{"deptName":"环部门子","parentId":`+dRootID+`,"sort":1}`)
+	dGrandID := mustCreate(t, token, ts.URL+"/api/v1/depts", `{"deptName":"环部门孙","parentId":`+dChildID+`,"sort":1}`)
+
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/depts/"+dRootID, `{"parentId":`+dRootID+`}`)
+	require.Equal(t, http.StatusBadRequest, status, "dept 自指必须 400: body=%s", body)
+	var denv1 struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(body, &denv1))
+	assert.Equal(t, 10400, denv1.Code)
+	assert.Contains(t, denv1.Message, "上级部门不能是自己", "body=%s", body)
+
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/depts/"+dRootID, `{"parentId":`+dChildID+`}`)
+	require.Equal(t, http.StatusBadRequest, status, "dept 挂到子节点必须 400: body=%s", body)
+
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/depts/"+dRootID, `{"parentId":`+dGrandID+`}`)
+	require.Equal(t, http.StatusBadRequest, status, "dept 挂到孙节点必须 400: body=%s", body)
+
+	// dept 合法移动到根（parentId=0 显式移根）仍 200
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/depts/"+dChildID, `{"parentId":0}`)
+	require.Equal(t, http.StatusOK, status, "显式移根必须仍合法: body=%s", body)
+}
