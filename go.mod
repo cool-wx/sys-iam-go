@@ -5,6 +5,8 @@ go 1.27.3
 require (
 	github.com/alicebob/miniredis/v2 v2.40.0
 	github.com/bwmarrin/snowflake v0.3.0
+	github.com/casbin/casbin/v2 v2.135.0
+	github.com/casbin/gorm-adapter/v3 v3.35.0
 	github.com/gin-gonic/gin v1.12.0
 	github.com/knadh/koanf/parsers/yaml v1.1.1
 	github.com/knadh/koanf/providers/env/v2 v2.0.2
@@ -28,8 +30,6 @@ require (
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect
 	github.com/bytedance/sonic/loader v0.5.0 // indirect
-	github.com/casbin/casbin/v2 v2.135.0 // indirect
-	github.com/casbin/gorm-adapter/v3 v3.35.0 // indirect
 	github.com/casbin/govaluate v1.3.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
