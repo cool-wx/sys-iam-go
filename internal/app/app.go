@@ -135,6 +135,8 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	roleRepo := repository.NewRoleRepo(db)
 	dictTypeRepo := repository.NewDictTypeRepo(db)
 	dictDataRepo := repository.NewDictDataRepo(db)
+	configRepo := repository.NewSysConfigRepo(db)
+	shiftRepo := repository.NewShiftRepo(db)
 	userSvc := service.NewUserService(db, userRepo, relationRepo, roleRepo, deptRepo, sessionMgr, enf)
 	authSvc := service.NewAuthService(userRepo, relationRepo, apiKeyRepo, sessionMgr)
 	menuSvc := service.NewMenuService(menuRepo)
@@ -142,6 +144,8 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	roleSvc := service.NewRoleService(db, roleRepo, menuRepo, relationRepo, deptRepo, enf)
 	apiKeySvc := service.NewApiKeyService(userRepo, apiKeyRepo, sessionMgr)
 	dictSvc := service.NewDictService(dictTypeRepo, dictDataRepo)
+	configSvc := service.NewConfigService(configRepo)
+	shiftSvc := service.NewShiftService(shiftRepo)
 	userHandler := handler.NewUserHandler(userSvc)
 	authHandler := handler.NewAuthHandler(authSvc)
 	menuHandler := handler.NewMenuHandler(menuSvc)
@@ -150,6 +154,8 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	apiKeyHandler := handler.NewApiKeyHandler(apiKeySvc)
 	dictTypeHandler := handler.NewDictTypeHandler(dictSvc)
 	dictDataHandler := handler.NewDictDataHandler(dictSvc)
+	configHandler := handler.NewConfigHandler(configSvc)
+	shiftHandler := handler.NewShiftHandler(shiftSvc)
 
 	engine := newRouter(h, handlers{
 		Auth:      authHandler,
@@ -160,6 +166,8 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		ApiKeys:   apiKeyHandler,
 		DictTypes: dictTypeHandler,
 		DictDatas: dictDataHandler,
+		Configs:   configHandler,
+		Shifts:    shiftHandler,
 	}, middleware.Auth(sessionMgr), enf, logger)
 
 	return &App{

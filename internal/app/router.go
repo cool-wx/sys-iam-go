@@ -21,6 +21,8 @@ type handlers struct {
 	ApiKeys   *handler.ApiKeyHandler
 	DictTypes *handler.DictTypeHandler
 	DictDatas *handler.DictDataHandler
+	Configs   *handler.ConfigHandler
+	Shifts    *handler.ShiftHandler
 }
 
 // newRouter 装配路由：四中间件全局链（RequestID→AccessLog→Recovery→BodyLimit）+
@@ -124,6 +126,24 @@ func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, az authz.Au
 	pri.GET("/api/v1/dict-datas/:id", middleware.RequirePerm(az, authz.PermDictTypeQuery), hs.DictDatas.Get)
 	pri.GET("/api/v1/dict-datas", middleware.RequirePerm(az, authz.PermDictTypeList), hs.DictDatas.List)
 	pri.DELETE("/api/v1/dict-datas/:id", middleware.RequirePerm(az, authz.PermDictTypeRemove), hs.DictDatas.Delete)
+
+	// 系统配置域六路由（CONF-01）：CRUD + 按 key 读取端点（静态段 key 与 :id
+	// 参数段共存，静态优先——与 menus/tree 同构先例；key/:key 为 query 档）
+	pri.POST("/api/v1/configs", middleware.RequirePerm(az, authz.PermConfigAdd), hs.Configs.Create)
+	pri.PUT("/api/v1/configs/:id", middleware.RequirePerm(az, authz.PermConfigEdit), hs.Configs.Update)
+	pri.GET("/api/v1/configs/key/:key", middleware.RequirePerm(az, authz.PermConfigQuery), hs.Configs.GetByKey)
+	pri.GET("/api/v1/configs/:id", middleware.RequirePerm(az, authz.PermConfigQuery), hs.Configs.Get)
+	pri.GET("/api/v1/configs", middleware.RequirePerm(az, authz.PermConfigList), hs.Configs.List)
+	pri.DELETE("/api/v1/configs/:id", middleware.RequirePerm(az, authz.PermConfigRemove), hs.Configs.Delete)
+
+	// 排班域五路由（SHFT-01/02）：CRUD；list 全量无分页（源行为直译）。
+	// shift 域 perm 串为发明串（sys_menu 无对应项）——v1 仅 super_admin 可用
+	// （matcher 豁免，Phase 3 auth/apiKey 先例，D-16）
+	pri.POST("/api/v1/shifts", middleware.RequirePerm(az, authz.PermShiftAdd), hs.Shifts.Create)
+	pri.PUT("/api/v1/shifts/:id", middleware.RequirePerm(az, authz.PermShiftEdit), hs.Shifts.Update)
+	pri.GET("/api/v1/shifts/:id", middleware.RequirePerm(az, authz.PermShiftQuery), hs.Shifts.Get)
+	pri.GET("/api/v1/shifts", middleware.RequirePerm(az, authz.PermShiftList), hs.Shifts.List)
+	pri.DELETE("/api/v1/shifts/:id", middleware.RequirePerm(az, authz.PermShiftRemove), hs.Shifts.Delete)
 
 	return engine
 }

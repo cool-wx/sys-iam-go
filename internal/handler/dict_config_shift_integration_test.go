@@ -261,3 +261,134 @@ func TestDictRoutePerm(t *testing.T) {
 	status, body = doAuthRequest(t, adminToken(), "GET", ts.URL+"/api/v1/dict-types", "")
 	require.Equal(t, http.StatusOK, status, "admin 必须放行: body=%s", body)
 }
+
+// configRespBody 系统配置响应体（集成断言所需子集）。
+type configRespBody struct {
+	ID          ids.ID  `json:"id"`
+	ConfigKey   *string `json:"configKey"`
+	ConfigValue *string `json:"configValue"`
+}
+
+// TestConfigCRUDAndKey 配置 CRUD 与 key 查询（CONF-01）：
+// create → GET /api/v1/configs/key/{key} 断言 data 为字符串值本体 →
+// 重复 create → 400/10400「配置键已存在」（uk_config_key 1062）→
+// key 查询不存在 → 404 → update 零值保护 → delete。
+func TestConfigCRUDAndKey(t *testing.T) {
+	ts, _, adminToken, _ := newTestApp(t)
+	token := adminToken()
+
+	// create
+	status, body := doAuthRequest(t, token, "POST", ts.URL+"/api/v1/configs",
+		`{"configKey":"site.name","configValue":"sys-iam-go","configType":"system"}`)
+	require.Equal(t, http.StatusOK, status, "body=%s", body)
+	var env dictEnvelope
+	require.NoError(t, json.Unmarshal(body, &env))
+	var created configRespBody
+	require.NoError(t, json.Unmarshal(env.Data, &created))
+	require.NotZero(t, created.ID)
+
+	// GET /configs/key/{key}：data 为 configValue 字符串本体（JSON 形如 "data":"sys-iam-go"）
+	status, body = doAuthRequest(t, token, "GET", ts.URL+"/api/v1/configs/key/site.name", "")
+	require.Equal(t, http.StatusOK, status, "body=%s", body)
+	require.NoError(t, json.Unmarshal(body, &env))
+	var strVal string
+	require.NoError(t, json.Unmarshal(env.Data, &strVal), "data 必须为字符串本体非对象: body=%s", body)
+	assert.Equal(t, "sys-iam-go", strVal, "key 查询必须返回 configValue 字符串本体")
+
+	// 重复 create（uk_config_key 1062）→ 400/10400「配置键已存在」
+	status, body = doAuthRequest(t, token, "POST", ts.URL+"/api/v1/configs",
+		`{"configKey":"site.name","configValue":"dup"}`)
+	require.Equal(t, http.StatusBadRequest, status, "重复 configKey 必须 400: body=%s", body)
+	var dupEnv dictEnvelope
+	require.NoError(t, json.Unmarshal(body, &dupEnv))
+	assert.Equal(t, 10400, dupEnv.Code, "body=%s", body)
+	assert.Equal(t, "配置键已存在", dupEnv.Message, "body=%s", body)
+
+	// key 查询不存在 → 404/10300
+	status, body = doAuthRequest(t, token, "GET", ts.URL+"/api/v1/configs/key/no.such.key", "")
+	require.Equal(t, http.StatusNotFound, status, "不存在 key 必须 404: body=%s", body)
+	var nfEnv dictEnvelope
+	require.NoError(t, json.Unmarshal(body, &nfEnv))
+	assert.Equal(t, 10300, nfEnv.Code)
+
+	// update 零值保护（ENG-05）：只传 configValue，configKey 不动
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/configs/"+int64ToStr(int64(created.ID)),
+		`{"configValue":"sys-iam-go-v2"}`)
+	require.Equal(t, http.StatusOK, status, "body=%s", body)
+	require.NoError(t, json.Unmarshal(body, &env))
+	var updated configRespBody
+	require.NoError(t, json.Unmarshal(env.Data, &updated))
+	require.NotNil(t, updated.ConfigValue)
+	assert.Equal(t, "sys-iam-go-v2", *updated.ConfigValue)
+	require.NotNil(t, updated.ConfigKey, "零值保护：未传 configKey 不清空")
+	assert.Equal(t, "site.name", *updated.ConfigKey)
+
+	// key 查询回读新值
+	status, body = doAuthRequest(t, token, "GET", ts.URL+"/api/v1/configs/key/site.name", "")
+	require.Equal(t, http.StatusOK, status, "body=%s", body)
+	require.NoError(t, json.Unmarshal(body, &env))
+	require.NoError(t, json.Unmarshal(env.Data, &strVal))
+	assert.Equal(t, "sys-iam-go-v2", strVal)
+
+	// delete → key 查询 404
+	status, body = doAuthRequest(t, token, "DELETE", ts.URL+"/api/v1/configs/"+int64ToStr(int64(created.ID)), "")
+	require.Equal(t, http.StatusOK, status, "body=%s", body)
+	status, body = doAuthRequest(t, token, "GET", ts.URL+"/api/v1/configs/key/site.name", "")
+	require.Equal(t, http.StatusNotFound, status, "删除后 key 查询必须 404: body=%s", body)
+}
+
+// shiftRespBody 排班响应体（集成断言所需子集）。
+type shiftRespBody struct {
+	ID        ids.ID  `json:"id"`
+	ShiftCode *string `json:"shiftCode"`
+	ShiftName *string `json:"shiftName"`
+	StartTime *string `json:"startTime"`
+	EndTime   *string `json:"endTime"`
+}
+
+// TestShiftFullListNoPaging 排班全量直出（SHFT-01 源行为直译）+ CRUD（SHFT-02）：
+// create 3 条 → GET /api/v1/shifts 断言 data 为长度 3 数组且响应无 items/total
+// 包装 → PUT 改 start_time 后 Get 回读更新生效。
+func TestShiftFullListNoPaging(t *testing.T) {
+	ts, _, adminToken, _ := newTestApp(t)
+	token := adminToken()
+
+	for _, s := range [][3]string{{"S1", "早班", "08:00:00"}, {"S2", "中班", "16:00:00"}, {"S3", "晚班", "00:00:00"}} {
+		status, body := doAuthRequest(t, token, "POST", ts.URL+"/api/v1/shifts",
+			`{"shiftCode":"`+s[0]+`","shiftName":"`+s[1]+`","startTime":"`+s[2]+`","endTime":"23:59:00"}`)
+		require.Equal(t, http.StatusOK, status, "create shift 失败: body=%s", body)
+	}
+
+	// list：data 直接是数组（无 items/total/page/size 包装——SHFT-01 直译）。
+	// data 反序列化为数组成功 + 无分页键字段，即证无 envelope（对象包装会在此失败）
+	status, body := doAuthRequest(t, token, "GET", ts.URL+"/api/v1/shifts", "")
+	require.Equal(t, http.StatusOK, status, "body=%s", body)
+	var env dictEnvelope
+	require.NoError(t, json.Unmarshal(body, &env))
+	assert.NotContains(t, string(env.Data), `"items"`, "SHFT-01：响应 data 不得出现 items 分页键")
+	assert.NotContains(t, string(env.Data), `"total"`, "SHFT-01：响应 data 不得出现 total 分页键")
+	var items []shiftRespBody
+	require.NoError(t, json.Unmarshal(env.Data, &items), "data 必须为数组非分页 envelope: body=%s", body)
+	assert.Len(t, items, 3, "全量直出 3 条")
+
+	// PUT 改 start_time → Get 回读更新生效（SHFT-02 CRUD）
+	target := items[0].ID
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/shifts/"+int64ToStr(int64(target)),
+		`{"startTime":"09:00:00"}`)
+	require.Equal(t, http.StatusOK, status, "body=%s", body)
+	require.NoError(t, json.Unmarshal(body, &env))
+	var updated shiftRespBody
+	require.NoError(t, json.Unmarshal(env.Data, &updated))
+	require.NotNil(t, updated.StartTime)
+	assert.Equal(t, "09:00:00", *updated.StartTime, "start_time 字符串直传更新")
+	require.NotNil(t, updated.ShiftName, "零值保护：未传 shiftName 不清空")
+
+	// Get 回读
+	status, body = doAuthRequest(t, token, "GET", ts.URL+"/api/v1/shifts/"+int64ToStr(int64(target)), "")
+	require.Equal(t, http.StatusOK, status, "body=%s", body)
+	require.NoError(t, json.Unmarshal(body, &env))
+	var got shiftRespBody
+	require.NoError(t, json.Unmarshal(env.Data, &got))
+	require.NotNil(t, got.StartTime)
+	assert.Equal(t, "09:00:00", *got.StartTime)
+}
