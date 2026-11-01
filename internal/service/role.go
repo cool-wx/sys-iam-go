@@ -11,6 +11,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/cool-wx/sys-iam-go/internal/authz"
 	"github.com/cool-wx/sys-iam-go/internal/model/dto"
 	"github.com/cool-wx/sys-iam-go/internal/model/po"
 	"github.com/cool-wx/sys-iam-go/pkg/errcode"
@@ -21,17 +22,20 @@ import (
 )
 
 // RoleService 角色域服务。db 用于 service 层显式事务（三连删 / assignMenus
-// 全删重建——SkipDefaultTransaction 下唯一事务边界）。
+// 全删重建——SkipDefaultTransaction 下唯一事务边界）；enf 用于业务事务提交
+// 成功后的 Casbin 策略双轨同步（D-13——adapter 独立 Session 物理上不在业务
+// 事务内，两独立提交）。
 type RoleService struct {
 	db           *gorm.DB
 	roleRepo     *repository.RoleRepo
 	menuRepo     *repository.MenuRepo
 	relationRepo *repository.RelationRepo
+	enf          *authz.Enforcer
 }
 
 // NewRoleService 构造。
-func NewRoleService(db *gorm.DB, roleRepo *repository.RoleRepo, menuRepo *repository.MenuRepo, relationRepo *repository.RelationRepo) *RoleService {
-	return &RoleService{db: db, roleRepo: roleRepo, menuRepo: menuRepo, relationRepo: relationRepo}
+func NewRoleService(db *gorm.DB, roleRepo *repository.RoleRepo, menuRepo *repository.MenuRepo, relationRepo *repository.RelationRepo, enf *authz.Enforcer) *RoleService {
+	return &RoleService{db: db, roleRepo: roleRepo, menuRepo: menuRepo, relationRepo: relationRepo, enf: enf}
 }
 
 // Create 创建角色：服务端默认值 dataScope=1/status=ENABLED/builtin=false
@@ -138,7 +142,7 @@ func (s *RoleService) Delete(ctx context.Context, id int64) error {
 	if role.Builtin != nil && *role.Builtin {
 		return errcode.ErrBuiltinRole
 	}
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		relationTx := repository.NewRelationRepo(tx)
 		if err := relationTx.DeleteUserRolesByRoleID(ctx, id); err != nil {
 			return err
@@ -148,7 +152,13 @@ func (s *RoleService) Delete(ctx context.Context, id int64) error {
 		}
 		roleTx := repository.NewRoleRepo(tx)
 		return roleTx.Delete(ctx, id)
-	})
+	}); err != nil {
+		return err
+	}
+	// 三连删事务提交成功后双清 casbin 该角色的 p 行 + g 行（D-13/T-3-01 级联
+	// 撤权——否则已删角色经 boot 对账前仍持有策略；builtin 守卫已保证不会对
+	// builtin 角色走到这里）。同步失败上抛 500 由客户端重试自愈（幂等全删）。
+	return s.enf.ClearRole(role.RoleCode)
 }
 
 // AssignMenus 分配角色菜单（全量替换语义）：角色校验 → menuIds 前置全量校验
@@ -169,6 +179,11 @@ func (s *RoleService) AssignMenus(ctx context.Context, roleID int64, menuIDs []i
 		reqIDs = append(reqIDs, int64(mid))
 	}
 	menuNameOf := make(map[int64]string, len(reqIDs))
+	// 同一次 FindByIDs 结果顺带收集 casbin p 行原料（勿二次查库）：Permission
+	// 非空串 + map 去重（MySQL 8.4 同批重复行 Error 1869 整批失败——sys_menu
+	// 允许两菜单同 permission 串，去重是 AddPolicies 的硬前置，T-3-01/D-13）。
+	perms := make([]string, 0, len(reqIDs))
+	permSeen := make(map[string]struct{}, len(reqIDs))
 	if len(reqIDs) > 0 {
 		menus, err := s.menuRepo.FindByIDs(ctx, reqIDs)
 		if err != nil {
@@ -180,6 +195,12 @@ func (s *RoleService) AssignMenus(ctx context.Context, roleID int64, menuIDs []i
 				name = *menus[i].Name
 			}
 			menuNameOf[menus[i].ID] = name
+			if p := menus[i].Permission; p != nil && *p != "" {
+				if _, dup := permSeen[*p]; !dup {
+					permSeen[*p] = struct{}{}
+					perms = append(perms, *p)
+				}
+			}
 		}
 	}
 	var missing []string
@@ -191,7 +212,7 @@ func (s *RoleService) AssignMenus(ctx context.Context, roleID int64, menuIDs []i
 	if len(missing) > 0 {
 		return errcode.New(errcode.CodeInvalidParam, "菜单不存在: ["+strings.Join(missing, ", ")+"]")
 	}
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		relationTx := repository.NewRelationRepo(tx)
 		if err := relationTx.DeleteRoleMenus(ctx, roleID); err != nil {
 			return err
@@ -207,6 +228,13 @@ func (s *RoleService) AssignMenus(ctx context.Context, roleID int64, menuIDs []i
 		}
 		return relationTx.BatchCreateRoleMenus(ctx, rows)
 	})
+	if err != nil {
+		return err
+	}
+	// 双轨第二轨：事务提交成功后全量替换该角色 casbin p 策略（D-13——策略写
+	// 不在业务事务内，两独立提交；失败上抛 500 由客户端重试自愈，重试=幂等
+	// 全删全加即收敛）。空 menuIds 时 perms 为空=只删不加（全回收语义自然成立）。
+	return s.enf.SyncRolePerms(role.RoleCode, perms)
 }
 
 // GetMenuIDs 查询角色已分配的 menuId 列表（源 getRoleMenuIds 等价：无角色存在性

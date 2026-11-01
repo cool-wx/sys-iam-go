@@ -171,9 +171,10 @@ func TestUserStatusDisableKickout(t *testing.T) {
 
 	uidStr := createRawUser(t, ts, token, `{"username":"status-user","password":"pw-123456","realName":"停用者","deptId":"100"}`)
 
-	// 目标用户登录拿 token 并确认可用
+	// 目标用户登录拿 token 并确认可用（03-01 起列表端点已挂 requirePerm gate，
+	// 无角色用户探活改走未挂 gate 的详情端点——认证可用性断言语义不变）
 	tokenU := loginAs(t, ts, "status-user", "pw-123456")
-	status, body := doAuthRequest(t, tokenU, "GET", ts.URL+"/api/v1/users", "")
+	status, body := doAuthRequest(t, tokenU, "GET", ts.URL+"/api/v1/users/"+uidStr, "")
 	require.Equal(t, http.StatusOK, status, "停用前 token 应可用: body=%s", body)
 
 	// admin 停用
@@ -181,7 +182,7 @@ func TestUserStatusDisableKickout(t *testing.T) {
 	require.Equal(t, http.StatusOK, status, "停用应 200: body=%s", body)
 
 	// ①旧 token 即刻失效
-	status, body = doAuthRequest(t, tokenU, "GET", ts.URL+"/api/v1/users", "")
+	status, body = doAuthRequest(t, tokenU, "GET", ts.URL+"/api/v1/users/"+uidStr, "")
 	require.Equal(t, http.StatusUnauthorized, status, "停用后旧 token 必须 401: body=%s", body)
 
 	// ②停用用户登录被拒 10502
@@ -197,7 +198,7 @@ func TestUserStatusDisableKickout(t *testing.T) {
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/users/"+uidStr+"/status", `{"status":"ENABLED"}`)
 	require.Equal(t, http.StatusOK, status, "启用应 200: body=%s", body)
 	tokenU2 := loginAs(t, ts, "status-user", "pw-123456")
-	status, body = doAuthRequest(t, tokenU2, "GET", ts.URL+"/api/v1/users", "")
+	status, body = doAuthRequest(t, tokenU2, "GET", ts.URL+"/api/v1/users/"+uidStr, "")
 	assert.Equal(t, http.StatusOK, status, "启用后新登录必须可用: body=%s", body)
 }
 
@@ -214,7 +215,8 @@ func TestResetPasswordFlow(t *testing.T) {
 	require.NoError(t, err)
 
 	tokenA := loginAs(t, ts, "reset-user", "pw-123456")
-	status, body := doAuthRequest(t, tokenA, "GET", ts.URL+"/api/v1/users", "")
+	// 03-01 起列表端点已挂 requirePerm gate，无角色用户探活改走详情端点（语义不变）
+	status, body := doAuthRequest(t, tokenA, "GET", ts.URL+"/api/v1/users/"+uidStr, "")
 	require.Equal(t, http.StatusOK, status, "重置前 token 应可用: body=%s", body)
 
 	// admin 重置（无请求体）
@@ -222,7 +224,7 @@ func TestResetPasswordFlow(t *testing.T) {
 	require.Equal(t, http.StatusOK, status, "重置应 200: body=%s", body)
 
 	// tokenA 即刻失效
-	status, body = doAuthRequest(t, tokenA, "GET", ts.URL+"/api/v1/users", "")
+	status, body = doAuthRequest(t, tokenA, "GET", ts.URL+"/api/v1/users/"+uidStr, "")
 	require.Equal(t, http.StatusUnauthorized, status, "重置后旧 token 必须 401: body=%s", body)
 
 	// 123456 登录成功且 firstLogin=true
@@ -421,14 +423,17 @@ func TestDeleteUserKicksSessions(t *testing.T) {
 
 	uidStr := createRawUser(t, ts, token, `{"username":"delete-kick","password":"pw-123456","realName":"删踢者","deptId":"100"}`)
 	tokenU := loginAs(t, ts, "delete-kick", "pw-123456")
-	status, body := doAuthRequest(t, tokenU, "GET", ts.URL+"/api/v1/users", "")
+	// 03-01 起 GET /api/v1/users（列表）已挂 requirePerm gate——被删用户 U 是无
+	// 角色普通用户，走列表会被授权层 403 污染本测试的认证语义；改探未挂 gate 的
+	// 详情端点（认证可用性=200 的断言目标不变，AUTH 链路语义等价）
+	status, body := doAuthRequest(t, tokenU, "GET", ts.URL+"/api/v1/users/"+uidStr, "")
 	require.Equal(t, http.StatusOK, status, "删除前 token 应可用: body=%s", body)
 
 	status, body = doAuthRequest(t, token, "DELETE", ts.URL+"/api/v1/users/"+uidStr, "")
 	require.Equal(t, http.StatusOK, status, "删除应 200: body=%s", body)
 
 	// 删除后旧 token 即刻失效（不回查 DB 的认证链依赖删除即踢）
-	status, body = doAuthRequest(t, tokenU, "GET", ts.URL+"/api/v1/users", "")
+	status, body = doAuthRequest(t, tokenU, "GET", ts.URL+"/api/v1/users/"+uidStr, "")
 	require.Equal(t, http.StatusUnauthorized, status, "删除后旧 token 必须 401: body=%s", body)
 	var envelope struct {
 		Code int `json:"code"`

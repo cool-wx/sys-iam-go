@@ -43,10 +43,11 @@ func TestUpdateAuditWithIdentity(t *testing.T) {
 	})
 
 	repo := repository.NewUserRepo(db)
-	// 02-03 起 NewUserService 扩依赖（db+relation/role/dept repo+sm）；本测试仅走
-	// Create/Update 路径不触达 sm（会话管理器），传 nil 即可（session 依赖无 Redis 环境）。
+	// 02-03 起 NewUserService 扩依赖（db+relation/role/dept repo+sm）；03-01 起
+	// 再扩 enf（Casbin enforcer）。本测试仅走 Create/Update 路径不触达 sm/enf
+	// （会话与策略同步仅 AssignRoles/Delete 路径），均传 nil 即可。
 	svc := service.NewUserService(db, repo,
-		repository.NewRelationRepo(db), repository.NewRoleRepo(db), repository.NewDeptRepo(db), nil)
+		repository.NewRelationRepo(db), repository.NewRoleRepo(db), repository.NewDeptRepo(db), nil, nil)
 
 	// create（无 identity 上下文——create_by 保持 NULL，不影响本断言目标）。
 	// 02-03 起 Create 强制部门校验链（deptId 必填且必须存在）——先 seed 部门再挂载。

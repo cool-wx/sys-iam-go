@@ -228,10 +228,12 @@ func TestRoleListFilter(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &allEnv))
 	assert.Equal(t, 1, allEnv.Data.Page, "无参数默认 page=1")
 	assert.Equal(t, 15, allEnv.Data.Size, "无参数默认 size=15")
-	assert.Equal(t, int64(3), allEnv.Data.Total)
-	require.Len(t, allEnv.Data.Items, 3)
-	assert.Equal(t, idA, allEnv.Data.Items[0].ID, "无过滤条件也按 id 升序")
-	assert.Equal(t, idB, allEnv.Data.Items[1].ID)
+	// 03-01 起 newTestApp 内建 super_admin 种子角色（先于测试 fixture 创建——
+	// 雪花单调递增，id 恒小于测试内三角色），全量基线 3→4
+	assert.Equal(t, int64(4), allEnv.Data.Total)
+	require.Len(t, allEnv.Data.Items, 4)
+	assert.Equal(t, idA, allEnv.Data.Items[1].ID, "无过滤条件也按 id 升序（种子 super_admin 在前）")
+	assert.Equal(t, idB, allEnv.Data.Items[2].ID)
 }
 
 // TestRoleAssignMenus 角色菜单分配（ROLE-03/D-13）：分配→GET 返回 menuIds→再分配

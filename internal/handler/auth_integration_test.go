@@ -209,10 +209,10 @@ func TestApikeyLoginReuseRejectsDisabledUser(t *testing.T) {
 // WR-05 起 kickout 仅 super_admin 可调——操作者 admin 须先挂该角色再登录
 // （roles 是登录时快照）。
 func TestKickoutFlow(t *testing.T) {
-	ts, dsn, adminToken, adminID := newTestApp(t)
+	ts, _, adminToken, adminID := newTestApp(t)
 
-	rid := seedRole(t, dsn, "超级管理员", "super_admin", true)
-	attachRoleToUser(t, dsn, adminID, rid, "超级管理员")
+	// 03-01 起 newTestApp 已内建 super_admin 角色并 attach 到 admin（boot 对账
+	// 种子三件套）——此处原 seedRole("super_admin") 会撞 uk_role_code 1062，删除
 
 	tokenA := adminToken()
 	tokenB := adminToken()
@@ -248,8 +248,8 @@ func TestKickoutFlow(t *testing.T) {
 func TestKickoutRequiresSuperAdmin(t *testing.T) {
 	ts, dsn, adminToken, adminID := newTestApp(t)
 
-	rid := seedRole(t, dsn, "超级管理员", "super_admin", true)
-	attachRoleToUser(t, dsn, adminID, rid, "超级管理员")
+	// 03-01 起 newTestApp 已内建 super_admin 角色并 attach 到 admin——原
+	// seedRole("super_admin") 会撞 uk_role_code 1062，删除
 
 	// 低权用户（无任何角色）登录
 	seedUser(t, dsn, "low-user", testAdminHash, "低权者", 1, false)

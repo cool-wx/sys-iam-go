@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/cool-wx/sys-iam-go/internal/auth"
+	"github.com/cool-wx/sys-iam-go/internal/authz"
 	"github.com/cool-wx/sys-iam-go/internal/model/dto"
 	"github.com/cool-wx/sys-iam-go/internal/model/po"
 	"github.com/cool-wx/sys-iam-go/internal/repository"
@@ -23,7 +24,8 @@ import (
 
 // UserService 用户域服务。db 用于 service 层显式事务（AssignRoles 全删重建 /
 // Delete 先删关联再删用户——SkipDefaultTransaction 下唯一事务边界）；sm 用于
-// 停用/重置密码踢存量会话（D-09 安全增强，CONTEXT.md 决策非漂移）。
+// 停用/重置密码踢存量会话（D-09 安全增强，CONTEXT.md 决策非漂移）；enf 用于
+// 业务事务提交成功后的 Casbin g 策略双轨同步（D-13）。
 type UserService struct {
 	db           *gorm.DB
 	repo         *repository.UserRepo
@@ -31,10 +33,11 @@ type UserService struct {
 	roleRepo     *repository.RoleRepo
 	deptRepo     *repository.DeptRepo
 	sm           *auth.SessionManager
+	enf          *authz.Enforcer
 }
 
 // NewUserService 构造。
-func NewUserService(db *gorm.DB, repo *repository.UserRepo, relationRepo *repository.RelationRepo, roleRepo *repository.RoleRepo, deptRepo *repository.DeptRepo, sm *auth.SessionManager) *UserService {
+func NewUserService(db *gorm.DB, repo *repository.UserRepo, relationRepo *repository.RelationRepo, roleRepo *repository.RoleRepo, deptRepo *repository.DeptRepo, sm *auth.SessionManager, enf *authz.Enforcer) *UserService {
 	return &UserService{
 		db:           db,
 		repo:         repo,
@@ -42,6 +45,7 @@ func NewUserService(db *gorm.DB, repo *repository.UserRepo, relationRepo *reposi
 		roleRepo:     roleRepo,
 		deptRepo:     deptRepo,
 		sm:           sm,
+		enf:          enf,
 	}
 }
 
@@ -246,11 +250,21 @@ func (s *UserService) AssignRoles(ctx context.Context, userID int64, roleIDs []i
 		}
 		return err
 	}
+	// reqIDs map 去重（Error 1869 防御，D-13）：请求体重复 roleID 会让
+	// BatchCreateUserRoles 插重复行、AddGroupingPolicies 批内重复 g 行整批失败。
 	reqIDs := make([]int64, 0, len(roleIDs))
+	reqSeen := make(map[int64]struct{}, len(roleIDs))
 	for _, rid := range roleIDs {
-		reqIDs = append(reqIDs, int64(rid))
+		id := int64(rid)
+		if _, dup := reqSeen[id]; dup {
+			continue
+		}
+		reqSeen[id] = struct{}{}
+		reqIDs = append(reqIDs, id)
 	}
 	roleNameOf := make(map[int64]string, len(reqIDs))
+	// 同一次 FindByIDs 结果顺带收集 casbin g 行原料 roleCode（勿二次查库）
+	roleCodeOf := make(map[int64]string, len(reqIDs))
 	if len(reqIDs) > 0 {
 		roles, err := s.roleRepo.FindByIDs(ctx, reqIDs)
 		if err != nil {
@@ -258,6 +272,7 @@ func (s *UserService) AssignRoles(ctx context.Context, userID int64, roleIDs []i
 		}
 		for i := range roles {
 			roleNameOf[roles[i].ID] = roles[i].RoleName
+			roleCodeOf[roles[i].ID] = roles[i].RoleCode
 		}
 	}
 	var missing []string
@@ -275,7 +290,7 @@ func (s *UserService) AssignRoles(ctx context.Context, userID int64, roleIDs []i
 	if strings.TrimSpace(display) == "" {
 		display = derefStr(u.Username)
 	}
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		relationTx := repository.NewRelationRepo(tx)
 		if err := relationTx.DeleteUserRolesByUserID(ctx, userID); err != nil {
 			return err
@@ -291,6 +306,17 @@ func (s *UserService) AssignRoles(ctx context.Context, userID int64, roleIDs []i
 		}
 		return relationTx.BatchCreateUserRoles(ctx, rows)
 	})
+	if err != nil {
+		return err
+	}
+	// 双轨第二轨：事务提交成功后全量替换该用户 casbin g 策略（D-13 同步纪律同
+	// AssignMenus——失败上抛 500 客户端重试自愈）。空 roleIds 时只删不加（全回收）。
+	// g 行即时生效=PERM-02 验收核心：已登录用户不重登录，下一请求按新策略判定。
+	roleCodes := make([]string, 0, len(reqIDs))
+	for _, rid := range reqIDs {
+		roleCodes = append(roleCodes, roleCodeOf[rid])
+	}
+	return s.enf.SyncUserRoles(u.ID, roleCodes)
 }
 
 // GetRoles 查询用户当前角色列表（USER-04）：用户校验 → FindRolesByUserIDs 单用户
@@ -380,6 +406,11 @@ func (s *UserService) Delete(ctx context.Context, id int64) error {
 		userTx := repository.NewUserRepo(tx)
 		return userTx.Delete(ctx, id)
 	}); err != nil {
+		return err
+	}
+	// 事务提交成功后先清 casbin g 行（策略撤销）再踢存量会话（03-RESEARCH 四写
+	// 路径挂点表顺序：先策略后踢——D-13；T-3-01 删除用户即刻收权）。
+	if err := s.enf.ClearUser(id); err != nil {
 		return err
 	}
 	// 用户已删除，存量会话必须即刻失效（同 UpdateStatus/ResetPassword 的 D-09 语义）
