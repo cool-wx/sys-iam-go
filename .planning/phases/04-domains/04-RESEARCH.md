@@ -318,14 +318,16 @@ pri.       /api/v1/faults + import（BodyLimitWithMB(20)+OpLog）
 - [ ] pkg/paging 特例默认参数 / internal/middleware/body_limit.go 参数化（共享件先行）
 - [ ] newTestApp FileStorage 参数化 + OpLog writer 装配钩子
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **OLOG-02 "7 字段" vs 源 8 字段**——已按研究纪律裁定以源为准（8 字段清单逐字引用 OperationLogAspect.java:27-28），plan 按 8 字段落；执行期如用户问询，引用本节即可。
-2. **Fault 三键 location=NULL 判重失效**——照源 eq 语义（建议）或 file 域式 IS NULL 双分支修正，plan 拍板（建议照源，保守移植；本机 fault 0 行无存量影响）。
-3. **Olog 钳位细节**——源 size=0 → 15（PageHelper 钳位）而默认 10；Go 特例实现 <1 归 10（直觉）还是归 15（源保真），plan 拍板（差异仅显式传 0 的请求）。
-4. **Olog IP 取值**——`c.Request.RemoteAddr`（源保真，反代场景记代理 IP）vs `c.ClientIP()`（读 XFF）；建议源保真，plan 确认。
-5. **resp.Fail 透出 errorMsg 的机制**——c.Error(err)（建议）vs c.Set 约定；涉及 pkg/resp 微改，plan 拍板。
-6. **S3Storage 真容器 smoke 的 skip 策略**——rustfs 容器当前 Up，但测试纪律"不锚定本机具名容器"（D-10/D-12 铁律）；建议 smoke 测试探测 localhost:9000 可达则跑、不可达 skip（环境自适应，与 Phase 1 镜像探测先例同构），plan 确认。
+> 修订 round 1 回写：6 问已全部裁定——出处为 CONTEXT.md 锁定决策或对应 PLAN 的拍板，逐问内联 (RESOLVED) 标注。
+
+1. **OLOG-02 "7 字段" vs 源 8 字段**——已按研究纪律裁定以源为准（8 字段清单逐字引用 OperationLogAspect.java:27-28），plan 按 8 字段落；执行期如用户问询，引用本节即可。(RESOLVED: CONTEXT.md D-09 研究修正裁定 8 字段；04-03 Task 1 掩码函数按 8 字段落)
+2. **Fault 三键 location=NULL 判重失效**——照源 eq 语义（建议）或 file 域式 IS NULL 双分支修正，plan 拍板（建议照源，保守移植；本机 fault 0 行无存量影响）。(RESOLVED: 04-04 拍板照源 eq 语义——prohibition 锁定禁改 IS NULL 双分支，FindByThreeKeys 函数注释文档化裁定)
+3. **Olog 钳位细节**——源 size=0 → 15（PageHelper 钳位）而默认 10；Go 特例实现 <1 归 10（直觉）还是归 15（源保真），plan 拍板（差异仅显式传 0 的请求）。(RESOLVED: 04-03 Task 2 拍板畸形输入统一归缺省 10，不维护双默认——差异仅影响畸形请求纠偏值)
+4. **Olog IP 取值**——`c.Request.RemoteAddr`（源保真，反代场景记代理 IP）vs `c.ClientIP()`（读 XFF）；建议源保真，plan 确认。(RESOLVED: 04-03 Task 1 拍板 RemoteAddr 经 net.SplitHostPort 源保真，不用 ClientIP/XFF)
+5. **resp.Fail 透出 errorMsg 的机制**——c.Error(err)（建议）vs c.Set 约定；涉及 pkg/resp 微改，plan 拍板。(RESOLVED: 04-03 Task 1 拍板 c.Error(err) 方案——gin 原生 errors 收集，最小侵入)
+6. **S3Storage 真容器 smoke 的 skip 策略**——rustfs 容器当前 Up，但测试纪律"不锚定本机具名容器"（D-10/D-12 铁律）；建议 smoke 测试探测 localhost:9000 可达则跑、不可达 skip（环境自适应，与 Phase 1 镜像探测先例同构），plan 确认。(RESOLVED: 04-02 Task 1 拍板 env 可覆盖端点/凭证 + 2 秒 TCP 探测，可达即跑/不可达 t.Skip)
 
 ## Sources
 
