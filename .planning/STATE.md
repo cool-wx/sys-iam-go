@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: Casbin 授权与数据权限
 status: executing
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-11-01T04:57:06.497Z"
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-11-01T05:37:59.002Z"
 last_activity: 2026-11-01
 last_activity_desc: Phase 3 execution started
-state_head: 40143b70f07d03a5668a6076aedc8a2631994063
+state_head: 7ccbbf8b6b73a87f815a3f11acff7243ec7b0bfb
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 9
-  completed_plans: 7
+  completed_plans: 8
   percent: 40
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-01, Phase 2 transition)
 ## Current Position
 
 Phase: 3 (Casbin 授权与数据权限) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-11-01 — Phase 3 execution started
 
@@ -64,6 +64,7 @@ Progress: [████░░░░░░] 40%
 | Phase 02 P02-02 | 35min | 2 tasks | 25 files |
 | Phase 02 P03 | 50 min | 2 tasks | 17 files |
 | Phase 03 P03-01 | 50min | 2 tasks | 19 files |
+| Phase 03 P03-02 | 36min | 2 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -99,6 +100,9 @@ Recent decisions affecting current work:
 - [Phase 03]: [Phase 03] 03-01: casbin sub 用 role_code（不可改名 + builtin super_admin 恒定）——策略行不因角色改名失效；super_admin 豁免唯一判据在 enforcer g 层 matcher 首位短路（D-07），会话快照判据废弃
 - [Phase 03]: [Phase 03] 03-01: 双轨同步纪律确立——业务 db.Transaction 提交成功后调 enforcer API（adapter 独立 Session 不在事务内），失败上抛 500 重试自愈（幂等全删全加）；AddPolicies 前业务层 map 去重防 MySQL 8.4 Error 1869
 - [Phase 03]: [Phase 03] 03-01: boot 对账 fail-fast——启动时关系表全量导入 casbin g/p 策略（ReplaceAll 幂等可重入），存量 admin 冷启动即可用；对账失败拒绝启动绝不静默全量 403
+- [Phase 03]: super_admin 不做档位特判——严格表驱动；测试种子 data_scope=5 保既有列表行为，生产存量 NULL 行修正走 PUT /roles/:id（现场部署清单项） — 03-02 裁决记录 1/3：档位语义走表驱动实时查询无缓存，super_admin 无豁免分支
+- [Phase 03]: '无角色 fail-closed' 经授权面的可观察形态 = 仅 NULL 档角色持 list perm → 本人档；Widest 对域外档位值按 max 语义原样参与、经 Apply default 落 1=0 双保险 — D-10/D-11 值域锁定 + T-3-07/T-3-09 fail-closed 兜底；纯无角色在 RequirePerm 层即 403
+- [Phase 03]: dataScope 域接入模板确立——service resolveScope 编排（identity→行→档位聚合→部门集装配）+ repo 闭包 filter.Apply（Count/Find 同闭包防 total 漂移）；Phase 4 各域照此复制 — D-09/D-12 通用件定位：internal/datascope table 参数化无 user 域耦合
 
 ### Pending Todos
 
@@ -122,6 +126,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-01T04:57:06.404Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-11-01T05:37:48.527Z
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None
