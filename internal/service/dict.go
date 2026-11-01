@@ -54,7 +54,9 @@ func (s *DictService) CreateDictType(ctx context.Context, req *dto.DictTypeCreat
 
 // UpdateDictType 更新字典类型（部分更新，ENG-05）：白名单 dict_name/dict_type/
 // status/remark（nil=不写库；空串=显式清空照写）。落库后回读返回最新契约。
-// 审计由 repo.Patch 显式并入（ENG-02）。
+// 审计由 repo.Patch 显式并入（ENG-02）。白名单含唯一键列 dict_type，撞
+// uk_dict_type 与 Create 同冲突同翻译（WR-02：400/10400「字典类型已存在」，
+// 不透传 500）。
 func (s *DictService) UpdateDictType(ctx context.Context, id int64, req *dto.DictTypeUpdateReq) (*dto.DictTypeResp, error) {
 	cols := map[string]any{}
 	if req.DictName != nil {
@@ -70,8 +72,11 @@ func (s *DictService) UpdateDictType(ctx context.Context, id int64, req *dto.Dic
 		cols["remark"] = *req.Remark
 	}
 	if err := s.typeRepo.Patch(ctx, id, cols); err != nil {
-		if errors.Is(err, errcode.ErrNotFound) {
+		switch {
+		case errors.Is(err, errcode.ErrNotFound):
 			return nil, errcode.New(errcode.CodeNotFound, fmt.Sprintf("字典类型不存在: %d", id))
+		case errors.Is(err, gorm.ErrDuplicatedKey):
+			return nil, errcode.New(errcode.CodeInvalidParam, "字典类型已存在")
 		}
 		return nil, err
 	}

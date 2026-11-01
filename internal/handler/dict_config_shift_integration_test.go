@@ -82,7 +82,8 @@ func createDictType(t *testing.T, ts *httptest.Server, token, name, typ string) 
 // TestDictTypeCRUD 字典类型 CRUD 全链（DICT-01）：
 // create→get→list→update 零值保护（不传字段不清空）→delete→get 404；
 // dict_type 重复 create → 400 code 10400 消息「字典类型已存在」（uk_dict_type
-// 1062 经 TranslateError 翻译，DICT-01 验收明文）。
+// 1062 经 TranslateError 翻译，DICT-01 验收明文）；update 撞同 uk 同翻译
+//（WR-02：白名单含唯一键列，Update 与 Create 同冲突同译，不透传 500）。
 func TestDictTypeCRUD(t *testing.T) {
 	ts, _, adminToken, _ := newTestApp(t)
 	token := adminToken()
@@ -140,6 +141,18 @@ func TestDictTypeCRUD(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &dupEnv))
 	assert.Equal(t, 10400, dupEnv.Code, "body=%s", body)
 	assert.Equal(t, "字典类型已存在", dupEnv.Message, "body=%s", body)
+
+	// update 撞 uk_dict_type（WR-02）：rename 自己为已存在的 dictType → 与 Create
+	// 同冲突同翻译 400/10400，不透传 500/10001
+	otherID := createDictType(t, ts, token, "其他状态", "other_status")
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/dict-types/"+int64ToStr(int64(created.ID)),
+		`{"dictType":"other_status"}`)
+	require.Equal(t, http.StatusBadRequest, status, "update 撞 uk 必须 400: body=%s", body)
+	var updDupEnv dictEnvelope
+	require.NoError(t, json.Unmarshal(body, &updDupEnv))
+	assert.Equal(t, 10400, updDupEnv.Code, "body=%s", body)
+	assert.Equal(t, "字典类型已存在", updDupEnv.Message, "body=%s", body)
+	_ = otherID // 冲突源行保留至测试结束（隔离容器逐用例清库）
 
 	// delete → get 404
 	status, body = doAuthRequest(t, token, "DELETE", ts.URL+"/api/v1/dict-types/"+int64ToStr(int64(created.ID)), "")
@@ -303,6 +316,23 @@ func TestConfigCRUDAndKey(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &dupEnv))
 	assert.Equal(t, 10400, dupEnv.Code, "body=%s", body)
 	assert.Equal(t, "配置键已存在", dupEnv.Message, "body=%s", body)
+
+	// update 撞 uk_config_key（WR-02）：rename 自己为已存在的 configKey → 与
+	// Create 同冲突同翻译 400/10400，不透传 500/10001
+	dupStatus, dupBody := doAuthRequest(t, token, "POST", ts.URL+"/api/v1/configs",
+		`{"configKey":"other.key","configValue":"v","configType":"system"}`)
+	require.Equal(t, http.StatusOK, dupStatus, "冲突源行创建失败: body=%s", dupBody)
+	var dupCreated configRespBody
+	var dupCreatedEnv dictEnvelope
+	require.NoError(t, json.Unmarshal(dupBody, &dupCreatedEnv))
+	require.NoError(t, json.Unmarshal(dupCreatedEnv.Data, &dupCreated))
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/configs/"+int64ToStr(int64(created.ID)),
+		`{"configKey":"other.key"}`)
+	require.Equal(t, http.StatusBadRequest, status, "update 撞 uk 必须 400: body=%s", body)
+	var updDupEnv dictEnvelope
+	require.NoError(t, json.Unmarshal(body, &updDupEnv))
+	assert.Equal(t, 10400, updDupEnv.Code, "body=%s", body)
+	assert.Equal(t, "配置键已存在", updDupEnv.Message, "body=%s", body)
 
 	// key 查询不存在 → 404/10300
 	status, body = doAuthRequest(t, token, "GET", ts.URL+"/api/v1/configs/key/no.such.key", "")
