@@ -131,9 +131,18 @@ func (s *RoleService) List(ctx context.Context, page, size int, roleName string)
 
 // Delete 删除角色：builtin 守卫**前置拦截（零删除调用）**——builtin=true 直接
 // 409/10602「系统内置角色不可删除」，四连删一个都不触发（ROLE-02/D-14，源
-// removeById 语义）；否则 db.Transaction 四连删 user_role → role_menu →
-// role_dept（D-10 档位 4 存储随角色连带清理）→ role（前三步源顺序，第四删插在
-// 第三步；任一失败整体回滚，T-2-10——多步关联写绝不拆为多次独立提交）。
+// removeById 语义）；否则**预清模式**（CR-02 修复裁决）：四连删事务提交前先
+// enf.ClearRole 双清 casbin 该角色 p+g 行，再 db.Transaction 四连删
+// user_role → role_menu → role_dept（D-10 档位 4 存储随角色连带清理）→ role
+// （前三步源顺序，第四删插在第三步；任一失败整体回滚，T-2-10——多步关联写绝不
+// 拆为多次独立提交）。
+//
+// 预清为何不可后置（原 post-commit ClearRole 缺陷）：清理放在事务提交后时，失败即
+// 500 且角色行已删——客户端重试 DELETE 命中 FindByID→404 永不可自愈，该 roleCode
+// 的 p/g 行残留至下次重启 boot 对账（工控机单机重启周期长，提权残留以周计），且无
+// 任何日志留痕。预清模式下清理失败时角色行仍在，重试必重新进入本函数（ClearRole
+// 幂等全删），重试即收敛；DB 删除成功后无任何 post-commit 步骤。已知代价（方向
+// 安全，可接受）：清理成功而 DB 删除失败时角色短暂"零策略"，重删或重启对账均可恢复。
 func (s *RoleService) Delete(ctx context.Context, id int64) error {
 	role, err := s.roleRepo.FindByID(ctx, id)
 	if err != nil {
@@ -145,7 +154,12 @@ func (s *RoleService) Delete(ctx context.Context, id int64) error {
 	if role.Builtin != nil && *role.Builtin {
 		return errcode.ErrBuiltinRole
 	}
-	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	// 预清：双清 casbin 该角色的 p 行 + g 行（D-13/T-3-01 级联撤权——builtin 守卫
+	// 已保证不会对 builtin 角色走到这里）
+	if err := s.enf.ClearRole(role.RoleCode); err != nil {
+		return err
+	}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		relationTx := repository.NewRelationRepo(tx)
 		if err := relationTx.DeleteUserRolesByRoleID(ctx, id); err != nil {
 			return err
@@ -159,13 +173,7 @@ func (s *RoleService) Delete(ctx context.Context, id int64) error {
 		}
 		roleTx := repository.NewRoleRepo(tx)
 		return roleTx.Delete(ctx, id)
-	}); err != nil {
-		return err
-	}
-	// 四连删事务提交成功后双清 casbin 该角色的 p 行 + g 行（D-13/T-3-01 级联
-	// 撤权——否则已删角色经 boot 对账前仍持有策略；builtin 守卫已保证不会对
-	// builtin 角色走到这里）。同步失败上抛 500 由客户端重试自愈（幂等全删）。
-	return s.enf.ClearRole(role.RoleCode)
+	})
 }
 
 // AssignMenus 分配角色菜单（全量替换语义）：角色校验 → menuIds 前置全量校验

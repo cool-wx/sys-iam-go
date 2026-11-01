@@ -173,8 +173,9 @@ func TestPermRevokeRoleImmediate(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, status, "角色回收后同一 token 下一请求必须 403（g 层即时生效）: body=%s", body)
 }
 
-// TestPermDeleteCascades 角色删除级联清策（T-3-01）：分配菜单产生 p 行后删除
-// 角色 R → casbin_rule 无 R 的任何 p 行（v0）与 g 行（v1）——ClearRole 双清。
+// TestPermDeleteCascades 角色删除级联清策（T-3-01；CR-02 预清模式回归——清理
+// 前置于四连删事务，删除成功即策略已撤、无 post-commit 步骤）：分配菜单产生 p 行后
+// 删除角色 R → casbin_rule 无 R 的任何 p 行（v0）与 g 行（v1）——ClearRole 双清。
 func TestPermDeleteCascades(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
 	db := openCheckDB(t, dsn)
