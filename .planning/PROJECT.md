@@ -15,6 +15,8 @@
 <!-- 源系统已运行验证的能力，作为移植基准（brownfield：能力存在于源项目，非本仓库） -->
 
 - ✓ 认证与会话管理（Sa-Token + OAuth2 依赖 + Redis 会话）— 源系统既有
+- ✓ 认证会话 Go 化（自建 token-session：登录/登出/踢下线/TTL 滚动续期/API Key 登录复用，存量 BCrypt `$2a$` 零迁移活体直证）— Phase 2
+- ✓ 用户/角色/菜单/部门/API Key 五域 RBAC 主链路（CRUD/树查询/角色分配/停用即踢双轴/builtin 409 守卫/重置 123456）— Phase 2
 - ✓ 用户/角色/菜单/部门 RBAC 权限体系（User/Role/Menu/RoleMenu/Dept）— 源系统既有
 - ✓ 字典管理（DictType/DictData 双表）— 源系统既有
 - ✓ 系统配置管理（SysConfig）— 源系统既有
@@ -29,8 +31,7 @@
 
 ### Active
 
-- [ ] 14 个功能域 REST API 全量重新设计并实现（允许 REST 最佳实践重设计）
-- [ ] 认证方案 Go 化（自建 token-session 管理器：登录/会话/TTL/踢人下线，Redis 存储，兼容存量 BCrypt 哈希）
+- [ ] 14 个功能域 REST API 全量重新设计并实现（允许 REST 最佳实践重设计）（Auth/User/Role/Menu/Dept/ApiKey 六域已完成——Phase 2）
 - [ ] 权限体系升级为 Casbin：RBAC 功能权限 + 数据权限（dataScope 部门级行过滤）+ 变更即时生效（不复刻源系统"登录快照"语义）
 - [ ] MySQL 沿用现有 schema（GORM 接入，不重设计表结构）
 - [ ] 文件存储抽象：本地磁盘 / RustFS(S3) 可配置切换
@@ -49,6 +50,7 @@
 - MQTT 采集（starter-mqtt）— 属于 craft-wcs 设备采集场景，不在 sys-iam 依赖闭包内
 - 存量会话/token 迁移 — 停机切换，Go 版上线即全新会话
 - 表结构重设计 — MySQL schema 原样沿用（例外：新增 Casbin 策略表属增量扩展）
+- 用户 Excel 导入（USER-06）— 2026-10-31 Phase 2 研究实证删除：源系统仅 FaultInfo 域有导入端点（FaultInfoController:83），sys_user 无 bit_index/location 列，三键语义属 FAUL-02（Phase 4 实现故障导入）
 
 ## Context
 
@@ -90,6 +92,11 @@
 | ENG-07 配置缺失取舍定案 | 默认路径缺失→内置默认值+warn 启动（工控机无人值守可用性）；-config 显式缺失→退出码 1（指错早失败） | ✓ Phase 1 UAT 认可 |
 | systemd unit 不追加 User=/ProtectHome/PrivateTmp | 现场账号未定不硬编码（防现场启动失败）；ProtectHome 与 Phase 4 存储路径强相关，届时随路径一并定 | ✓ Phase 1 UAT 定案，Phase 4 复核 |
 | arm64 验证策略：qemu-aarch64 binfmt 全链路 | 开发机无真机；qemu 下 boot/healthz/readyz/POST 创建/SIGTERM 全链路实证，真机首启留现场部署清单 | ✓ Phase 1 UAT 2026-10-31 |
+| USER-06 删除（用户 Excel 导入） | 源系统仅 FaultInfo 域有导入端点；三键 upsert 系 ROADMAP 起草错域复制——v1 不发明源系统没有的功能 | ✓ Phase 2 研究修正 2026-10-31 |
+| 失效写路径全链踢会话（D-09 双轴） | 停用/重置/删除（用户轴）+ 停用/删除 API Key（apikey 轴 KickoutAPIKey）即时撤销存量会话——有意的源行为安全增强；CR-01/WR-06 review 补全 | ✓ Phase 2 |
+| 登录状态校验后置（WR-01） | 防枚举优先于源顺序保真：错密码恒 10501（含禁用用户），密码正确才 10502——T-2-01 对 D-02 的显式覆盖 | ✓ Phase 2 review 修正 |
+| kickout 端点收紧 RequireRoles(super_admin) | WR-05 部分修复过渡态（会话 roles 快照判定）；全量 requirePerm 属 Phase 3 Casbin | ✓ Phase 2 过渡 |
+| 会话 timeout 30d 缺省 + env 覆盖 | Nacos 实际值永不可得（rnacos 空实例确认），Sa-Token 官方默认为最接近代理；现场可校正 | ✓ Phase 2（D-06） |
 
 ## Evolution
 
@@ -109,4 +116,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-31 after Phase 1*
+*Last updated: 2026-11-01 after Phase 2*

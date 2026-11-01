@@ -4,10 +4,10 @@ current_phase: 3
 current_phase_name: Casbin 授权与数据权限
 status: planning
 stopped_at: Phase 2 complete, ready to plan Phase 3
-last_updated: "2026-11-01T02:55:50.835Z"
+last_updated: "2026-11-01T02:57:30.441Z"
 last_activity: 2026-11-01
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: 168d115dd8dbb3b6bffee627875dc8cce770f833
+state_head: 66e7c23a846d71ffa1204c446e430654c6502ef9
 progress:
   total_phases: 5
   completed_phases: 2
@@ -20,10 +20,10 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-10-31, Phase 1 transition)
+See: .planning/PROJECT.md (updated 2026-11-01, Phase 2 transition)
 
 **Core value:** 在工控机上以单个轻量 Go 服务完整复刻 sys-iam 的全部 IAM 能力，且接口实现与自动化测试全部通过。
-**Current focus:** Phase 02 — 认证会话与 RBAC 主链路
+**Current focus:** Phase 03 — Casbin 授权与数据权限
 
 ## Current Position
 
@@ -102,9 +102,11 @@ None yet.
 
 ### Blockers/Concerns
 
-- [Phase 2 规划前] 需向用户索取 Nacos `craft-satoken.yaml` 的 timeout/active-timeout 实际值、MySQL collation
-- [Phase 2 验收] 存量 BCrypt hash 抽样验证：从生产库取 20 个 hash 用 Go 验证（PITFALLS.md Pitfall 7）
 - [现场部署] arm64 真实工控机首启 healthz 200 确认（qemu 全链路已代证，随部署三步执行）
+- [现场部署] 生产库 20 条 BCrypt hash 抽样验证（开发库活体直证已代证 D-16；MySQL collation 已实证 utf8mb4_general_ci）
+- [现场部署] Nacos craft-satoken.yaml timeout 真值校正（D-06 已 30d 代理 + IAM_AUTH_SESSION_TIMEOUT 可覆盖；rnacos 空实例确认永不可得）
+- [Phase 3] IN-14 过期 key 存量会话无自动撤销触发点（补偿路径充分：显式停用走 Kick 链 + 用户轴兜底）——反向索引落地时收口
+- [Phase 3] 管理端点全量授权（kickout 已收紧 super_admin 过渡态；requirePerm 全量收口）
 
 ## Deferred Items
 
