@@ -76,9 +76,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 操作日志（OLOG）
 
-- [ ] **OLOG-01**: 操作日志中间件自动记录（module/operation 显式元数据 + body 回放）
-- [ ] **OLOG-02**: 敏感参数掩码（7 字段）+ errorMsg 截 500 + 记录失败静默不影响业务
-- [ ] **OLOG-03**: 操作日志分页查询（默认 1/10 钳位例外，与源一致）
+- [x] **OLOG-01**: 操作日志中间件自动记录（module/operation 显式元数据 + body 回放）
+- [x] **OLOG-02**: 敏感参数掩码（8 字段：password/oldPassword/newPassword/secretKey/apiKey/token/accessToken/refreshToken）+ errorMsg 截 500 + 记录失败静默不影响业务
+- [x] **OLOG-03**: 操作日志分页查询（默认 1/10 钳位例外，与源一致）
 
 ### 排班（SHFT）
 
@@ -87,8 +87,8 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 故障信息（FAUL）
 
-- [ ] **FAUL-01**: 故障信息 CRUD
-- [ ] **FAUL-02**: 故障 Excel 导入（三键 upsert，整批事务）
+- [x] **FAUL-01**: 故障信息 CRUD
+- [x] **FAUL-02**: 故障 Excel 导入（三键 upsert，整批事务）
 
 ### 名称同步事件（SYNC）
 
@@ -187,13 +187,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FILE-03 | Phase 4 | Complete |
 | FILE-04 | Phase 4 | Complete |
 | FILE-05 | Phase 4 | Complete |
-| OLOG-01 | Phase 4 | Pending |
-| OLOG-02 | Phase 4 | Pending |
-| OLOG-03 | Phase 4 | Pending |
+| OLOG-01 | Phase 4 | Complete |
+| OLOG-02 | Phase 4 | Complete |
+| OLOG-03 | Phase 4 | Complete |
 | SHFT-01 | Phase 4 | Complete |
 | SHFT-02 | Phase 4 | Complete |
-| FAUL-01 | Phase 4 | Pending |
-| FAUL-02 | Phase 4 | Pending |
+| FAUL-01 | Phase 4 | Complete |
+| FAUL-02 | Phase 4 | Complete |
 | SYNC-01 | Phase 5 | Pending |
 | SYNC-02 | Phase 5 | Pending |
 

@@ -18,6 +18,10 @@
 - ✓ 认证会话 Go 化（自建 token-session：登录/登出/踢下线/TTL 滚动续期/API Key 登录复用，存量 BCrypt `$2a$` 零迁移活体直证）— Phase 2
 - ✓ 用户/角色/菜单/部门/API Key 五域 RBAC 主链路（CRUD/树查询/角色分配/停用即踢双轴/builtin 409 守卫/重置 123456）— Phase 2
 - ✓ Casbin 授权与数据权限（requirePerm 全量收口/策略即时生效/dataScope 五档行过滤/sys_role_dept 关联表/IN-14 收口）— Phase 3
+- ✓ 六业务域全链 Go 化（Dict 双表 CRUD+类型过滤 / Config key 本体查询 / Shift 全量直出+时间直传，各域 uk 1062→400/10400 域文案、RequirePerm 逐条挂载收口 73）— Phase 4
+- ✓ 文件存储可配置切换（FileStorage 三方法抽象：LocalStorage 路径逃逸双防御 / S3Storage minio-go EnsureBucket fail-fast，driver=local|s3 零代码差别；上传 MD5 判重五语义/流式下载/宽容删除）— Phase 4
+- ✓ 操作日志 AOP 等价（声明制 Oplog 挂载 45 写路由/8 字段掩码先于 60KB 截断/chan 512 异步批量落库/Flush 在 Shutdown 与 DB-Close 之间/1-10 特例分页三 like 查询）— Phase 4
+- ✓ 故障信息域 + Excel 导入（CRUD 五路由服务端默认 -1/3；三键 upsert 8 列契约/整批单事务回滚/ImportResult{insertCount,updateCount}，构造等价回测 77 行真数据）— Phase 4
 - ✓ 用户/角色/菜单/部门 RBAC 权限体系（User/Role/Menu/RoleMenu/Dept）— 源系统既有
 - ✓ 字典管理（DictType/DictData 双表）— 源系统既有
 - ✓ 系统配置管理（SysConfig）— 源系统既有
@@ -32,15 +36,12 @@
 
 ### Active
 
-- [ ] 14 个功能域 REST API 全量重新设计并实现（允许 REST 最佳实践重设计）（Auth/User/Role/Menu/Dept/ApiKey 六域已完成——Phase 2）
-[已交付 Phase 3] 权限体系 Casbin：enforcer 单例+boot 对账+RequirePerm 36 路由+双轨同步+dataScope 五档（sys_role_dept 新表）
+- [ ] 14 个功能域 REST API 全量重新设计并实现（允许 REST 最佳实践重设计）（Auth/User/Role/Menu/Dept/ApiKey 六域——Phase 2；权限收口——Phase 3；Dict/Config/Shift/File/FileCategory/Olog/Fault 七域——Phase 4；余名称同步域——Phase 5）
 - [ ] MySQL 沿用现有 schema（GORM 接入，不重设计表结构）
-- [ ] 文件存储抽象：本地磁盘 / RustFS(S3) 可配置切换
 - [ ] 配置管理去 Nacos 化：本地 YAML + 环境变量
-- [ ] 操作日志 AOP 等价实现（Gin 中间件方案）
 - [ ] 名称同步监听器等价实现（Go 事件机制替代 Spring 事件）
 - [ ] OpenAPI/Swagger 文档自动生成
-- [ ] 每个功能域配套自动化测试
+- [ ] 每个功能域配套自动化测试（Phase 1-4 各域已配集成/单元测试，Phase 5 域随实现补齐）
 
 ### Out of Scope
 
@@ -103,6 +104,11 @@
 | Delete 预清模式（补偿可达性） | 清理前置事务（Kickout/ClearRole/ClearUser 先行），DB 删除后无 post-commit 步骤——重试 404 不再挡死清理（CR-01/02） | ✓ Phase 3 review |
 | 停用角色授权即刻失效 | JOIN status=1 + Update 运行期策略同步 + boot 同口径 + AssignMenus/AssignRoles 前置拒绝（WR-04/07 闭环） | ✓ Phase 3 review |
 | 会话 timeout 30d 缺省 + env 覆盖 | Nacos 实际值永不可得（rnacos 空实例确认），Sa-Token 官方默认为最接近代理；现场可校正 | ✓ Phase 2（D-06） |
+| uk 唯一键冲突翻译 400/10400 域文案（非 409） | Phase 2 role.go 代码实证惯例延续，六域统一（字典类型/配置键已存在等） | ✓ Phase 4 |
+| FileStorage 三方法抽象 + local 延迟形态 | driver=local 构造链零 minio 符号触碰；s3 构造内 EnsureBucket fail-fast 等价源 @PostConstruct；同一 FileService 代码路径双后端无差别 | ✓ Phase 4 |
+| Oplog 异步链丢弃是设计而非缺陷（D-07） | Enqueue select-default 永不阻塞业务；chan 512 × 60KB ≈30MB 内存上界；Flush 保证停机 drain | ✓ Phase 4 |
+| Excel 三键 location NULL 判重恒不中照源保真（Q2） | eq 直传禁改 IS NULL 双分支（prohibition）；反复 INSERT 是源已接受行为——TestFaultImportLocationNullNoDedup 哨兵锁定 | ✓ Phase 4 |
+| Shift 全量直出 + HH:MM:SS 字符串直传 | SHFT-01 源行为直译（无分页 envelope、无解析层），标注勿统一为分页 | ✓ Phase 4 |
 
 ## Evolution
 
@@ -122,4 +128,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-01 after Phase 3*
+*Last updated: 2026-11-02 after Phase 4*

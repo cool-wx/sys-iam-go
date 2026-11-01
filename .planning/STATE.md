@@ -1,43 +1,43 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 4
-current_phase_name: 业务域与操作日志
-status: executing
-stopped_at: Completed 04-04-PLAN.md（Phase 4 四 plan 全部完成）
-last_updated: "2026-11-01T12:56:00.000Z"
-last_activity: 2026-11-01
-last_activity_desc: 04-04 Fault 域 CRUD + Excel 三键 upsert 导入完成，Phase 4 收口（13/13）
-state_head: 5e7ca7148140e097eb8e777fc4363420c595e61b
+current_phase: 5
+current_phase_name: 名称同步事件与验收收尾
+status: planning
+stopped_at: Phase 04 complete, ready to plan Phase 5
+last_updated: "2026-11-01T16:38:37.772Z"
+last_activity: 2026-11-02
+last_activity_desc: Phase 04 complete, transitioned to Phase 5
+state_head: 636fadaa18cd6c1ca0043376455fc5f7ed02fa7d
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 13
   completed_plans: 13
-  percent: 100
+  percent: 80
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-11-01, Phase 3 transition)
+See: .planning/PROJECT.md (updated 2026-11-02, Phase 4 transition)
 
 **Core value:** 在工控机上以单个轻量 Go 服务完整复刻 sys-iam 的全部 IAM 能力，且接口实现与自动化测试全部通过。
-**Current focus:** Phase 4 — 业务域与操作日志
+**Current focus:** Phase 5 — 名称同步事件与验收收尾
 
 ## Current Position
 
-Phase: 4 (业务域与操作日志) — EXECUTING
-Plan: 4 of 4 — COMPLETE（四 plan 全部交付，FAUL-01/02 收官）
-Status: Phase 4 收口，待 phase 验证/UAT
-Last activity: 2026-11-01 — 04-04 Fault 域 CRUD + Excel 三键 upsert 导入完成（全量回归 15 包绿）
+Phase: 5 — 名称同步事件与验收收尾
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-11-02 — Phase 04 complete, transitioned to Phase 5
 
-Progress: [██████████] 100%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
+- Total plans completed: 13
 - Average duration: -
 - Total execution time: -
 
@@ -48,6 +48,7 @@ Progress: [██████████] 100%
 | 1 | 3 | - | - |
 | 2 | 3 | - | - |
 | 3 | 3 | - | - |
+| 04 | 4 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -131,6 +132,7 @@ None yet.
 - [现场部署] system:role:edit 仅授予管理员角色（WR-05 部署信任边界——角色菜单编辑即自授面，deferred 挂账）
 - [现场部署] 生产存量 super_admin 行 data_scope=NULL 需经 PUT /roles/:id 置 5（03-02 留档）
 - [现场部署] Nacos craft-satoken.yaml timeout 真值校正（D-06 已 30d 代理 + IAM_AUTH_SESSION_TIMEOUT 可覆盖；rnacos 空实例确认永不可得）
+- [Phase 4] WR-07/WR-08（advisory）：文件分类「移至根」响应 parentId="0" 与 Create 根 null 双形态 + 对应集成断言永真——04-REVIEW-DISPOSITION 记录在案（IN-03..05 同），可 `/gsd-code-review 04 --fix` 或随 Phase 5 处理
 - ~~[Phase 3] IN-14 过期 key 存量会话无自动撤销触发点~~ — 03-03 收口（iam:apikey-user: 反查键三件落地，过期 key 登录拒绝即撤销存量会话）
 - ~~[Phase 3] 管理端点全量授权~~ — 03-03 收口（34+2 路由逐路由 requirePerm，RequireRoles 仅 kickout 叠加保留）
 
@@ -144,6 +146,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-01T12:56:00Z
-Stopped at: Completed 04-04-PLAN.md（Phase 4 四 plan 13/13 全部完成：六域 DDL/perm、File 双存储、Olog、Fault CRUD+Excel 导入；下一动作 phase 验证/UAT 或 /gsd-progress 推进）
+Last session: 2026-11-02T00:45:00Z
+Stopped at: Phase 04 complete (UAT 20/20 + VERIFICATION passed + SECURITY threats_open:0), ready to plan Phase 5
 Resume file: None
