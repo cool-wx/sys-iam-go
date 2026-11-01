@@ -27,6 +27,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -311,13 +312,21 @@ func assembleEntry(c *gin.Context, start time.Time, module, operation string, ca
 	return entry
 }
 
-// truncateBytes 按字节截断（params 上限 60000——TEXT 64KB 边界内）。调用方必须
-// 保证已先掩码（截断先于掩码会切出掩码边界新明文——prohibition 顺序锁定）。
+// truncateBytes 按字节截断（params 上限 60000——TEXT 64KB 边界内），切点回退至
+// 最近完整 rune 边界（WR-01）：params 列为 utf8mb4，硬切多字节字符中间会产生
+// 无效 UTF-8 尾串，go-sql-driver 绑定后 MySQL strict mode 报 1366 Incorrect
+// string value → CreateInBatches 整批 INSERT 失败、同批（最多 64 条）无关日志
+// 一并丢弃——回退后恒为合法 UTF-8，落库不再被确定性打爆。调用方必须保证已先
+// 掩码（截断先于掩码会切出掩码边界新明文——prohibition 顺序锁定）。
 func truncateBytes(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	return s[:n]
+	s = s[:n]
+	for len(s) > 0 && !utf8.ValidString(s) {
+		s = s[:len(s)-1]
+	}
+	return s
 }
 
 // truncateRunes 按 rune 截断（errorMsg 500——源 substring 按 char 语义对齐）。

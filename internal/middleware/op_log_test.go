@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -94,6 +95,30 @@ func TestMaskSensitiveOrderWithTruncation(t *testing.T) {
 	assert.LessOrEqual(t, len(truncated), paramsMaxBytes, "截断后超上限")
 	assert.Contains(t, truncated, `"password":"******"`, "掩码必须先于截断保留在截断结果内")
 	assert.NotContains(t, truncated, "secret123", "明文敏感值泄漏进截断结果")
+}
+
+// TestTruncateBytesUTF8Safe WR-01 直证：切点落在多字节字符中间时回退至完整
+// rune 边界——utf8mb4 params 列 INSERT 不再报 1366（strict mode 整批日志丢失，
+// 同批无关日志一并受损）。既有测试只覆盖 ASCII 切点（TestMaskSensitiveOrder
+// WithTruncation 用 "A" 重复），此处补多字节切点面。
+func TestTruncateBytesUTF8Safe(t *testing.T) {
+	// 59999 字节 ASCII + "错"（3 字节，总 60002 > 60000）→ 硬切 60000 落在
+	// "错"中间，修复前产出无效 UTF-8 尾串；修复后回退至 rune 边界
+	in := strings.Repeat("A", paramsMaxBytes-1) + "错"
+	require.Len(t, in, paramsMaxBytes+2)
+	out := truncateBytes(in, paramsMaxBytes)
+	assert.LessOrEqual(t, len(out), paramsMaxBytes, "截断后仍不超上限")
+	assert.True(t, utf8.ValidString(out), "切点必须回退到 rune 边界（utf8mb4 列 1366）")
+	assert.Equal(t, strings.Repeat("A", paramsMaxBytes-1), out, "完整 ASCII 前缀原样保留")
+
+	// 全多字节超长体：截断结果恒为合法 UTF-8 且为完整 rune 序列
+	cn := strings.Repeat("错", 30000) // 90000 字节，恰在 60000 处于 rune 边界
+	out2 := truncateBytes(cn, paramsMaxBytes)
+	assert.True(t, utf8.ValidString(out2))
+	assert.Equal(t, 20000, utf8.RuneCountInString(out2), "恰在边界时保留 20000 个完整 rune")
+
+	// 不超上限原样返回（含多字节）
+	assert.Equal(t, "参数校验失败", truncateBytes("参数校验失败", paramsMaxBytes))
 }
 
 // TestEnqueueNeverBlocks chan 满丢弃不阻塞直证（prohibition）：容量 1 的 writer
