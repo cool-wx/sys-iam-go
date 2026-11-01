@@ -34,20 +34,20 @@
 ### 权限模型设计（Claude 自主决策）
 
 - **D-05:** 纯 RBAC 模型：`p, role, perm` + `g, user, role`（无 domain 维度——单机单租户，加维度是无据复杂化）
-- **D-06:** perm 串沿源权限串风格 `sys:user:list`（菜单 perms 字段语义——前端按钮联动零成本，源 sys_menu.perms 字段即此格式）
+- **D-06:** perm 串沿源权限串风格，**前缀实证修正为 `system:`**（如 `system:user:list`——本机 sys_menu 41 行 39 行有 permission 串且前缀全部 `system:`，2026-11-01 研究实证；原 `sys:` 为笔误）。菜单 perms 字段语义——前端按钮联动零成本。api-keys/auth 域菜单无对应 perm 串属 v1 已知边界（仅 super_admin 可管，接受）
 - **D-07:** super_admin 全豁免沿源语义（中间件前置判断或 enforcer 自定义函数，研究定夺；豁免判据=会话 roles 含 super_admin 或 g 策略含，两处需一致）
 - **D-08:** requirePerm("perm串") 逐路由显式挂载（替换 Phase 2 的 RequireRoles 过渡 gate；显式优于集中注册表——路由与权限同屏可审计）
 
 ### dataScope 行过滤（Claude 自主决策）
 
 - **D-09:** GORM Scope 函数注入 WHERE 子句（repo 层组合、service 传档位）——不侵入既有查询代码，Phase 4 各域可复用
-- **D-10:** 五档映射：1 本人=`create_by_id=uid`；2 本部门=`dept_id=user.deptId`；3 及以下=`dept_id IN (dept 子树 ID 集，一次查询)`；4 指定部门=`dept_id IN (自定义部门集合)`；5 全部=无过滤（字段值域沿源 sys_role.data_scope）
+- **D-10:** 五档映射：1 本人=`create_by_id=uid`；2 本部门=`dept_id=user.deptId`；3 及以下=`dept_id IN (dept 子树 ID 集，一次查询)`；4 指定部门=`dept_id IN (自定义部门集合)`；5 全部=无过滤（字段值域沿源 sys_role.data_scope）。**档位 4 存储裁决（2026-11-01 自主拍板，处置研究 Open Question 1）**：本机 DDL 实证 sys_role 13 列仅 data_scope、源仓库 grep 零命中——"指定部门"集合在源系统无存储（dataScope 本就是源死字段）。新增 **sys_role_dept 关联表**（sys_role_menu 同构模式：role_id+dept_id+审计，三连删扩四连删），属 PROJECT.md 已记录的"增量扩展"例外同族。理由：五档是 PERM-03 验收明文，无存储则档位 4 不可实现；同构既有模式成本最低
 - **D-11:** 档位取用户全部角色 data_scope 的最大权限档（多角色取宽——管理惯例；如需收紧是 v2 语义）
 - **D-12:** 应用面用户列表先行（PERM-03 验收明文）；Scope 做成通用件（pkg 或 internal/datascope），Phase 4 域复用
 
 ### 双轨同步与收口（Claude 自主决策）
 
-- **D-13:** 策略管理面复用既有 PUT /roles/:id/menus（源契约不动）：service 同一写路径内同步 Casbin 策略（RemoveFilteredPolicies + AddPolicies 批量原子），双轨一致性由 service 单点保证
+- **D-13:** 策略管理面复用既有 PUT /roles/:id/menus（源契约不动）：service 同一写路径内同步 Casbin 策略。**API 名实证修正（2026-11-01 研究）**：`RemoveFilteredPolicy`（单数，management_api.go:304——原复数为笔误）+ `AddPolicies` 批量；**策略写不在业务事务内**（adapter 独立 Session）——顺序为业务事务提交后同步、失败 500 客户端重试自愈（幂等全删全加）；AddPolicies 前业务层去重（MySQL 8.4 批内重复行触发 Error 1869）；gin 并发用 `NewSyncedEnforcer`
 - **D-14:** Casbin 策略表仅作 enforcer 持久化，不暴露独立管理端点（避免 sys_role_menu 与 casbin_rule 两套管理面漂移）
 - **D-15:** requirePerm 全量挂管理端点（PERM-06 + WR-05 收口）；kickout 的 RequireRoles(super_admin) 保留叠加（纵深防御，不拆）
 - **D-16:** IN-14 顺带收口：apikey→user 反向索引（iam:apikey-user:{key} 或等价），过期 key 登录拒绝时撤销其存量会话——STATE Concerns 挂账项，会话域小改不扩权
