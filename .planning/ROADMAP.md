@@ -54,7 +54,7 @@ Plans:
   3. 白名单路由（登录/健康检查）免鉴权可达，其余无 token 请求一律被拒绝
   4. User/Role/Menu/Dept/ApiKey 五域 CRUD 与查询全可用：用户分页默认 1/15 钳位、详情两查询装配防 N+1、builtin 用户删除硬拦截、停用用户与停用 API Key 不可登录、重置密码固定 123456、用户可分配/回收角色、角色分页条件查询（用户 Excel 导入已随 USER-06 删除移除——源系统 User 域无导入端点，三键语义属 Phase 4 FAUL-02，2026-10-31 研究实证修正）
   5. 菜单树按父子层级返回；部门树保持孤儿节点提升语义（与源一致）
-**Plans**: 2/3 plans executed defined
+**Plans**: 3/3 plans executed defined
 
 Plans:
 **Wave 1**
@@ -64,7 +64,7 @@ Plans:
 - [x] 02-02-PLAN.md — 基础数据域：泛型树构建器（孤儿提升）+ Menu/Dept 域 + Role 域（builtin 409 守卫/三连删事务/assignMenus）（MENU-01..02、DEPT-01..02、ROLE-01..03）
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 02-03-PLAN.md — 装配域收口：User 增强（roles 两查询装配/分配回收/停用踢人/重置密码/builtin 拦截）+ ApiKey 域（明文一次性返回/停用过期不可登录）（USER-01..05,07、AKEY-01..02）
+- [x] 02-03-PLAN.md — 装配域收口：User 增强（roles 两查询装配/分配回收/停用踢人/重置密码/builtin 拦截）+ ApiKey 域（明文一次性返回/停用过期不可登录）（USER-01..05,07、AKEY-01..02）
 
 ### Phase 3: Casbin 授权与数据权限
 **Goal**: 功能权限与数据权限真正生效，且权限变更即时生效（Casbin 策略热重载——用户决策，显式区别于源系统"改权限需重登录"的登录快照语义）
@@ -110,7 +110,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. 工程骨架与横切地基 | 3/3 | Complete    | 2026-10-31 |
-| 2. 认证会话与 RBAC 主链路 | 2/3 | In Progress | - |
+| 2. 认证会话与 RBAC 主链路 | 3/3 | In Progress | - |
 | 3. Casbin 授权与数据权限 | 0/TBD | Not started | - |
 | 4. 业务域与操作日志 | 0/TBD | Not started | - |
 | 5. 名称同步事件与验收收尾 | 0/TBD | Not started | - |

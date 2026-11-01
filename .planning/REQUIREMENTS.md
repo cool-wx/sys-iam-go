@@ -27,13 +27,13 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 用户管理（USER）
 
-- [ ] **USER-01**: 用户 CRUD（物理删除）
-- [ ] **USER-02**: 用户状态启停（停用后不可登录）
-- [ ] **USER-03**: 重置密码（重置为固定 123456，源系统行为）
-- [ ] **USER-04**: 用户分配/回收角色
-- [ ] **USER-05**: 用户分页查询（默认 1/15 钳位）+ 详情防 N+1 两查询装配
+- [x] **USER-01**: 用户 CRUD（物理删除）
+- [x] **USER-02**: 用户状态启停（停用后不可登录）
+- [x] **USER-03**: 重置密码（重置为固定 123456，源系统行为）
+- [x] **USER-04**: 用户分配/回收角色
+- [x] **USER-05**: 用户分页查询（默认 1/15 钳位）+ 详情防 N+1 两查询装配
 <!-- USER-06 已删除（2026-10-31 Phase 2 研究实证）：源系统 User/Role 域无导入端点（仅 FaultInfoController:83 importExcel），三键语义属 FAUL-02；系 ROADMAP 起草错域复制，v1 不发明源系统没有的功能 -->
-- [ ] **USER-07**: builtin 内置用户删除硬拦截
+- [x] **USER-07**: builtin 内置用户删除硬拦截
 
 ### 角色管理（ROLE）
 
@@ -63,8 +63,8 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### API Key（AKEY）
 
-- [ ] **AKEY-01**: ApiKey CRUD
-- [ ] **AKEY-02**: ApiKey 状态启停（停用后不可用于登录）
+- [x] **AKEY-01**: ApiKey CRUD
+- [x] **AKEY-02**: ApiKey 状态启停（停用后不可用于登录）
 
 ### 文件管理（FILE）
 
@@ -157,12 +157,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUTH-04 | Phase 2 | Complete |
 | AUTH-05 | Phase 2 | Complete |
 | AUTH-06 | Phase 2 | Complete |
-| USER-01 | Phase 2 | Pending |
-| USER-02 | Phase 2 | Pending |
-| USER-03 | Phase 2 | Pending |
-| USER-04 | Phase 2 | Pending |
-| USER-05 | Phase 2 | Pending |
-| USER-07 | Phase 2 | Pending |
+| USER-01 | Phase 2 | Complete |
+| USER-02 | Phase 2 | Complete |
+| USER-03 | Phase 2 | Complete |
+| USER-04 | Phase 2 | Complete |
+| USER-05 | Phase 2 | Complete |
+| USER-07 | Phase 2 | Complete |
 | ROLE-01 | Phase 2 | Complete |
 | ROLE-02 | Phase 2 | Complete |
 | ROLE-03 | Phase 2 | Complete |
@@ -170,8 +170,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MENU-02 | Phase 2 | Complete |
 | DEPT-01 | Phase 2 | Complete |
 | DEPT-02 | Phase 2 | Complete |
-| AKEY-01 | Phase 2 | Pending |
-| AKEY-02 | Phase 2 | Pending |
+| AKEY-01 | Phase 2 | Complete |
+| AKEY-02 | Phase 2 | Complete |
 | PERM-01 | Phase 3 | Pending |
 | PERM-02 | Phase 3 | Pending |
 | PERM-03 | Phase 3 | Pending |

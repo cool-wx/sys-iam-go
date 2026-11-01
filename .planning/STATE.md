@@ -2,17 +2,17 @@
 gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: 认证会话与 RBAC 主链路
-status: executing
-stopped_at: Completed 02-02-PLAN.md
-last_updated: "2026-10-31T14:42:41.343Z"
+status: verifying
+stopped_at: Completed 02-03-PLAN.md（Phase 2 全部 3 plan 完成，21 需求全齐）
+last_updated: "2026-11-01T00:42:51.024Z"
 last_activity: 2026-10-31
 last_activity_desc: Phase 02 execution started
-state_head: 1b10844985eb845b7fc6b27e0ff11f6a52be5346
+state_head: 24a6fcdfa4c4ab536bfcd2bc964402cf3dd59cb6
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 6
-  completed_plans: 5
+  completed_plans: 6
   percent: 20
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-31, Phase 1 transition)
 
 Phase: 02 (认证会话与 RBAC 主链路) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-10-31 — Phase 02 execution started
 
 Progress: [██░░░░░░░░] 20%
@@ -61,6 +61,7 @@ Progress: [██░░░░░░░░] 20%
 | Phase 01 P03 | 17min | 2 tasks | 5 files |
 | Phase 02 P02-01 | 43min | 2 tasks | 33 files |
 | Phase 02 P02-02 | 35min | 2 tasks | 25 files |
+| Phase 02 P03 | 50 min | 2 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -90,6 +91,9 @@ Recent decisions affecting current work:
 - [Phase 02]: [Phase 02] 02-02: 环引用语义按源保真——环节点双方 parent 均命中索引不归根（不可达静默不产出），plan 行为文本「两节点均落根」判笔误；tree_test 2s 超时直证不死循环（T-2-09）
 - [Phase 02]: [Phase 02] 02-02: 多步关联写单事务模板确立——service 层 db.Transaction + repository.NewXxxRepo(tx) 复用；assignMenus 校验前置优于源"事务内先删后校验靠回滚"（T-2-11），builtin 守卫前置拦截零删除（409/10602）
 - [Phase 02]: [Phase 02] 02-02: repo.ErrNotFound 哨兵 + service 域消息翻译模式——「菜单/部门/角色不存在: {id}」（源消息原文），code 恒 10300/HTTP 404 与 Phase 1 契约一致；assignMenus 缺失消息按验收明文带方括号
+- [Phase 02]: ApiKey create userId 引用不存在译 400（CodeInvalidParam）——请求参数引用实体 400、操作主体 404 双轨译码惯例成文（同部门/角色校验链）
+- [Phase 02]: types.LocalDateTime 补 UnmarshalJSON（主格式源 DATE_TIME_FORMAT + RFC3339 兜底）——契约对称性缺口修复，请求侧时间键自此全域可用
+- [Phase 02]: sys_user_role.username 列存 realName 与 ApiKey.username 冗余取 username 两处相反语义均照源移植并双向注释防混
 
 ### Pending Todos
 
@@ -111,6 +115,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-31T14:42:32.355Z
-Stopped at: Completed 02-02-PLAN.md
+Last session: 2026-11-01T00:42:50.966Z
+Stopped at: Completed 02-03-PLAN.md（Phase 2 全部 3 plan 完成，21 需求全齐）
 Resume file: None
