@@ -27,9 +27,10 @@ func (s UsageStatus) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON 接受 "ENABLED"/"1"/1 与 "DISABLED"/"0"/0；null/空串兜底 UsageEnabled
 // （源 fromValue 读路径语义保留）；其余未知值返回 error（WR-03 收紧：反序列化
-// 消费方仅有 UpdateStatusReq/ApiKeyUpdateStatusReq 两个状态变更写 DTO——拼写
-// 错误如 "DISABLE" 静默兜底会执行启用、被停用用户被静默恢复且旧会话不踢；API
-// 契约允许重新设计（CLAUDE.md），无源契约约束。出网契约不受影响：MarshalJSON
+// 消费方为全部状态变更写 DTO——UpdateStatusReq/ApiKeyUpdateStatusReq/MenuUpdateReq/
+// DeptUpdateReq/RoleUpdateReq 五者（IN-10 补记后三者，行为上同为本收紧的期望语义）
+// ——拼写错误如 "DISABLE" 静默兜底会执行启用、被停用用户被静默恢复且旧会话不踢；
+// API 契约允许重新设计（CLAUDE.md），无源契约约束。出网契约不受影响：MarshalJSON
 // 恒输出合法 name，无读路径反序列化消费方）。
 func (s *UsageStatus) UnmarshalJSON(b []byte) error {
 	switch str := strings.Trim(string(b), `"`); str {
