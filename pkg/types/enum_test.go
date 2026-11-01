@@ -30,9 +30,19 @@ func TestUsageStatusUnmarshalDisabled(t *testing.T) {
 	}
 }
 
-func TestUsageStatusUnmarshalUnknownFallsBack(t *testing.T) {
-	// 未知值兜底 UsageEnabled 且永不返回 error（源 fromValue 逐字语义，P7）
-	for _, raw := range []string{`"99"`, `99`, `"WEIRD"`, `null`} {
+func TestUsageStatusUnmarshalUnknownRejects(t *testing.T) {
+	// 非法枚举值必须报错（WR-03 收紧）：状态变更写路径静默兜底会把"停用"拼写
+	// 错误反转成"启用"——越界数字/未知名/大小写不符/带空白均不再静默 ENABLED
+	for _, raw := range []string{`"99"`, `99`, `"WEIRD"`, `"DISABLE"`, `"DISABLED "`, `"ENABLE "`, `"enabled"`} {
+		var s types.UsageStatus
+		require.Error(t, json.Unmarshal([]byte(raw), &s), "输入 %s 必须报错", raw)
+	}
+}
+
+func TestUsageStatusUnmarshalNullFallsBack(t *testing.T) {
+	// null/空串兜底保留（源 fromValue 读路径语义；指针 DTO 字段遇 JSON null 实际
+	// 不进 UnmarshalJSON，由 binding required 拦截——此处锁非指针用法契约）
+	for _, raw := range []string{`null`, `""`} {
 		var s types.UsageStatus
 		require.NoError(t, json.Unmarshal([]byte(raw), &s), "输入 %s 不允许报错", raw)
 		assert.Equal(t, types.UsageEnabled, s, "输入 %s 兜底 UsageEnabled", raw)

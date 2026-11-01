@@ -436,3 +436,54 @@ func TestDeleteUserKicksSessions(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &envelope))
 	assert.Equal(t, 10100, envelope.Code, "删除后旧 token 应落未登录 10100: body=%s", body)
 }
+
+// TestUserStatusInvalidEnumRejected 状态变更端点非法枚举值 400（WR-03 回归）：
+// 合法停用后，拼写错误的启用值（"ENABLD"）必须 400/10401（UnmarshalJSON 收紧报错
+// → 绑定层译参数校验失败），状态不得被静默兜底为 ENABLED 反转——登录仍 10502。
+// api-keys status 端点同型直证一行。
+func TestUserStatusInvalidEnumRejected(t *testing.T) {
+	ts, dsn, adminToken, adminID := newTestApp(t)
+	token := adminToken()
+	seedDept(t, dsn, 100, "总部")
+
+	uidStr := createRawUser(t, ts, token, `{"username":"enum-guard","password":"pw-123456","realName":"枚举守卫","deptId":"100"}`)
+
+	// 合法停用
+	status, body := doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/users/"+uidStr+"/status", `{"status":"DISABLED"}`)
+	require.Equal(t, http.StatusOK, status, "合法停用应 200: body=%s", body)
+
+	// 拼写错误的启用 → 400，绝不静默执行启用
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/users/"+uidStr+"/status", `{"status":"ENABLD"}`)
+	require.Equal(t, http.StatusBadRequest, status, "拼写错误枚举值必须 400: body=%s", body)
+	var badEnum struct {
+		Code int `json:"code"`
+	}
+	require.NoError(t, json.Unmarshal(body, &badEnum))
+	assert.Equal(t, 10401, badEnum.Code, "UnmarshalJSON 错误应译 10401 参数校验失败: body=%s", body)
+
+	// 停用语义未被反转：登录仍 10502（若静默兜底 ENABLED，此处会 200 登录成功）
+	status, body = doRequest(t, "POST", ts.URL+"/api/v1/auth/login", `{"username":"enum-guard","password":"pw-123456"}`)
+	require.Equal(t, http.StatusUnauthorized, status, "拼写错误启用不得反转停用态: body=%s", body)
+	var loginEnv struct {
+		Code int `json:"code"`
+	}
+	require.NoError(t, json.Unmarshal(body, &loginEnv))
+	assert.Equal(t, 10502, loginEnv.Code, "body=%s", body)
+
+	// api-keys status 端点同型：非法枚举 400
+	status, body = doAuthRequest(t, token, "POST", ts.URL+"/api/v1/api-keys", `{"userId":"`+strconv.FormatInt(adminID, 10)+`"}`)
+	require.Equal(t, http.StatusOK, status, "创建 api-key 应 200: body=%s", body)
+	var created struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(body, &created))
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/api-keys/"+created.Data.ID+"/status", `{"status":"DISABLE"}`)
+	require.Equal(t, http.StatusBadRequest, status, "api-key status 非法枚举必须 400: body=%s", body)
+	var apiKeyBad struct {
+		Code int `json:"code"`
+	}
+	require.NoError(t, json.Unmarshal(body, &apiKeyBad))
+	assert.Equal(t, 10401, apiKeyBad.Code, "body=%s", body)
+}
