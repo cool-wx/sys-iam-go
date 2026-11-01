@@ -357,7 +357,10 @@ func (s *UserService) ResetPassword(ctx context.Context, id int64) error {
 
 // Delete 删除用户（USER-07）：builtin=true → errcode 单例 10601/409 **零删除调用**
 // 前置拦截（源 removeById 语义，D-14）；否则 db.Transaction{ DeleteUserRolesByUserID
-// + user Delete }——先删关联再删用户（源顺序），任一失败整体回滚。
+// + user Delete }——先删关联再删用户（源顺序），任一失败整体回滚。事务成功后
+// sm.KickoutUser 即刻踢存量会话（CR-01 修复，D-09 语义对齐 UpdateStatus/ResetPassword）：
+// 认证中间件仅校验 Redis 会话存在性、不回查 DB 用户存在性——删除后不踢则旧 token
+// 在整个会话 TTL 内继续完全可用（删除是比停用更彻底的撤销，反而不能是唯一不踢路径）。
 func (s *UserService) Delete(ctx context.Context, id int64) error {
 	u, err := s.repo.FindByID(ctx, id)
 	if err != nil {
@@ -369,12 +372,16 @@ func (s *UserService) Delete(ctx context.Context, id int64) error {
 	if u.Builtin != nil && *u.Builtin {
 		return errcode.ErrBuiltinUser
 	}
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		relationTx := repository.NewRelationRepo(tx)
 		if err := relationTx.DeleteUserRolesByUserID(ctx, id); err != nil {
 			return err
 		}
 		userTx := repository.NewUserRepo(tx)
 		return userTx.Delete(ctx, id)
-	})
+	}); err != nil {
+		return err
+	}
+	// 用户已删除，存量会话必须即刻失效（同 UpdateStatus/ResetPassword 的 D-09 语义）
+	return s.sm.KickoutUser(ctx, id)
 }

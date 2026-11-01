@@ -409,3 +409,30 @@ func TestUserListDetailRolesAssembly(t *testing.T) {
 	require.Equal(t, http.StatusOK, status)
 	assert.Contains(t, string(body), `"roles":[]`, "无角色用户详情 roles 必须 [] 非 null")
 }
+
+// TestDeleteUserKicksSessions 删除即踢存量会话（USER-07/D-09，CR-01 修复回归）：
+// 目标用户登录拿 token 确认可用 → admin 删除 → 旧 token 即刻 401/10100。认证中间件
+// 仅校验 Redis 会话存在性、不回查 DB——删除后不踢则被删账号旧 token 在整个会话 TTL
+// 内继续完全可用（删除形同未遂），删除必须与 UpdateStatus/ResetPassword 同语义踢会话。
+func TestDeleteUserKicksSessions(t *testing.T) {
+	ts, dsn, adminToken, _ := newTestApp(t)
+	token := adminToken()
+	seedDept(t, dsn, 100, "总部")
+
+	uidStr := createRawUser(t, ts, token, `{"username":"delete-kick","password":"pw-123456","realName":"删踢者","deptId":"100"}`)
+	tokenU := loginAs(t, ts, "delete-kick", "pw-123456")
+	status, body := doAuthRequest(t, tokenU, "GET", ts.URL+"/api/v1/users", "")
+	require.Equal(t, http.StatusOK, status, "删除前 token 应可用: body=%s", body)
+
+	status, body = doAuthRequest(t, token, "DELETE", ts.URL+"/api/v1/users/"+uidStr, "")
+	require.Equal(t, http.StatusOK, status, "删除应 200: body=%s", body)
+
+	// 删除后旧 token 即刻失效（不回查 DB 的认证链依赖删除即踢）
+	status, body = doAuthRequest(t, tokenU, "GET", ts.URL+"/api/v1/users", "")
+	require.Equal(t, http.StatusUnauthorized, status, "删除后旧 token 必须 401: body=%s", body)
+	var envelope struct {
+		Code int `json:"code"`
+	}
+	require.NoError(t, json.Unmarshal(body, &envelope))
+	assert.Equal(t, 10100, envelope.Code, "删除后旧 token 应落未登录 10100: body=%s", body)
+}
