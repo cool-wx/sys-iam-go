@@ -140,6 +140,26 @@ func (e *Enforcer) SyncUserRoles(userID int64, roleCodes []string) error {
 	return nil
 }
 
+// SyncRoleUsers 全量替换角色的 g 策略（角色轴的 SyncUserRoles 对偶，WR-04）：
+// 角色恢复 ENABLED 时按 sys_user_role 关联重建 (userID, roleCode) g 行——
+// RemoveFilteredGroupingPolicy 的 fieldIndex=1 是 role 位（ClearRole 同款），
+// userIDs 空=只删不加。幂等全删全加（重复恢复无害）。
+func (e *Enforcer) SyncRoleUsers(roleCode string, userIDs []int64) error {
+	if _, err := e.inner.RemoveFilteredGroupingPolicy(1, roleCode); err != nil {
+		return err
+	}
+	if len(userIDs) > 0 {
+		rules := make([][]string, 0, len(userIDs))
+		for _, uid := range userIDs {
+			rules = append(rules, []string{strconv.FormatInt(uid, 10), roleCode})
+		}
+		if _, err := e.inner.AddGroupingPolicies(rules); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ClearRole 双清角色的 p 行与 g 行（角色删除级联：RemoveFilteredGroupingPolicy
 // 的 fieldIndex=1 是 role 位）。builtin 角色已被 service 守卫拦截，不会走到这里。
 func (e *Enforcer) ClearRole(roleCode string) error {

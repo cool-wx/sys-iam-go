@@ -7,6 +7,7 @@
 package handler_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cool-wx/sys-iam-go/internal/repository"
 	"github.com/cool-wx/sys-iam-go/pkg/ids"
 )
 
@@ -452,4 +454,97 @@ func TestUserDataScope(t *testing.T) {
 	require.Equal(t, http.StatusOK, status, "改档位必须成功: body=%s", body)
 	set, total = listAs()
 	assert.Equal(t, int64(5), total, "档位变更后同一 token 下一请求必须按新档全量（无缓存直证）: set=%v", set)
+}
+
+// TestRoleDisableRevokeImmediate 角色停用对授权即刻生效（WR-04 回归，D-09 家族
+// 语义在角色轴的对应物）：分配角色+菜单 → U 同一 token 200 → PUT status=DISABLED →
+// 同一 token 下一请求 403 且 casbin p/g 行双清（停用=授权即刻撤销）→ 恢复 ENABLED
+// → 同一 token 200 且 p/g 行按业务表重建（恢复即刻复原，不等重启对账）。boot 对账
+// 同口径直证：repo 直调 FindUserRoleCodes/FindRolePerms 不含停用角色行（重启导入
+// 与运行期同口径，停用 super_admin 的豁免 g 行绝不可经对账还魂）。
+func TestRoleDisableRevokeImmediate(t *testing.T) {
+	ts, dsn, adminToken, _ := newTestApp(t)
+	db := openCheckDB(t, dsn)
+
+	const roleCode = "perm_disable_revoke"
+	menuID, roleID, userID := permFixture(t, dsn, roleCode, "perm-disable-user")
+	roleIDStr := strconv.FormatInt(roleID, 10)
+	userIDStr := strconv.FormatInt(userID, 10)
+	menuIDStr := strconv.FormatInt(menuID, 10)
+
+	// 前提链：分配角色 + 分配菜单 → U 登录 → 200
+	status, body := doAuthRequest(t, adminToken(), "PUT", ts.URL+"/api/v1/users/"+userIDStr+"/roles",
+		`{"roleIds":["`+roleIDStr+`"]}`)
+	require.Equal(t, http.StatusOK, status, "分配角色必须成功: body=%s", body)
+	status, body = doAuthRequest(t, adminToken(), "PUT", ts.URL+"/api/v1/roles/"+roleIDStr+"/menus",
+		`{"menuIds":["`+menuIDStr+`"]}`)
+	require.Equal(t, http.StatusOK, status, "分配菜单必须成功: body=%s", body)
+	uToken := loginAs(t, ts, "perm-disable-user", testAdminPass)
+	status, body = doAuthRequest(t, uToken, "GET", ts.URL+"/api/v1/users", "")
+	require.Equal(t, http.StatusOK, status, "停用前必须 200: body=%s", body)
+
+	casbinRows := func() int64 {
+		t.Helper()
+		var n int64
+		require.NoError(t, db.Raw(
+			"SELECT COUNT(*) FROM casbin_rule WHERE (ptype='p' AND v0=?) OR (ptype='g' AND v1=?)",
+			roleCode, roleCode,
+		).Scan(&n).Error)
+		return n
+	}
+	require.Equal(t, int64(2), casbinRows(), "停用前 p+g 行必须齐备（2 行）")
+
+	// 停用角色 → 同一 token 下一请求 403（运行期即刻失效）+ casbin 双清
+	status, body = doAuthRequest(t, adminToken(), "PUT", ts.URL+"/api/v1/roles/"+roleIDStr, `{"status":"DISABLED"}`)
+	require.Equal(t, http.StatusOK, status, "停用角色必须成功: body=%s", body)
+	status, body = doAuthRequest(t, uToken, "GET", ts.URL+"/api/v1/users", "")
+	require.Equal(t, http.StatusForbidden, status, "停用角色后同一 token 下一请求必须 403（WR-04 即刻生效）: body=%s", body)
+	var forbidden struct {
+		Code int `json:"code"`
+	}
+	require.NoError(t, json.Unmarshal(body, &forbidden))
+	assert.Equal(t, 10200, forbidden.Code, "body=%s", body)
+	assert.Equal(t, int64(0), casbinRows(), "停用后 casbin p/g 行必须双清（ClearRole）")
+
+	// 恢复启用 → 同一 token 下一请求 200（按业务表重建）+ casbin 双行复原
+	status, body = doAuthRequest(t, adminToken(), "PUT", ts.URL+"/api/v1/roles/"+roleIDStr, `{"status":"ENABLED"}`)
+	require.Equal(t, http.StatusOK, status, "恢复角色必须成功: body=%s", body)
+	status, body = doAuthRequest(t, uToken, "GET", ts.URL+"/api/v1/users", "")
+	require.Equal(t, http.StatusOK, status, "恢复后同一 token 下一请求必须 200（策略重建即刻生效）: body=%s", body)
+	assert.Equal(t, int64(2), casbinRows(), "恢复后 casbin p/g 行必须按业务表重建（2 行）")
+
+	// boot 对账同口径直证：停用角色（独立 seed：user_role + role_menu 关联齐备）
+	// 不得出现在对账数据源——重启导入不会复活停用角色的任何策略行
+	const offCode = "perm_disabled_reconcile"
+	offRoleID := seedRoleWithScope(t, dsn, "停用对账角色", offCode, false, 5)
+	attachRoleToUser(t, dsn, userID, offRoleID, "停用对账角色")
+	offMenuID := int64(ids.NewID())
+	execMust(t, db,
+		"INSERT INTO sys_menu (id, name, permission, create_time, update_time) VALUES (?, '停用对账菜单', 'system:role:list', NOW(), NOW())",
+		offMenuID,
+	)
+	execMust(t, db, "INSERT INTO sys_role_menu (id, role_id, role_name, menu_id, menu_name) VALUES (?, ?, ?, ?, '停用对账菜单')",
+		int64(ids.NewID()), offRoleID, "停用对账角色", offMenuID)
+	execMust(t, db, "UPDATE sys_role SET status = 0 WHERE id = ?", offRoleID)
+
+	repo := repository.NewRelationRepo(db)
+	ctx := context.Background()
+	userRules, err := repo.FindUserRoleCodes(ctx)
+	require.NoError(t, err)
+	for _, ur := range userRules {
+		assert.NotEqual(t, offCode, ur.RoleCode, "boot 对账 g 行数据源不得含停用角色（WR-04 同口径）")
+	}
+	rolePerms, err := repo.FindRolePerms(ctx)
+	require.NoError(t, err)
+	for _, rp := range rolePerms {
+		assert.NotEqual(t, offCode, rp.RoleCode, "boot 对账 p 行数据源不得含停用角色（WR-04 同口径）")
+	}
+	// 启用角色 perm_disable_revoke 的行必须仍在（过滤只打停用行，不误伤）
+	foundEnabled := false
+	for _, rp := range rolePerms {
+		if rp.RoleCode == roleCode {
+			foundEnabled = true
+		}
+	}
+	assert.True(t, foundEnabled, "启用角色的 p 行必须正常导入（过滤不误伤）")
 }

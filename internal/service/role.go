@@ -18,6 +18,7 @@ import (
 	"github.com/cool-wx/sys-iam-go/pkg/errcode"
 	"github.com/cool-wx/sys-iam-go/pkg/ids"
 	"github.com/cool-wx/sys-iam-go/pkg/paging"
+	"github.com/cool-wx/sys-iam-go/pkg/types"
 
 	"github.com/cool-wx/sys-iam-go/internal/repository"
 )
@@ -80,6 +81,20 @@ func (s *RoleService) Create(ctx context.Context, req *dto.RoleCreateReq) (*dto.
 // 的 g 行随四连删永久消失=全系统管理员豁免被摧毁；请求体 builtin 键被 DTO 白名单
 // 忽略）。行不存在译为 404/10300「角色不存在: {id}」（源消息原文；code/HTTP 契约与
 // Phase 1 一致）。落库后回读返回最新契约；审计由 repo.Patch 显式并入（ENG-02）。
+//
+// status 显式传入时的运行期策略同步（WR-04：停用角色对授权即刻生效，D-09 家族
+// 语义在角色轴的对应物——用户轴停用踢会话，角色轴停用清策略）：
+//   - → DISABLED：Patch 落库后 ClearRole 双清该角色 p+g 行——持该角色的存量 token
+//     下一请求即 403（g 行没了 matcher 豁免与 p 行均不命中），停用是授权即刻撤销；
+//   - → ENABLED：Patch 落库后按业务表重建策略（SyncRolePerms p 行 + SyncRoleUsers
+//     g 行，原料 FindPermsByRoleID/FindUserIDsByRoleID 与 boot 对账同口径）——恢复
+//     即刻复原，无需等重启对账。
+//
+// 同步不做翻转检测而按目标值无条件执行：ClearRole/重建均幂等全删（全加），重复
+// 提交（DISABLED→DISABLED、重复 ENABLED 恢复）无害；且 Patch 已提交后同步失败的
+// 500 重试（status 值不变）仍会重跑同步——post-commit 失败可重试自愈（与 Delete
+// 的 404 挡死不同，Patch 幂等）。业务表是唯一事实源：停用期间 sys_role_menu/
+// sys_user_role 关联不动，恢复时全量重建即可。
 func (s *RoleService) Update(ctx context.Context, id int64, req *dto.RoleUpdateReq) (*dto.RoleResp, error) {
 	cols := map[string]any{}
 	if req.RoleName != nil {
@@ -99,6 +114,37 @@ func (s *RoleService) Update(ctx context.Context, id int64, req *dto.RoleUpdateR
 			return nil, errcode.New(errcode.CodeNotFound, fmt.Sprintf("角色不存在: %d", id))
 		}
 		return nil, err
+	}
+	// 运行期策略同步（仅 status 显式传入时触发；Patch 成功后执行，失败上抛 500
+	// 可重试自愈——见上注）。roleCode 从本次 Patch 结果回读（Get 走同一查库路径，
+	// 不二次查库直取）。
+	if req.Status != nil {
+		role, err := s.roleRepo.FindByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if *req.Status == types.UsageDisabled {
+			// 停用：双清 p+g 行（持该角色 token 下一请求即 403）
+			if err := s.enf.ClearRole(role.RoleCode); err != nil {
+				return nil, err
+			}
+		} else {
+			// 启用（含从停用恢复）：按业务表全量重建 p+g 行
+			perms, err := s.relationRepo.FindPermsByRoleID(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+			if err := s.enf.SyncRolePerms(role.RoleCode, perms); err != nil {
+				return nil, err
+			}
+			userIDs, err := s.relationRepo.FindUserIDsByRoleID(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+			if err := s.enf.SyncRoleUsers(role.RoleCode, userIDs); err != nil {
+				return nil, err
+			}
+		}
 	}
 	return s.Get(ctx, id)
 }
