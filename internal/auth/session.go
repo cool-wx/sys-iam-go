@@ -21,9 +21,10 @@ import (
 //     TTL=timeout，每次 Resolve 命中重置为完整 timeout（滚动会话，AUTH-05）
 //   - iam:user-tokens:{userId}  Set of token，无 TTL——多 token 各自寿命不同（D-08
 //     多端并存），死 token 由 KickoutUser 惰性清理
-//   - iam:apikey-token:{apiKey} String=token，TTL=timeout；登出/踢下线不主动删——
-//     无 token→apiKey 反向索引，指向死 token 时由 ResolveAPIKey 的会话 Exists 双检
-//     兜底走完整登录并覆盖该键（TTL 窗口内无害残留，02-CONTEXT.md 认可）
+//   - iam:apikey-token:{apiKey} String=token，TTL=timeout；apikey 轴撤销（WR-06：
+//     管理面停用/删除 key）经 KickoutAPIKey 主动删映射连带会话；用户轴的登出/踢下线
+//     仍不主动删——无 token→apiKey 反向索引，指向死 token 时由 ResolveAPIKey 的会话
+//     Exists 双检兜底走完整登录并覆盖该键（TTL 窗口内无害残留，02-CONTEXT.md 认可）
 const (
 	keySessionPrefix    = "iam:session:"
 	keyUserTokensPrefix = "iam:user-tokens:"
@@ -192,6 +193,45 @@ func (sm *SessionManager) BindAPIKey(ctx context.Context, apiKey, token string) 
 // 下次复用分支再次拒绝并重试清理，无放大效应）。
 func (sm *SessionManager) UnbindAPIKey(ctx context.Context, apiKey string) error {
 	return sm.rdb.Del(ctx, keyAPIKeyPrefix+apiKey).Err()
+}
+
+// KickoutAPIKey 撤销指定 API Key 已签发的存量会话（WR-06 修复，CR-01/D-09 用户轴
+// 同构语义在 apikey 轴的有意安全增强——源系统停用/删除 key 不踢 Sa-Token 会话，
+// 此处偏离源行为，由 ApiKeyService 注释声明裁决依据）：经 iam:apikey-token:{apiKey}
+// 映射反查 token → DEL 会话 + SREM 用户 token 索引 + DEL 映射（单 MULTI/EXEC 原子块，
+// Logout+UnbindAPIKey 合体形状）。幂等——映射不存在（key 从未经 apikey-login 签发过
+// 会话）返回 nil；映射指向死 token 的历史残留同样收敛（DEL/SREM 均 no-op，仅剩映射
+// 清理，Logout 同构语义）。
+//
+// 已知边界（既有残留语义的忠实记录，非本方法缺陷）：映射仅指向【最新】token。
+// apikey-login 复用分支（AUTH-02）保证映射存活期内同一 key 只有一个活跃 token；映射
+// TTL 过期后重新完整登录会覆盖旧映射，彼时若旧 token 因会话滚动续期仍存活，则无从
+// 反查（无 token→apiKey 反向索引，02-CONTEXT.md 认可）——该窗口内旧 token 不在撤销
+// 覆盖范围，至其自然 TTL 到期。
+func (sm *SessionManager) KickoutAPIKey(ctx context.Context, apiKey string) error {
+	mappingKey := keyAPIKeyPrefix + apiKey
+	token, err := sm.rdb.Get(ctx, mappingKey).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return nil // 无映射 = 该 key 无已签发会话可撤
+		}
+		return err
+	}
+	sessionKey := keySessionPrefix + token
+	userIDStr, err := sm.rdb.HGet(ctx, sessionKey, "userId").Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return err
+	}
+	// 会话已不存在（映射指向死 token）时 userIDStr 为空串：SRem 落在不存在的索引键上
+	// 为 no-op、DEL 幂等——仅剩映射清理生效，整链不产生错误。
+	userTokensKey := keyUserTokensPrefix + userIDStr
+	_, err = sm.rdb.TxPipelined(ctx, func(p redis.Pipeliner) error {
+		p.Del(ctx, sessionKey)
+		p.SRem(ctx, userTokensKey, token)
+		p.Del(ctx, mappingKey)
+		return nil
+	})
+	return err
 }
 
 // ResolveAPIKey apiKey→token 解析：映射命中且指向会话仍存活才返回 token（双检）；

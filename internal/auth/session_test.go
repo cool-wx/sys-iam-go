@@ -196,6 +196,48 @@ func TestConcurrentApiKeyFullLogin(t *testing.T) {
 	assert.Contains(t, got, final)
 }
 
+// TestKickoutAPIKeyRevokesSessionAndMapping WR-06：KickoutAPIKey 撤销指定 key 已
+// 签发会话——会话 DEL（Resolve 失效）、user-tokens 索引 SRem、映射 DEL（单原子块）；
+// 未签发过会话的 key 幂等 nil；映射指向死 token 的残留场景仅剩映射清理。
+func TestKickoutAPIKeyRevokesSessionAndMapping(t *testing.T) {
+	sm, _, rdb := newTestManager(t)
+	ctx := context.Background()
+
+	token, err := sm.Login(ctx, SessionPayload{UserID: 31, UserName: "ak-kick"})
+	require.NoError(t, err)
+	require.NoError(t, sm.BindAPIKey(ctx, "ak-revoke", token))
+
+	// 撤销前：映射命中、会话存活
+	_, ok := sm.ResolveAPIKey(ctx, "ak-revoke")
+	require.True(t, ok)
+	_, err = sm.Resolve(ctx, token)
+	require.NoError(t, err)
+
+	require.NoError(t, sm.KickoutAPIKey(ctx, "ak-revoke"))
+
+	// 会话即刻失效（认证中间件 401 语义）
+	_, err = sm.Resolve(ctx, token)
+	require.ErrorIs(t, err, ErrSessionNotFound, "撤销后 key 的存量会话必须 DEL")
+	// 索引已 SRem（经 go-redis 客户端断言，缺失键 = 空集语义，TestKickoutCleansIndexAndDeadTokens 同款）
+	members, err := rdb.SMembers(ctx, keyUserTokensPrefix+"31").Result()
+	require.NoError(t, err)
+	assert.Empty(t, members, "user-tokens 索引必须 SRem 撤销的 token")
+	// 映射已清（下次 apikey-login 走完整登录换新 token，不复用死映射）
+	_, ok = sm.ResolveAPIKey(ctx, "ak-revoke")
+	assert.False(t, ok, "撤销后映射必须 DEL")
+
+	// 幂等：重复撤销返回 nil；从未签发过会话的 key 同样幂等 nil
+	require.NoError(t, sm.KickoutAPIKey(ctx, "ak-revoke"), "重复撤销必须幂等")
+	require.NoError(t, sm.KickoutAPIKey(ctx, "ak-never-issued"), "无映射 key 撤销必须幂等 nil")
+
+	// 死 token 残留场景：映射指向不存在会话 → 撤销仅剩映射清理，不报错
+	dead := "dead0000dead0000dead0000dead0000dead0000dead0000dead0000dead0000"
+	require.NoError(t, sm.BindAPIKey(ctx, "ak-dead-mapping", dead))
+	require.NoError(t, sm.KickoutAPIKey(ctx, "ak-dead-mapping"))
+	_, ok = sm.ResolveAPIKey(ctx, "ak-dead-mapping")
+	assert.False(t, ok, "死 token 残留场景映射必须被清理")
+}
+
 // TestApiKeyBindingBranches apiKey→token 映射两分支：BindAPIKey 后 ResolveAPIKey
 // 命中返回原 token；DEL 会话（死 token）后 ResolveAPIKey 返回 ok=false（双检兜底）。
 func TestApiKeyBindingBranches(t *testing.T) {

@@ -1,6 +1,8 @@
 // Package service API Key 域业务逻辑：CRUD + 明文 key 一次性返回（AKEY-01）+
 // 停用/过期不可登录（AKEY-02——登录侧由 AuthService.ApikeyLogin + FindByKey
-// 恒带过滤保证，本域管理面负责 key 的全生命周期）。
+// 恒带过滤保证，本域管理面负责 key 的全生命周期）。WR-06 安全增强：停用/删除
+// key 时连带撤销其已签发的存量会话（SessionManager.KickoutAPIKey）——管理动作
+// 是撤销语义，仅封新登录不逐旧会话则被撤销凭据的 token 在整个 TTL 内继续完全可用。
 package service
 
 import (
@@ -11,6 +13,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cool-wx/sys-iam-go/internal/auth"
 	"github.com/cool-wx/sys-iam-go/internal/model/dto"
 	"github.com/cool-wx/sys-iam-go/internal/model/po"
 	"github.com/cool-wx/sys-iam-go/internal/repository"
@@ -23,11 +26,13 @@ import (
 type ApiKeyService struct {
 	userRepo   *repository.UserRepo
 	apiKeyRepo *repository.ApiKeyRepo
+	sm         *auth.SessionManager
 }
 
-// NewApiKeyService 构造（与 AuthService 复用同一 apiKeyRepo 实例）。
-func NewApiKeyService(userRepo *repository.UserRepo, apiKeyRepo *repository.ApiKeyRepo) *ApiKeyService {
-	return &ApiKeyService{userRepo: userRepo, apiKeyRepo: apiKeyRepo}
+// NewApiKeyService 构造（与 AuthService 复用同一 apiKeyRepo 实例与 SessionManager
+// ——撤销/绑定/解绑映射与会话原语必须同一 Redis 视图）。
+func NewApiKeyService(userRepo *repository.UserRepo, apiKeyRepo *repository.ApiKeyRepo, sm *auth.SessionManager) *ApiKeyService {
+	return &ApiKeyService{userRepo: userRepo, apiKeyRepo: apiKeyRepo, sm: sm}
 }
 
 // apiKeyNotFound 行不存在译域消息（repo ErrNotFound 哨兵 → 404/10300
@@ -92,13 +97,34 @@ func (s *ApiKeyService) Create(ctx context.Context, req *dto.ApiKeyCreateReq) (*
 // 译「API Key 不存在: {id}」；停用立即生效（FindByKey 登录过滤恒带
 // status=ENABLED——AKEY-02）。api_key/username/user_id/expire_time 既有值不得
 // 经本路径或任何写路径覆写（T-2-15）。
+//
+// WR-06 安全增强（D-09 用户轴同构——源停用 key 不踢 Sa-Token 会话，此为有意偏离
+// 源行为的裁决项）：**status==DISABLED 时 KickoutAPIKey 即刻撤销其已签发的存量
+// 会话**。认证中间件仅校验 Redis 会话存在性、不回查 key 状态——只封 FindByKey 新
+// 登录不逐旧会话，被撤销凭据的 token 在整个滚动 TTL（默认 720h）内继续完全可用；
+// 且 WR-05 后 kickout 端点仅 super_admin 可调，普通管理员已无补偿性人工踢会话手段，
+// 撤销必须内建于本路径。ENABLED（重新启用）不动作（同 UserService.UpdateStatus
+// 用户轴语义）。kick 失败 500 但停用已持久（CR-01/IN-06 同款已裁决语义；残留会话
+// 由 ApikeyLogin 复用分支的 WR-02 状态校验兜底拒绝续命）。
 func (s *ApiKeyService) UpdateStatus(ctx context.Context, id int64, status types.UsageStatus) error {
-	err := s.apiKeyRepo.Patch(ctx, id, map[string]any{"status": int8(status)})
+	// 前置 FindByID：404 语义前置（消息不变）+ 撤销需要 apiKey 明文作映射反查键
+	// （Delete 同构取值方式）
+	k, err := s.apiKeyRepo.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, errcode.ErrNotFound) {
 			return apiKeyNotFound(id)
 		}
 		return err
+	}
+	if err := s.apiKeyRepo.Patch(ctx, id, map[string]any{"status": int8(status)}); err != nil {
+		// 防御性保留：并发删除窗口内 Patch 仍可能 ErrNotFound，消息语义不变
+		if errors.Is(err, errcode.ErrNotFound) {
+			return apiKeyNotFound(id)
+		}
+		return err
+	}
+	if status == types.UsageDisabled {
+		return s.sm.KickoutAPIKey(ctx, k.ApiKey)
 	}
 	return nil
 }
@@ -130,13 +156,20 @@ func (s *ApiKeyService) Get(ctx context.Context, id int64) (*dto.ApiKeyResp, err
 }
 
 // Delete 删除 API Key（物理删，标准三段）：FindByID 校验（行不存在译
-// 「API Key 不存在: {id}」）→ 物理删除。
+// 「API Key 不存在: {id}」）→ 物理删除 → **KickoutAPIKey 撤销其已签发存量会话**
+// （WR-06，CR-01 用户轴 Delete 同型语义——删除是比停用更彻底的撤销，不能是唯一
+// 不逐客的路径；认证中间件不回查 DB key 存在性，删后不踢则旧 token 全 TTL 可用）。
+// kick 失败 500 但删除已持久（CR-01/IN-06 同款已裁决语义）。
 func (s *ApiKeyService) Delete(ctx context.Context, id int64) error {
-	if _, err := s.apiKeyRepo.FindByID(ctx, id); err != nil {
+	k, err := s.apiKeyRepo.FindByID(ctx, id)
+	if err != nil {
 		if errors.Is(err, errcode.ErrNotFound) {
 			return apiKeyNotFound(id)
 		}
 		return err
 	}
-	return s.apiKeyRepo.Delete(ctx, id)
+	if err := s.apiKeyRepo.Delete(ctx, id); err != nil {
+		return err
+	}
+	return s.sm.KickoutAPIKey(ctx, k.ApiKey)
 }

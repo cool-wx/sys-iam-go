@@ -208,6 +208,70 @@ func TestApiKeyDisabledCannotLogin(t *testing.T) {
 	assert.Equal(t, http.StatusOK, status, "重新启用后必须可登录: body=%s", body)
 }
 
+// TestApiKeyRevokeKillsExistingSession 停用/删除 key 撤销已签发存量会话直证（WR-06
+// 修复，CR-01 用户轴同族语义——认证中间件仅校验 Redis 会话存在性、不回查 key 状态，
+// 停用只封 FindByKey 新登录不逐旧会话则被撤销凭据的 token 在整个滚动 TTL 内继续
+// 完全可用）：api key 登录拿 tokenK → tokenK 可访问业务端点（会话存活基线）→ 停用
+// key → tokenK 即刻 401（存量会话已撤，非仅登录封禁）；登录封禁语义不变（10503）；
+// 重新启用后再登录走完整路径换新 token（死映射已被撤销清理，不得复用旧 token）→
+// 删除路径同构直证：DELETE key → 新 token 即刻 401。
+func TestApiKeyRevokeKillsExistingSession(t *testing.T) {
+	ts, _, adminToken, adminID := newTestApp(t)
+	token := adminToken()
+
+	// create 关联 key + apikey-login → tokenK
+	status, body := doAuthRequest(t, token, "POST", ts.URL+"/api/v1/api-keys",
+		`{"userId":"`+strconv.FormatInt(adminID, 10)+`"}`)
+	require.Equal(t, http.StatusOK, status, "body=%s", body)
+	var created apiKeyEnvelope
+	require.NoError(t, json.Unmarshal(body, &created))
+	key := created.Data.ApiKey
+
+	status, body = apikeyLogin(t, ts, key)
+	require.Equal(t, http.StatusOK, status, "apikey-login 应 200: body=%s", body)
+	tokenK := extractToken(t, body)
+
+	// 会话存活基线：tokenK 可访问业务端点（users 列表仅 Auth 中间件，无角色要求）
+	status, body = doAuthRequest(t, tokenK, "GET", ts.URL+"/api/v1/users", "")
+	require.Equal(t, http.StatusOK, status, "撤销前 key 会话必须可用: body=%s", body)
+
+	// --- 停用轴：停用 key → 存量会话即刻撤销（WR-06 主断言）---
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/api-keys/"+created.Data.ID+"/status", `{"status":"DISABLED"}`)
+	require.Equal(t, http.StatusOK, status, "body=%s", body)
+	status, body = doAuthRequest(t, tokenK, "GET", ts.URL+"/api/v1/users", "")
+	require.Equal(t, http.StatusUnauthorized, status, "停用 key 后旧 token 必须即刻 401（存量会话已撤）: body=%s", body)
+	var unauthEnv struct {
+		Code int `json:"code"`
+	}
+	require.NoError(t, json.Unmarshal(body, &unauthEnv))
+	assert.Equal(t, 10100, unauthEnv.Code, "401/10100 未认证语义: body=%s", body)
+
+	// 登录封禁语义不变（AKEY-02：FindByKey 恒带 ENABLED 过滤）
+	status, body = apikeyLogin(t, ts, key)
+	require.Equal(t, http.StatusUnauthorized, status, "停用 key 登录必须 401: body=%s", body)
+	var loginEnv struct {
+		Code int `json:"code"`
+	}
+	require.NoError(t, json.Unmarshal(body, &loginEnv))
+	assert.Equal(t, 10503, loginEnv.Code, "body=%s", body)
+
+	// 重新启用 → 完整登录换新 token（映射已被撤销 DEL，不得复用旧 token）
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/api-keys/"+created.Data.ID+"/status", `{"status":"ENABLED"}`)
+	require.Equal(t, http.StatusOK, status, "body=%s", body)
+	status, body = apikeyLogin(t, ts, key)
+	require.Equal(t, http.StatusOK, status, "重新启用后必须可完整登录: body=%s", body)
+	tokenK2 := extractToken(t, body)
+	require.NotEqual(t, tokenK, tokenK2, "撤销清映射后必须走完整登录发新 token")
+	status, body = doAuthRequest(t, tokenK2, "GET", ts.URL+"/api/v1/users", "")
+	require.Equal(t, http.StatusOK, status, "新会话必须可用: body=%s", body)
+
+	// --- 删除轴同构直证：DELETE key → 存量会话即刻撤销 ---
+	status, body = doAuthRequest(t, token, "DELETE", ts.URL+"/api/v1/api-keys/"+created.Data.ID, "")
+	require.Equal(t, http.StatusOK, status, "body=%s", body)
+	status, body = doAuthRequest(t, tokenK2, "GET", ts.URL+"/api/v1/users", "")
+	require.Equal(t, http.StatusUnauthorized, status, "删除 key 后旧 token 必须即刻 401（WR-06 Delete 同构）: body=%s", body)
+}
+
 // TestApiKeyExpiredCannotLogin 过期 key 不可登录（AKEY-02）：seed expire_time 为
 // 过去时间的 key → apikey-login 401/10503（FindByKey 恒带 expire_time > NOW() 过滤）。
 func TestApiKeyExpiredCannotLogin(t *testing.T) {
