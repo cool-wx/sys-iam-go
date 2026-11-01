@@ -42,7 +42,10 @@ func TestUpdateAuditWithIdentity(t *testing.T) {
 	})
 
 	repo := repository.NewUserRepo(db)
-	svc := service.NewUserService(repo)
+	// 02-03 起 NewUserService 扩依赖（db+relation/role/dept repo+sm）；本测试仅走
+	// Create/Update 路径不触达 sm（会话管理器），传 nil 即可（session 依赖无 Redis 环境）。
+	svc := service.NewUserService(db, repo,
+		repository.NewRelationRepo(db), repository.NewRoleRepo(db), repository.NewDeptRepo(db), nil)
 
 	// create（无 identity 上下文——create_by 保持 NULL，不影响本断言目标）
 	created, err := svc.Create(context.Background(), &dto.UserCreateReq{

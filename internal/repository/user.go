@@ -125,3 +125,9 @@ func (r *UserRepo) FindByID(ctx context.Context, id int64) (*po.UserPO, error) {
 	}
 	return &u, nil
 }
+
+// Delete 物理删除（硬删除语义，P4）；由 service 层 db.Transaction 调用（先删
+// sys_user_role 关联再删用户，源 removeById 顺序）。恒带 Where 防 Type 白名单外调用。
+func (r *UserRepo) Delete(ctx context.Context, id int64) error {
+	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&po.UserPO{}).Error
+}

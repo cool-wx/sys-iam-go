@@ -35,6 +35,9 @@ import (
 func TestCreateUserContract(t *testing.T) {
 	ts, dsn, adminToken, adminID := newTestApp(t)
 
+	// 02-03 起 create 强制部门校验链（deptId 必填且必须存在）——seed 部门 100
+	seedDept(t, dsn, 100, "总部")
+
 	// --- create 请求 ---
 	const username = "gsd_contract_user"
 	reqBody := `{"username":"` + username + `","password":"pw-123456","realName":"契约验证用户","gender":"MALE","deptId":"100","deptName":"总部"}`
@@ -290,13 +293,27 @@ func execMust(t *testing.T, db *gorm.DB, query string, args ...any) int64 {
 	return res.RowsAffected
 }
 
+// seedDept 直插 sys_dept 行（02-03 起 user create/update 强制部门校验链——
+// 测试用户必须挂真实存在的部门；各测试独立容器互不污染，按需各自 seed）。
+func seedDept(t *testing.T, dsn string, id int64, name string) {
+	t.Helper()
+	db := openCheckDB(t, dsn)
+	execMust(t, db,
+		"INSERT INTO sys_dept (id, dept_name, sort, status, create_time, update_time) VALUES (?, ?, 0, 1, NOW(), NOW())",
+		id, name,
+	)
+}
+
 // TestUpdateUserZeroValueProtection PUT 仅提交 realName：未提交字段（phone/email/
 // deptName/gender）保持原值、realName 已变、update_time 晚于 create_time、带 identity
 // 上下文时 update_by 两列填充操作者（ENG-05 零值保护 + ENG-02 update 侧）。
 func TestUpdateUserZeroValueProtection(t *testing.T) {
 	ts, dsn, adminToken, adminID := newTestApp(t)
 
-	id := createRawUser(t, ts, adminToken(), `{"username":"zero-prot","password":"pw-123456","realName":"原始名","phone":"13800000000","email":"orig@example.com","gender":"MALE","deptName":"原部门"}`)
+	// 02-03 起 create 强制部门校验：seed 专属部门（dept_name 由服务端查库冗余——
+	// 请求体 deptName 键已被忽略，故 seed 名即最终落库值）
+	seedDept(t, dsn, 101, "原部门")
+	id := createRawUser(t, ts, adminToken(), `{"username":"zero-prot","password":"pw-123456","realName":"原始名","phone":"13800000000","email":"orig@example.com","gender":"MALE","deptId":"101"}`)
 
 	// DATETIME 秒精度：跨过 1 秒边界使 update_time 严格晚于 create_time 可判
 	time.Sleep(1100 * time.Millisecond)
@@ -378,9 +395,10 @@ func TestUpdateUserZeroValueProtection(t *testing.T) {
 // TestUpdateUserExplicitClear PUT 显式提交 phone:""：phone 被清空为空串（非 null），
 // 未提交的 email 保持原值（nil=未提供 与 空串=显式清空 双语义，Pitfall 3）。
 func TestUpdateUserExplicitClear(t *testing.T) {
-	ts, _, adminToken, _ := newTestApp(t)
+	ts, dsn, adminToken, _ := newTestApp(t)
 
-	id := createRawUser(t, ts, adminToken(), `{"username":"explicit-clear","password":"pw-123456","realName":"清空测试","phone":"13911111111","email":"clear@example.com"}`)
+	seedDept(t, dsn, 100, "总部")
+	id := createRawUser(t, ts, adminToken(), `{"username":"explicit-clear","password":"pw-123456","realName":"清空测试","phone":"13911111111","email":"clear@example.com","deptId":"100"}`)
 
 	status, body := doAuthRequest(t, adminToken(), "PUT", ts.URL+"/api/v1/users/"+id, `{"phone":""}`)
 	require.Equal(t, http.StatusOK, status, "body=%s", body)
@@ -419,9 +437,10 @@ func TestUpdateUserNotFound(t *testing.T) {
 // 不存在）。跨过秒边界时 update_time 变化 → affected=1，同样 200：本测试不会因
 // 时序假失败，只在"行存在却报 404"的回归上失败。
 func TestUpdateUserSameSecondIdempotentRetry(t *testing.T) {
-	ts, _, adminToken, _ := newTestApp(t)
+	ts, dsn, adminToken, _ := newTestApp(t)
 
-	id := createRawUser(t, ts, adminToken(), `{"username":"same-second-retry","password":"pw","realName":"初名"}`)
+	seedDept(t, dsn, 100, "总部")
+	id := createRawUser(t, ts, adminToken(), `{"username":"same-second-retry","password":"pw","realName":"初名","deptId":"100"}`)
 
 	status, body := doAuthRequest(t, adminToken(), "PUT", ts.URL+"/api/v1/users/"+id, `{"realName":"同秒重试值"}`)
 	require.Equal(t, http.StatusOK, status, "首次更新应 200: body=%s", body)
@@ -467,14 +486,15 @@ func TestGetUserInvalidId(t *testing.T) {
 // {items,total,page,size}，items 长度 2、total 3、items[0] 为最新行
 // （ORDER BY create_time DESC, id DESC 稳定排序，P15）。
 func TestListUsersPaging(t *testing.T) {
-	ts, _, adminToken, _ := newTestApp(t)
+	ts, dsn, adminToken, _ := newTestApp(t)
 
+	seedDept(t, dsn, 100, "总部")
 	// 插 3 行：前两行同秒插入，第三行跨秒——排序由 create_time DESC 主导，
 	// 前两行的先后由 id DESC tiebreaker 决定（雪花 id 单调递增，后插者大）
-	createRawUser(t, ts, adminToken(), `{"username":"list-a","password":"pw","realName":"用户A"}`)
-	createRawUser(t, ts, adminToken(), `{"username":"list-b","password":"pw","realName":"用户B"}`)
+	createRawUser(t, ts, adminToken(), `{"username":"list-a","password":"pw","realName":"用户A","deptId":"100"}`)
+	createRawUser(t, ts, adminToken(), `{"username":"list-b","password":"pw","realName":"用户B","deptId":"100"}`)
 	time.Sleep(1100 * time.Millisecond)
-	createRawUser(t, ts, adminToken(), `{"username":"list-c","password":"pw","realName":"用户C"}`)
+	createRawUser(t, ts, adminToken(), `{"username":"list-c","password":"pw","realName":"用户C","deptId":"100"}`)
 
 	status, body := doAuthRequest(t, adminToken(), "GET", ts.URL+"/api/v1/users?page=1&size=2", "")
 	require.Equal(t, http.StatusOK, status, "body=%s", body)
@@ -502,9 +522,10 @@ func TestListUsersPaging(t *testing.T) {
 // TestListUsersEdgeParams 边界参数：page=0&size=-1 钳位 1/15（HTTP 200 不 500）；
 // 超界页码 page=999 → items 为空 JSON 数组而非 null（ENG-01 空输入边界）。
 func TestListUsersEdgeParams(t *testing.T) {
-	ts, _, adminToken, _ := newTestApp(t)
+	ts, dsn, adminToken, _ := newTestApp(t)
 
-	createRawUser(t, ts, adminToken(), `{"username":"edge-user","password":"pw","realName":"边界"}`)
+	seedDept(t, dsn, 100, "总部")
+	createRawUser(t, ts, adminToken(), `{"username":"edge-user","password":"pw","realName":"边界","deptId":"100"}`)
 
 	status, body := doAuthRequest(t, adminToken(), "GET", ts.URL+"/api/v1/users?page=0&size=-1", "")
 	require.Equal(t, http.StatusOK, status, "page=0&size=-1 不应报错: body=%s", body)
@@ -553,10 +574,11 @@ func TestListUsersEdgeParams(t *testing.T) {
 // TestCreateUserDuplicateUsername 重复 POST 同 username：uk_username 唯一索引
 // 1062 → gorm.ErrDuplicatedKey → HTTP 400 + code 10400（P4）。
 func TestCreateUserDuplicateUsername(t *testing.T) {
-	ts, _, adminToken, _ := newTestApp(t)
+	ts, dsn, adminToken, _ := newTestApp(t)
 
-	createRawUser(t, ts, adminToken(), `{"username":"dup-user","password":"pw","realName":"第一次"}`)
-	status, body := doAuthRequest(t, adminToken(), "POST", ts.URL+"/api/v1/users", `{"username":"dup-user","password":"pw","realName":"第二次"}`)
+	seedDept(t, dsn, 100, "总部")
+	createRawUser(t, ts, adminToken(), `{"username":"dup-user","password":"pw","realName":"第一次","deptId":"100"}`)
+	status, body := doAuthRequest(t, adminToken(), "POST", ts.URL+"/api/v1/users", `{"username":"dup-user","password":"pw","realName":"第二次","deptId":"100"}`)
 	require.Equal(t, http.StatusBadRequest, status, "重复 username 应 400: body=%s", body)
 	var envelope struct {
 		Code int `json:"code"`
@@ -569,7 +591,9 @@ func TestCreateUserDuplicateUsername(t *testing.T) {
 // → 不 500（兜底 UNKNOWN 落库）；请求体携带未知额外字段 → 不 400（宽容输入，
 // 源 FAIL_ON_UNKNOWN_PROPERTIES=false 语义）。
 func TestCreateUserValidation(t *testing.T) {
-	ts, _, adminToken, _ := newTestApp(t)
+	ts, dsn, adminToken, _ := newTestApp(t)
+
+	seedDept(t, dsn, 100, "总部")
 
 	// 缺 username（required）→ 400 + 10401
 	status, body := doAuthRequest(t, adminToken(), "POST", ts.URL+"/api/v1/users", `{"password":"pw","realName":"缺用户名"}`)
@@ -580,8 +604,29 @@ func TestCreateUserValidation(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &envelope))
 	assert.Equal(t, 10401, envelope.Code, "binding 失败应落 10401 段: body=%s", body)
 
+	// 02-03 部门校验链：deptId 缺失 → 400「部门不能为空」；deptId 不存在 → 400「部门不存在: 888」
+	status, body = doAuthRequest(t, adminToken(), "POST", ts.URL+"/api/v1/users", `{"username":"no-dept","password":"pw","realName":"无部门"}`)
+	require.Equal(t, http.StatusBadRequest, status, "缺 deptId 应 400: body=%s", body)
+	var noDeptEnv struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(body, &noDeptEnv))
+	assert.Equal(t, 10400, noDeptEnv.Code)
+	assert.Contains(t, noDeptEnv.Message, "部门不能为空", "body=%s", body)
+
+	status, body = doAuthRequest(t, adminToken(), "POST", ts.URL+"/api/v1/users", `{"username":"bad-dept","password":"pw","realName":"坏部门","deptId":"888"}`)
+	require.Equal(t, http.StatusBadRequest, status, "deptId 不存在应 400: body=%s", body)
+	var badDeptEnv struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(body, &badDeptEnv))
+	assert.Equal(t, 10400, badDeptEnv.Code)
+	assert.Contains(t, badDeptEnv.Message, "部门不存在: 888", "body=%s", body)
+
 	// gender=99 未知枚举 → 不 500，正常创建（枚举兜底 UNKNOWN）
-	status, body = doAuthRequest(t, adminToken(), "POST", ts.URL+"/api/v1/users", `{"username":"gender-fallback","password":"pw","realName":"枚举兜底","gender":99}`)
+	status, body = doAuthRequest(t, adminToken(), "POST", ts.URL+"/api/v1/users", `{"username":"gender-fallback","password":"pw","realName":"枚举兜底","gender":99,"deptId":"100"}`)
 	require.Equal(t, http.StatusOK, status, "未知枚举值不应 500: body=%s", body)
 	var okEnvelope struct {
 		Code int `json:"code"`
@@ -590,7 +635,7 @@ func TestCreateUserValidation(t *testing.T) {
 	assert.Equal(t, 0, okEnvelope.Code)
 
 	// body 携带未知额外字段 → 不 400（宽容输入）
-	status, body = doAuthRequest(t, adminToken(), "POST", ts.URL+"/api/v1/users", `{"username":"unknown-field","password":"pw","realName":"未知字段","foo":"bar"}`)
+	status, body = doAuthRequest(t, adminToken(), "POST", ts.URL+"/api/v1/users", `{"username":"unknown-field","password":"pw","realName":"未知字段","deptId":"100","foo":"bar"}`)
 	require.Equal(t, http.StatusOK, status, "未知额外字段不应 400: body=%s", body)
 }
 
@@ -599,8 +644,9 @@ func TestCreateUserValidation(t *testing.T) {
 // 传输层无 413 关连语义：gin responseWriter 未实现 requestTooLarge 接口，该标记
 // 路径不生效（IN-09），连接复用交由 net/http 对未排空 body 的内置策略。
 func TestCreateUserBodyTooLarge(t *testing.T) {
-	ts, _, adminToken, _ := newTestApp(t)
+	ts, dsn, adminToken, _ := newTestApp(t)
 
+	seedDept(t, dsn, 100, "总部")
 	// ~1.5MB UTF-8 body，超过 1MB 上限
 	big := `{"username":"body-too-large","password":"pw","realName":"` + strings.Repeat("超", 1<<19) + `"}`
 	status, body := doAuthRequest(t, adminToken(), "POST", ts.URL+"/api/v1/users", big)
@@ -615,6 +661,6 @@ func TestCreateUserBodyTooLarge(t *testing.T) {
 	assert.NotContains(t, envelope.Message, "http:", "不得回显底层错误原文（T-1-01）: body=%s", body)
 
 	// 超限请求不落库、不污染连接：同名正常小请求仍可成功创建
-	status, body = doAuthRequest(t, adminToken(), "POST", ts.URL+"/api/v1/users", `{"username":"body-too-large","password":"pw","realName":"正常"}`)
+	status, body = doAuthRequest(t, adminToken(), "POST", ts.URL+"/api/v1/users", `{"username":"body-too-large","password":"pw","realName":"正常","deptId":"100"}`)
 	assert.Equal(t, http.StatusOK, status, "超限请求后正常请求必须仍可用: body=%s", body)
 }

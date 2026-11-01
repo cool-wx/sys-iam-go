@@ -47,6 +47,14 @@ func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, logger *slo
 	pri.PUT("/api/v1/users/:id", hs.Users.Update)
 	pri.GET("/api/v1/users/:id", hs.Users.Get)
 	pri.GET("/api/v1/users", hs.Users.List)
+	pri.DELETE("/api/v1/users/:id", hs.Users.Delete)
+	// 用户装配子资源（USER-04/02/03/07，02-03）：roles 全量替换、status 停用踢会话、
+	// reset-password 重置踢会话——gin 静态段（roles/status/reset-password）与 :id
+	// 参数段共存，静态优先（与 roles/:id/menus 同构）
+	pri.GET("/api/v1/users/:id/roles", hs.Users.GetRoles)
+	pri.PUT("/api/v1/users/:id/roles", hs.Users.AssignRoles)
+	pri.PUT("/api/v1/users/:id/status", hs.Users.UpdateStatus)
+	pri.PUT("/api/v1/users/:id/reset-password", hs.Users.ResetPassword)
 
 	// 菜单域（MENU-01/02）：CRUD + 树端点（静态段 tree 与 :id 参数段共存）
 	pri.POST("/api/v1/menus", hs.Menus.Create)

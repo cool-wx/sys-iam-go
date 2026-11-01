@@ -83,7 +83,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	menuRepo := repository.NewMenuRepo(db)
 	deptRepo := repository.NewDeptRepo(db)
 	roleRepo := repository.NewRoleRepo(db)
-	userSvc := service.NewUserService(userRepo)
+	userSvc := service.NewUserService(db, userRepo, relationRepo, roleRepo, deptRepo, sessionMgr)
 	authSvc := service.NewAuthService(userRepo, relationRepo, apiKeyRepo, sessionMgr)
 	menuSvc := service.NewMenuService(menuRepo)
 	deptSvc := service.NewDeptService(deptRepo)

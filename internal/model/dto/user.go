@@ -39,7 +39,9 @@ type UpdateUserReq struct {
 
 // UserResp 用户响应契约。
 // 不定义 password/extToken 键（源 @JsonProperty WRITE_ONLY 语义，永不序列化出网）；
-// 全部键无 omitempty——未赋值字段以 null 键输出而非键缺失（源 JacksonConfig 契约）。
+// 全部键无 omitempty——未赋值字段以 null 键输出而非键缺失（源 JacksonConfig 契约）；
+// roles 装配由 service 层两查询完成（USER-05 防 N+1），ToUserResp 初始化为空切片
+// ——空角色输出 [] 非 null（对齐 PageData 契约）。
 type UserResp struct {
 	ID           ids.ID               `json:"id"`
 	Username     *string              `json:"username"`
@@ -54,6 +56,7 @@ type UserResp struct {
 	Status       *types.UsageStatus   `json:"status"`
 	FirstLogin   *bool                `json:"firstLogin"`
 	Builtin      *bool                `json:"builtin"`
+	Roles        []UserRoleRef        `json:"roles"`
 	CreateByID   *ids.ID              `json:"createById"`
 	CreateByName *string              `json:"createByName"`
 	UpdateByID   *ids.ID              `json:"updateById"`
@@ -63,7 +66,26 @@ type UserResp struct {
 	Remark       *string              `json:"remark"`
 }
 
+// UserRoleRef 用户关联角色引用（UserVo.roles 元素，源 UserVo.java:24-48 字段集）。
+type UserRoleRef struct {
+	RoleID   ids.ID `json:"roleId"`
+	RoleName string `json:"roleName"`
+}
+
+// AssignRolesReq 分配用户角色请求：roleIds 全量替换语义（USER-04/D-12）——
+// 空数组=全回收（合法语义）。
+type AssignRolesReq struct {
+	RoleIDs []ids.ID `json:"roleIds"`
+}
+
+// UpdateStatusReq 更新用户状态请求：DISABLED 停用 / ENABLED 启用（停用即踢存量
+// 会话——D-09 安全增强）。required 拦截缺失键。
+type UpdateStatusReq struct {
+	Status *types.UsageStatus `json:"status" binding:"required"`
+}
+
 // ToUserResp PO→DTO 手写转换（枚举经 FromInt 兜底；int64 ID→契约 ID 类型）。
+// Roles 初始化为空切片（服务层两查询装配后覆写）——无角色用户输出 [] 非 null。
 func ToUserResp(u *po.UserPO) *UserResp {
 	r := &UserResp{
 		ID:           ids.ID(u.ID),
@@ -76,6 +98,7 @@ func ToUserResp(u *po.UserPO) *UserResp {
 		DeptName:     u.DeptName,
 		FirstLogin:   u.FirstLogin,
 		Builtin:      u.Builtin,
+		Roles:        []UserRoleRef{},
 		CreateByName: u.CreateByName,
 		UpdateByName: u.UpdateByName,
 		Remark:       u.Remark,

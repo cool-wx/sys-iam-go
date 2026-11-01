@@ -112,3 +112,81 @@ func parseUserID(c *gin.Context) (int64, bool) {
 	}
 	return id, true
 }
+
+// GetRoles 处理 GET /api/v1/users/:id/roles：返回用户当前角色列表（USER-04）。
+func (h *UserHandler) GetRoles(c *gin.Context) {
+	id, ok := parseUserID(c)
+	if !ok {
+		return
+	}
+	data, err := h.svc.GetRoles(c.Request.Context(), id)
+	if err != nil {
+		resp.Fail(c, err)
+		return
+	}
+	resp.OK(c, data)
+}
+
+// AssignRoles 处理 PUT /api/v1/users/:id/roles：全量替换语义（USER-04/D-12，
+// 空数组=全回收）。
+func (h *UserHandler) AssignRoles(c *gin.Context) {
+	id, ok := parseUserID(c)
+	if !ok {
+		return
+	}
+	var req dto.AssignRolesReq
+	if !bindJSON(c, &req) {
+		return
+	}
+	if err := h.svc.AssignRoles(c.Request.Context(), id, req.RoleIDs); err != nil {
+		resp.Fail(c, err)
+		return
+	}
+	resp.OK(c, nil)
+}
+
+// UpdateStatus 处理 PUT /api/v1/users/:id/status：启/停用；停用即踢存量会话
+// （D-09 安全增强）。
+func (h *UserHandler) UpdateStatus(c *gin.Context) {
+	id, ok := parseUserID(c)
+	if !ok {
+		return
+	}
+	var req dto.UpdateStatusReq
+	if !bindJSON(c, &req) {
+		return
+	}
+	if err := h.svc.UpdateStatus(c.Request.Context(), id, *req.Status); err != nil {
+		resp.Fail(c, err)
+		return
+	}
+	resp.OK(c, nil)
+}
+
+// ResetPassword 处理 PUT /api/v1/users/:id/reset-password：固定 123456 + 踢存量
+// 会话；无请求体（源 resetPwd 无旧密码校验，USER-03）。
+func (h *UserHandler) ResetPassword(c *gin.Context) {
+	id, ok := parseUserID(c)
+	if !ok {
+		return
+	}
+	if err := h.svc.ResetPassword(c.Request.Context(), id); err != nil {
+		resp.Fail(c, err)
+		return
+	}
+	resp.OK(c, nil)
+}
+
+// Delete 处理 DELETE /api/v1/users/:id：builtin 守卫（409/10601 零删除调用）+
+// 先删 sys_user_role 关联再删用户（事务，源 removeById 顺序，USER-07）。
+func (h *UserHandler) Delete(c *gin.Context) {
+	id, ok := parseUserID(c)
+	if !ok {
+		return
+	}
+	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
+		resp.Fail(c, err)
+		return
+	}
+	resp.OK(c, nil)
+}

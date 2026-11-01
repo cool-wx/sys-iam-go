@@ -95,3 +95,20 @@ func (r *RelationRepo) BatchCreateRoleMenus(ctx context.Context, rows []po.RoleM
 	}
 	return r.db.WithContext(ctx).CreateInBatches(rows, 100).Error
 }
+
+// DeleteUserRolesByUserID 删除用户的全部角色关联（AssignRoles 全删重建的前半步 /
+// user 删除事务的第一步——源 removeById 先删关联再删用户顺序）；userID 经参数化
+// 占位符传入（T-1-03）。可接事务 tx（NewRelationRepo(tx)）。
+func (r *RelationRepo) DeleteUserRolesByUserID(ctx context.Context, userID int64) (err error) {
+	return r.db.WithContext(ctx).Where("user_id = ?", userID).Delete(&po.UserRolePO{}).Error
+}
+
+// BatchCreateUserRoles 批量插入用户-角色关联（AssignRoles 全删重建的后半步）；
+// 行内 username/role_name 冗余列由 service 层装配（源 UserRole 冗余写语义——
+// username 列实存 realName 优先回退 username 的值，命名与内容不符原样移植）。
+func (r *RelationRepo) BatchCreateUserRoles(ctx context.Context, rows []po.UserRolePO) (err error) {
+	if len(rows) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).CreateInBatches(rows, 100).Error
+}
