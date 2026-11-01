@@ -22,6 +22,8 @@ import (
 	"log/slog"
 	"mime/multipart"
 	"strconv"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -112,7 +114,11 @@ func (s *FileService) Upload(ctx context.Context, fh *multipart.FileHeader, cate
 	// (f) 对象键：uuid + "_" + 原名（源 filePath 形态对齐；uuid 前缀天然去重防
 	// 同名互覆，LocalStorage resolveKey 对键做路径逃逸防御——T-4-02）
 	key := uuid.NewString() + "_" + fh.Filename
-	contentType := fh.Header.Get("Content-Type")
+	// contentType 钳位（CR-02）：file_type 列 varchar(50)（DDL 保真不 ALTER），
+	// 客户端 Content-Type 不可信——浏览器对 Office 文档 part 发送的标准 MIME 超
+	// 列宽（xlsx/docx 均 65 字符），strict mode 1406 → 上传事务确定性回滚 500。
+	// 规范化后仍超长兜底 octet-stream：上游不可信字段永不触发 500。
+	contentType := normalizeContentType(fh.Header.Get("Content-Type"))
 
 	row := &po.FileInfoPO{
 		CategoryID:   categoryID,
@@ -137,6 +143,24 @@ func (s *FileService) Upload(ctx context.Context, fh *multipart.FileHeader, cate
 		return nil, txErr
 	}
 	return dto.ToFileInfoResp(row), nil
+}
+
+// maxFileTypeLen file_type 列宽（DDL scripts/ddl/sys_file.sql file_type
+// varchar(50)，字符语义；MIME 本体恒 ASCII，rune 计数与列宽语义一致）。
+const maxFileTypeLen = 50
+
+// normalizeContentType 规范化并钳位客户端 Content-Type 至 file_type 列宽
+//（CR-02）：先取分号前 media type 本体（去可能跟的参数段），仍超 50 字符则兜底
+// "application/octet-stream"——上传链落库的该字段永不触发 strict mode 1406。
+// 空 Content-Type（curl 等不带 part 头的客户端）原样返回空串（既有落库行为不变）。
+func normalizeContentType(raw string) string {
+	if i := strings.IndexByte(raw, ';'); i >= 0 {
+		raw = strings.TrimSpace(raw[:i])
+	}
+	if utf8.RuneCountInString(raw) > maxFileTypeLen {
+		return "application/octet-stream"
+	}
+	return raw
 }
 
 // DownloadResult 下载链载体：DB 行（响应头与契约回显）+ 内容流 + 字节数 + MIME。
