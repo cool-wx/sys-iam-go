@@ -7,9 +7,10 @@ import (
 )
 
 // RoleCreateReq 创建角色请求。roleName/roleCode 必填由 binding 校验拦截；
-// dataScope/builtin/remark 可选（nil → 服务端默认 dataScope=1/builtin=false，
-// 源 Role.create 语义；status 恒默认 ENABLED，创建请求不含 status 键）。
-// 不得定义任何审计字段键（ENG-02）。
+// dataScope/remark 可选（nil → 服务端默认 dataScope=1，源 Role.create 语义；
+// status 恒默认 ENABLED，创建请求不含 status 键）。不得定义任何审计字段键（ENG-02）。
+// builtin 键保留仅用于拒绝检测（WR-01：builtin=true 显式 400——builtin 只能由
+// seed/迁移流程设定，防 role:add 制造"永生角色"绕过删除守卫）；服务端恒落 false。
 type RoleCreateReq struct {
 	RoleName  *string `json:"roleName" binding:"required"`
 	RoleCode  *string `json:"roleCode" binding:"required"`
@@ -19,14 +20,15 @@ type RoleCreateReq struct {
 }
 
 // RoleUpdateReq 更新角色请求：全指针字段，nil=未提供（不写库）——源 withEdit
-// 逐字段 null-skip 语义；builtin 仅显式传入才覆写。role_code 不在本结构键集
+// 逐字段 null-skip 语义。builtin 不在本结构键集（WR-01：不可经 edit 翻转——否则
+// role:edit 持有者可先翻转 builtin=false 再删除 super_admin，builtin 删除守卫
+// 被整体绕行；请求体 builtin 键被忽略，恒不进 UPDATE）。role_code 不在本结构键集
 // （角色编码为引用锚点，Go API 契约不开放修改——与 plan DTO 定义一致）。
 // 白名单收敛于本结构键集（T-1-10）。
 type RoleUpdateReq struct {
 	RoleName  *string            `json:"roleName"`
 	DataScope *int8              `json:"dataScope"`
 	Status    *types.UsageStatus `json:"status"`
-	Builtin   *bool              `json:"builtin"`
 	Remark    *string            `json:"remark"`
 }
 

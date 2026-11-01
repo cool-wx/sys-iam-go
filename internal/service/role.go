@@ -42,8 +42,13 @@ func NewRoleService(db *gorm.DB, roleRepo *repository.RoleRepo, menuRepo *reposi
 
 // Create 创建角色：服务端默认值 dataScope=1/status=ENABLED/builtin=false
 // （源 Role.create 语义，ROLE-01）；role_code 唯一冲突（uk_role_code，注意
-// utf8mb4_general_ci 大小写不敏感）译为 400「角色编码已存在」。
+// utf8mb4_general_ci 大小写不敏感）译为 400「角色编码已存在」。builtin=true
+// 显式拒绝 400（WR-01：builtin 只能由 seed/迁移流程设定——放行会让 role:add
+// 制造守卫永不可删的"永生角色"，删除守卫不变量被绕过）。
 func (s *RoleService) Create(ctx context.Context, req *dto.RoleCreateReq) (*dto.RoleResp, error) {
+	if req.Builtin != nil && *req.Builtin {
+		return nil, errcode.New(errcode.CodeInvalidParam, "builtin 为系统保留字段，不可创建内置角色")
+	}
 	role := &po.RolePO{
 		RoleName: *req.RoleName,
 		RoleCode: *req.RoleCode,
@@ -57,12 +62,8 @@ func (s *RoleService) Create(ctx context.Context, req *dto.RoleCreateReq) (*dto.
 	}
 	status := int8(1)
 	role.Status = &status
-	if req.Builtin != nil {
-		role.Builtin = req.Builtin
-	} else {
-		b := false
-		role.Builtin = &b
-	}
+	b := false
+	role.Builtin = &b
 	if err := s.roleRepo.Create(ctx, role); err != nil {
 		// TranslateError 开启后 MySQL 1062 → gorm.ErrDuplicatedKey（P4）
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
@@ -73,9 +74,11 @@ func (s *RoleService) Create(ctx context.Context, req *dto.RoleCreateReq) (*dto.
 	return dto.ToRoleResp(role), nil
 }
 
-// Update 更新角色（部分更新，ENG-05）：白名单 role_name/data_scope/status/
-// builtin/remark（nil=不写库）——builtin 仅显式传入才覆写（源 withEdit 语义）。
-// 行不存在译为 404/10300「角色不存在: {id}」（源消息原文；code/HTTP 契约与
+// Update 更新角色（部分更新，ENG-05）：白名单 role_name/data_scope/status/remark
+// （nil=不写库）。builtin 刻意不在白名单（WR-01：不可经 edit 翻转——否则 role:edit
+// 持有者可先翻转 builtin=false 再 DELETE，builtin 删除守卫形同虚设，super_admin
+// 的 g 行随四连删永久消失=全系统管理员豁免被摧毁；请求体 builtin 键被 DTO 白名单
+// 忽略）。行不存在译为 404/10300「角色不存在: {id}」（源消息原文；code/HTTP 契约与
 // Phase 1 一致）。落库后回读返回最新契约；审计由 repo.Patch 显式并入（ENG-02）。
 func (s *RoleService) Update(ctx context.Context, id int64, req *dto.RoleUpdateReq) (*dto.RoleResp, error) {
 	cols := map[string]any{}
@@ -87,9 +90,6 @@ func (s *RoleService) Update(ctx context.Context, id int64, req *dto.RoleUpdateR
 	}
 	if req.Status != nil {
 		cols["status"] = int8(*req.Status)
-	}
-	if req.Builtin != nil {
-		cols["builtin"] = *req.Builtin
 	}
 	if req.Remark != nil {
 		cols["remark"] = *req.Remark

@@ -28,9 +28,9 @@ type roleEnvelope struct {
 }
 
 // TestRoleCRUD 角色 CRUD 全链（ROLE-01）：create 默认值（dataScope=1/status=
-// ENABLED/builtin=false）→ get → patch（roleName + builtin 显式覆写）→ 角色编码
-// 重复 400 → 四连删事务（user_role/role_menu/role_dept/role 关联表零残留）+
-// 404 域消息 + pri 组 401 保护。
+// ENABLED/builtin=false）→ get → patch（roleName 变更 + builtin 键被忽略，
+// WR-01 守卫）→ create builtin=true 400（WR-01）→ 角色编码重复 400 → 四连删事务
+// （user_role/role_menu/role_dept/role 关联表零残留）+ 404 域消息 + pri 组 401 保护。
 func TestRoleCRUD(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
 	token := adminToken()
@@ -64,17 +64,28 @@ func TestRoleCRUD(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &getEnv))
 	assert.Equal(t, "测试角色", getEnv.Data.RoleName)
 
-	// --- patch：roleName 变更 + builtin 显式覆写（源 withEdit：仅显式传入才覆写）---
+	// --- patch：roleName 变更 + builtin 键被忽略（WR-01：builtin 不可经 edit 翻转，
+	// 否则先翻转 false 再 DELETE 即绕过 builtin 删除守卫）---
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID,
 		`{"roleName":"测试角色（改）","builtin":true}`)
 	require.Equal(t, http.StatusOK, status, "body=%s", body)
 	var patchEnv roleEnvelope
 	require.NoError(t, json.Unmarshal(body, &patchEnv))
 	assert.Equal(t, "测试角色（改）", patchEnv.Data.RoleName)
-	assert.True(t, patchEnv.Data.Builtin, "builtin 显式传入必须覆写")
-	// 还原 builtin=false（后续删除走非 builtin 分支）
-	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID, `{"builtin":false}`)
-	require.Equal(t, http.StatusOK, status, "body=%s", body)
+	assert.False(t, patchEnv.Data.Builtin, "builtin 键必须被忽略，不得经 edit 翻转（WR-01）")
+
+	// --- create builtin=true 显式拒绝 400（WR-01：防 role:add 制造守卫永不可删的
+	// "永生角色"）---
+	status, body = doAuthRequest(t, token, "POST", ts.URL+"/api/v1/roles",
+		`{"roleName":"永生角色","roleCode":"builtin_create_guard","builtin":true}`)
+	require.Equal(t, http.StatusBadRequest, status, "create builtin=true 必须 400: body=%s", body)
+	var builtinEnv struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(body, &builtinEnv))
+	assert.Equal(t, 10400, builtinEnv.Code, "body=%s", body)
+	assert.Contains(t, builtinEnv.Message, "builtin", "body=%s", body)
 
 	// --- 角色编码重复：400「角色编码已存在」（uk_role_code，general_ci 大小写不敏感）---
 	status, body = doAuthRequest(t, token, "POST", ts.URL+"/api/v1/roles",
