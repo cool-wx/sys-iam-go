@@ -1,6 +1,6 @@
 // Package handler 故障域 HTTP handler（薄层三段式；List 走 paging.Parse 1/15
-// 全局默认——源 fault list 走 PageHelper 同 1/15；Excel 导入 Import 方法由
-// 04-04 Task 2 追加）。
+// 全局默认——源 fault list 走 PageHelper 同 1/15；Import 为 multipart 上传
+// FAUL-02）。
 package handler
 
 import (
@@ -8,6 +8,7 @@ import (
 
 	"github.com/cool-wx/sys-iam-go/internal/model/dto"
 	"github.com/cool-wx/sys-iam-go/internal/service"
+	"github.com/cool-wx/sys-iam-go/pkg/errcode"
 	"github.com/cool-wx/sys-iam-go/pkg/paging"
 	"github.com/cool-wx/sys-iam-go/pkg/resp"
 )
@@ -91,4 +92,28 @@ func (h *FaultHandler) Delete(c *gin.Context) {
 		return
 	}
 	resp.OK(c, nil)
+}
+
+// Import 处理 POST /api/v1/faults/import（FAUL-02 multipart；路由层
+// BodyLimitWithMB(20) 独立上限 + RequirePerm(PermFaultImport) + Oplog 三中间件
+// 齐挂）：FormFile("file") 取上传流 → service 导入链（8 列契约 + 行数/表头双
+// 前置防线 + 三键 upsert 整批事务）→ ImportResult envelope。
+func (h *FaultHandler) Import(c *gin.Context) {
+	fh, err := c.FormFile("file")
+	if err != nil {
+		resp.Fail(c, errcode.New(errcode.CodeInvalidParam, "缺少上传文件字段 file"))
+		return
+	}
+	f, err := fh.Open()
+	if err != nil {
+		resp.Fail(c, errcode.New(errcode.CodeInvalidParam, "打开上传文件失败"))
+		return
+	}
+	defer f.Close()
+	result, err := h.svc.ImportExcel(c.Request.Context(), f)
+	if err != nil {
+		resp.Fail(c, err)
+		return
+	}
+	resp.OK(c, result)
 }

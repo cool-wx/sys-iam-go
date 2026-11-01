@@ -196,6 +196,10 @@ func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, az authz.Au
 	pri.GET("/api/v1/faults/:id", middleware.RequirePerm(az, authz.PermFaultQuery), hs.Faults.Get)
 	pri.GET("/api/v1/faults", middleware.RequirePerm(az, authz.PermFaultList), hs.Faults.List)
 	pri.DELETE("/api/v1/faults/:id", middleware.RequirePerm(az, authz.PermFaultRemove), middleware.Oplog(ologW, "FaultInfoController", "delete"), hs.Faults.Delete)
+	// Excel 导入（FAUL-02，静态段 import 与 :id 参数段共存静态优先——与 files/upload
+	// 同构）：独立 20MB 体积上限（全局 1MB 对 multipart 跳过后该类请求的唯一封顶，
+	// T-4-11）→ 权限 → 日志 → handler 次序；multipart 无 body 缓存，Oplog params 空串
+	pri.POST("/api/v1/faults/import", middleware.BodyLimitWithMB(20), middleware.RequirePerm(az, authz.PermFaultImport), middleware.Oplog(ologW, "FaultInfoController", "import"), hs.Faults.Import)
 
 	return engine
 }
