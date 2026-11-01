@@ -183,7 +183,8 @@ func (e *Enforcer) HasRole(userID int64, roleCode string) (bool, error) {
 }
 
 // ClearRole 双清角色的 p 行与 g 行（角色删除级联：RemoveFilteredGroupingPolicy
-// 的 fieldIndex=1 是 role 位）。builtin 角色已被 service 守卫拦截，不会走到这里。
+// 的 fieldIndex=1 是 role 位）。builtin 角色已被 service 双守卫前置拦截（Delete
+// 不可删除 + Update 不可停用，WR-06），正常路径不会走到这里。
 func (e *Enforcer) ClearRole(roleCode string) error {
 	if _, err := e.inner.RemoveFilteredPolicy(0, roleCode); err != nil {
 		return err

@@ -95,7 +95,29 @@ func (s *RoleService) Create(ctx context.Context, req *dto.RoleCreateReq) (*dto.
 // 500 重试（status 值不变）仍会重跑同步——post-commit 失败可重试自愈（与 Delete
 // 的 404 挡死不同，Patch 幂等）。业务表是唯一事实源：停用期间 sys_role_menu/
 // sys_user_role 关联不动，恢复时全量重建即可。
+//
+// builtin × status 组合守卫（WR-06，前置拦截零写调用，与 Delete 的 builtin 删除
+// 守卫对称——builtin 角色不可删除，亦不可经 status 路径停用）：req.Status 为
+// DISABLED 时先行查行校验 builtin，命中即 409/10604，Patch/ClearRole 一个都不触发。
+// 无守卫时停用 builtin 角色会经 ClearRole 双清全部 super_admin 持有者的豁免 g 行
+// （下一请求全 403），且 boot 对账 r.status=1 口径不还魂、role:edit 若仅 super_admin
+// 持有则无人可恢复——重启不自愈的锁死（WR-06 后果链）。仅拦 DISABLED：改名/档位/
+// ENABLED 等更新不受影响（守卫零误伤）。
 func (s *RoleService) Update(ctx context.Context, id int64, req *dto.RoleUpdateReq) (*dto.RoleResp, error) {
+	// builtin 停用守卫（WR-06）：仅 status 显式 DISABLED 时触发，查行 fail-closed
+	//（ErrNotFound 译 404 域消息，与 Patch 后置 404 语义一致）
+	if req.Status != nil && *req.Status == types.UsageDisabled {
+		existing, err := s.roleRepo.FindByID(ctx, id)
+		if err != nil {
+			if errors.Is(err, errcode.ErrNotFound) {
+				return nil, errcode.New(errcode.CodeNotFound, fmt.Sprintf("角色不存在: %d", id))
+			}
+			return nil, err
+		}
+		if existing.Builtin != nil && *existing.Builtin {
+			return nil, errcode.ErrBuiltinRoleStatus
+		}
+	}
 	cols := map[string]any{}
 	if req.RoleName != nil {
 		cols["role_name"] = *req.RoleName

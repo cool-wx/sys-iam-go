@@ -188,6 +188,74 @@ func TestRoleBuiltinDeleteConflict(t *testing.T) {
 	assert.True(t, getEnv.Data.Builtin)
 }
 
+// TestRoleBuiltinDisableConflict builtin 角色停用硬拦截（WR-06 回归）：PUT
+// /roles/:id {"status":"DISABLED"} → HTTP 409 + code=10604 + message「系统内置角色
+// 不可停用」，status 保持 ENABLED、casbin p/g 行零变化（前置拦截零写调用——停用
+// 路径 ClearRole 会双清豁免 g 行且 boot 对账不还魂，重启不自愈锁死，WR-06 后果链）。
+// 另证：builtin 非 status 更新不受守卫误伤；非 builtin 角色 DISABLED/ENABLED 往返
+// 照常（WR-04 运行期同步语义不变）。
+func TestRoleBuiltinDisableConflict(t *testing.T) {
+	ts, dsn, adminToken, adminID := newTestApp(t)
+	token := adminToken()
+
+	checkDB := openCheckDB(t, dsn)
+	execMust(t, checkDB,
+		"INSERT INTO sys_role (id, role_name, role_code, data_scope, status, builtin) VALUES (990451, '停用守卫角色', 'builtin_disable_guard', 1, 1, 1)")
+	execMust(t, checkDB,
+		"INSERT INTO sys_menu (id, name, permission, create_time, update_time) VALUES (990461, '守卫菜单', 'system:perm:disableGuard', NOW(), NOW())")
+
+	// 先给 builtin 角色挂一菜单（p 行写入）——停用若未被拦截，ClearRole 会把它双清
+	status, body := doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/990451/menus",
+		`{"menuIds":["990461"]}`)
+	require.Equal(t, http.StatusOK, status, "前置条件：builtin 角色挂菜单必须成功: body=%s", body)
+	var pCnt int64
+	require.NoError(t, checkDB.Raw(
+		"SELECT COUNT(*) FROM casbin_rule WHERE ptype = 'p' AND v0 = 'builtin_disable_guard'",
+	).Scan(&pCnt).Error)
+	require.Equal(t, int64(1), pCnt, "前置条件：p 行必须已写入")
+
+	// WR-06 核心：builtin 角色停用 → 409/10604
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/990451",
+		`{"status":"DISABLED"}`)
+	require.Equal(t, http.StatusConflict, status, "builtin 停用必须 409: body=%s", body)
+	var env struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(body, &env))
+	assert.Equal(t, 10604, env.Code, "业务码必须 10604: body=%s", body)
+	assert.Contains(t, env.Message, "系统内置角色不可停用", "body=%s", body)
+
+	// 零写证明：status 保持 ENABLED、p 行未被 ClearRole 双清、admin 的豁免 g 行未动
+	status, body = doAuthRequest(t, token, "GET", ts.URL+"/api/v1/roles/990451", "")
+	require.Equal(t, http.StatusOK, status, "被拒后角色必须仍可 GET: body=%s", body)
+	var getEnv roleEnvelope
+	require.NoError(t, json.Unmarshal(body, &getEnv))
+	assert.Equal(t, "ENABLED", getEnv.Data.Status, "守卫必须前置拦截，status 不得被改写")
+	require.NoError(t, checkDB.Raw(
+		"SELECT COUNT(*) FROM casbin_rule WHERE ptype = 'p' AND v0 = 'builtin_disable_guard'",
+	).Scan(&pCnt).Error)
+	assert.Equal(t, int64(1), pCnt, "被拒停用不得触发 ClearRole（p 行必须保留）")
+	var gCnt int64
+	require.NoError(t, checkDB.Raw(
+		"SELECT COUNT(*) FROM casbin_rule WHERE ptype = 'g' AND v0 = ? AND v1 = 'super_admin'",
+		adminID,
+	).Scan(&gCnt).Error)
+	assert.Equal(t, int64(1), gCnt, "被拒停用不得清空豁免 g 行（锁死后果链封死直证）")
+
+	// builtin 非 status 更新不受守卫误伤（仅 DISABLED 拦截）
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/990451",
+		`{"roleName":"停用守卫角色（改名）"}`)
+	require.Equal(t, http.StatusOK, status, "builtin 非 status 更新必须放行: body=%s", body)
+
+	// 对照：非 builtin 角色 DISABLED/ENABLED 往返照常（WR-04 语义不变）
+	normalID := mustCreate(t, token, ts.URL+"/api/v1/roles", `{"roleName":"普通停用角色","roleCode":"disable_normal_role"}`)
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+normalID, `{"status":"DISABLED"}`)
+	require.Equal(t, http.StatusOK, status, "非 builtin 角色停用必须放行: body=%s", body)
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+normalID, `{"status":"ENABLED"}`)
+	require.Equal(t, http.StatusOK, status, "非 builtin 角色恢复必须放行: body=%s", body)
+}
+
 // TestRoleListFilter 角色分页条件查询（ROLE-03）：roleName 命中/未命中 + trim 语义
 // （空格包裹仍命中）+ items 按 id 升序 + 无参数默认分页钳位 1/15。
 func TestRoleListFilter(t *testing.T) {

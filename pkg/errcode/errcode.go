@@ -24,6 +24,10 @@ const (
 	// 分配 builtin 角色属越权行为（非资源状态冲突），与 10601/10602 的 409 删除冲突
 	// 语义区分。
 	CodeBuiltinRoleAssign = 10603 // 系统内置角色仅 super_admin 可分配
+	// Phase 3 builtin 停用守卫（WR-06）：HTTP 409——builtin 角色经 status 路径停用
+	// 与「不可删除」同族资源状态冲突（D-14 builtin 守卫统一语义，对齐 10602），非
+	// 参数错误；独立于 10602 因消息语义不同（删除 vs 停用）。
+	CodeBuiltinRoleStatus = 10604 // 系统内置角色不可停用
 )
 
 // 分段错误单例（消息文案为出网固定文案）。
@@ -40,6 +44,7 @@ var (
 	ErrBuiltinUser       = New(CodeBuiltinUser, "系统内置用户不可删除")
 	ErrBuiltinRole       = New(CodeBuiltinRole, "系统内置角色不可删除")
 	ErrBuiltinRoleAssign = New(CodeBuiltinRoleAssign, "系统内置角色仅超级管理员可分配")
+	ErrBuiltinRoleStatus = New(CodeBuiltinRoleStatus, "系统内置角色不可停用")
 )
 
 // Error 业务错误类型：经调用链传播，由 pkg/resp 统一出口写出。
@@ -69,7 +74,7 @@ func (e *Error) HTTPStatus() int {
 		return 401
 	case CodeForbidden, CodeBuiltinRoleAssign:
 		return 403
-	case CodeBuiltinUser, CodeBuiltinRole:
+	case CodeBuiltinUser, CodeBuiltinRole, CodeBuiltinRoleStatus:
 		return 409
 	case CodeNotFound:
 		return 404

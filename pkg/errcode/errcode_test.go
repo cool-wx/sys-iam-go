@@ -27,6 +27,8 @@ func TestHTTPStatusMapping(t *testing.T) {
 		{errcode.CodeBuiltinRole, 409},
 		// Phase 3 builtin 分配守卫（CR-03）：越权行为译 403，非删除冲突 409
 		{errcode.CodeBuiltinRoleAssign, 403},
+		// Phase 3 builtin 停用守卫（WR-06）：与删除守卫同族资源状态冲突，409
+		{errcode.CodeBuiltinRoleStatus, 409},
 	}
 	for _, tc := range cases {
 		e := errcode.New(tc.code, "任意文案")
