@@ -87,6 +87,27 @@ func TestRoleCRUD(t *testing.T) {
 	assert.Equal(t, 10400, builtinEnv.Code, "body=%s", body)
 	assert.Contains(t, builtinEnv.Message, "builtin", "body=%s", body)
 
+	// --- dataScope 域校验（IN-02）：域外值 99/-1 → 400/10401；域内 3 → 200 ---
+	for _, bad := range []string{"99", "-1"} {
+		status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID,
+			`{"dataScope":`+bad+`}`)
+		require.Equal(t, http.StatusBadRequest, status, "dataScope=%s 必须 400: body=%s", bad, body)
+		var dsEnv struct {
+			Code int `json:"code"`
+		}
+		require.NoError(t, json.Unmarshal(body, &dsEnv))
+		assert.Equal(t, 10401, dsEnv.Code, "dataScope=%s 应落参数校验失败 10401: body=%s", bad, body)
+	}
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID, `{"dataScope":3}`)
+	require.Equal(t, http.StatusOK, status, "dataScope=3（域内）必须 200: body=%s", body)
+	var dsOk roleEnvelope
+	require.NoError(t, json.Unmarshal(body, &dsOk))
+	require.NotNil(t, dsOk.Data.DataScope)
+	assert.Equal(t, int8(3), *dsOk.Data.DataScope, "域内 dataScope 必须正常落库")
+	// 还原档位 1（不污染后续用例）
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID, `{"dataScope":1}`)
+	require.Equal(t, http.StatusOK, status, "body=%s", body)
+
 	// --- 角色编码重复：400「角色编码已存在」（uk_role_code，general_ci 大小写不敏感）---
 	status, body = doAuthRequest(t, token, "POST", ts.URL+"/api/v1/roles",
 		`{"roleName":"重复角色","roleCode":"TEST_ROLE_CRUD"}`)
