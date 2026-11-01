@@ -6,12 +6,14 @@
 package handler_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"regexp"
 	"strconv"
 	"testing"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -295,7 +297,109 @@ type apiKeyEnvelope_Data struct {
 	ApiKey string `json:"apiKey"`
 }
 
-// deref 安全解指针字符串。
+// openCheckRedis 打开测试专用 go-redis 连接（拨号 newTestApp 赋值的 testRedisAddr
+// ——当前用例的 Redis 容器）+ cleanup 关闭。IN-14 双键（iam:apikey-token:/
+// iam:apikey-user:）存在性直查断言用。
+func openCheckRedis(t *testing.T) *redis.Client {
+	t.Helper()
+	rdb := redis.NewClient(&redis.Options{Addr: testRedisAddr})
+	t.Cleanup(func() { _ = rdb.Close() })
+	return rdb
+}
+
+// TestApiKeyExpireRevocation IN-14/D-16 验收核心（过期 key 存量会话撤销）：
+// 有效 key K 关联用户 U → apikey-login 成功拿 token T（双键已写）→ 直改 DB 置
+// expire_time 为过去（模拟自然过期——无管理面触发点的缺口场景）→ 再次 apikey-login
+// 401/10503 且**存量会话已被反查撤销**（T 请求 pri 端点 401——IN-14 核心断言）→
+// 第二次拒绝后反查键已 DEL（防反复触发）。幂等路径：从未登录过的过期 key 登录
+// 10503 原样（无反查键无副作用）。停用分支（管理面撤销链端到端）：K2 停用经
+// UpdateStatus → KickoutAPIKey → 旧 token 401 且双键均消失（redis.Nil 直查）。
+func TestApiKeyExpireRevocation(t *testing.T) {
+	ts, dsn, adminToken, _ := newTestApp(t)
+	token := adminToken()
+	rdb := openCheckRedis(t)
+
+	// --- 过期轴：seed 有效 key K 关联用户 U → 完整登录（双键写入）---
+	uid := seedUser(t, dsn, "expire-victim", testAdminHash, "过期受害者", 1, false)
+	seedApiKey(t, dsn, "ak-expire-revoke", "expire-victim", &uid, nil, 1)
+	status, body := apikeyLogin(t, ts, "ak-expire-revoke")
+	require.Equal(t, http.StatusOK, status, "有效 key 登录应 200: body=%s", body)
+	tokT := extractToken(t, body)
+	// 完整登录后双键在（IN-14 撤销链的前提）
+	_, err := rdb.Get(ctx0(), "iam:apikey-user:ak-expire-revoke").Result()
+	require.NoError(t, err, "完整登录后反查键必须已写: %v", err)
+
+	// 直改 DB 过期（绕过管理面——自然过期无撤销触发点，恰是 IN-14 缺口场景）
+	checkDB := openCheckDB(t, dsn)
+	execMust(t, checkDB, "UPDATE sys_api_key SET expire_time = ? WHERE api_key = ?",
+		"2020-01-01 00:00:00", "ak-expire-revoke")
+
+	// 再次 apikey-login → 401/10503
+	status, body = apikeyLogin(t, ts, "ak-expire-revoke")
+	require.Equal(t, http.StatusUnauthorized, status, "过期 key 登录必须 401: body=%s", body)
+	var envelope struct {
+		Code int `json:"code"`
+	}
+	require.NoError(t, json.Unmarshal(body, &envelope))
+	assert.Equal(t, 10503, envelope.Code, "body=%s", body)
+
+	// IN-14 核心断言：旧 token T 请求 pri 端点 → 401（存量会话已被反查撤销）
+	status, body = doAuthRequest(t, tokT, "GET", ts.URL+"/api/v1/users/"+strconv.FormatInt(uid, 10), "")
+	require.Equal(t, http.StatusUnauthorized, status, "过期 key 二次登录后旧 token 必须 401（存量会话已撤）: body=%s", body)
+	var unauth struct {
+		Code int `json:"code"`
+	}
+	require.NoError(t, json.Unmarshal(body, &unauth))
+	assert.Equal(t, 10100, unauth.Code, "401/10100 未认证语义: body=%s", body)
+
+	// 第二次拒绝后双键均已 DEL（反查键防反复触发 + 映射同寿命清理）
+	_, err = rdb.Get(ctx0(), "iam:apikey-user:ak-expire-revoke").Result()
+	require.ErrorIs(t, err, redis.Nil, "撤销后反查键必须已 DEL")
+	_, err = rdb.Get(ctx0(), "iam:apikey-token:ak-expire-revoke").Result()
+	require.ErrorIs(t, err, redis.Nil, "撤销后映射键必须已 DEL")
+
+	// 幂等路径：从未登录过的过期 key → 10503 原样，无反查键无副作用
+	past := "2020-01-01 00:00:00"
+	seedApiKey(t, dsn, "ak-expire-never-logged", "expire-victim", &uid, &past, 1)
+	status, body = apikeyLogin(t, ts, "ak-expire-never-logged")
+	require.Equal(t, http.StatusUnauthorized, status, "从未登录的过期 key 登录必须 10503: body=%s", body)
+	var idemEnv struct {
+		Code int `json:"code"`
+	}
+	require.NoError(t, json.Unmarshal(body, &idemEnv))
+	assert.Equal(t, 10503, idemEnv.Code, "body=%s", body)
+	_, err = rdb.Get(ctx0(), "iam:apikey-user:ak-expire-never-logged").Result()
+	require.ErrorIs(t, err, redis.Nil, "从未完整登录的 key 必须无反查键（无副作用）")
+
+	// --- 停用分支（管理面撤销链端到端，单测之外的集成级覆盖）：K2 关联 U2 ---
+	uid2 := seedUser(t, dsn, "disable-victim", testAdminHash, "停用受害者", 1, false)
+	seedApiKey(t, dsn, "ak-disable-revoke", "disable-victim", &uid2, nil, 1)
+	status, body = apikeyLogin(t, ts, "ak-disable-revoke")
+	require.Equal(t, http.StatusOK, status, "K2 有效 key 登录应 200: body=%s", body)
+	tokT2 := extractToken(t, body)
+
+	// admin 管理面停用（UpdateStatus → KickoutAPIKey 撤销链，双键清理零调用点改动）
+	var keyRow struct {
+		ID int64
+	}
+	require.NoError(t, checkDB.Raw("SELECT id FROM sys_api_key WHERE api_key = ?", "ak-disable-revoke").Scan(&keyRow).Error)
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/api-keys/"+strconv.FormatInt(keyRow.ID, 10)+"/status",
+		`{"status":"DISABLED"}`)
+	require.Equal(t, http.StatusOK, status, "管理面停用应 200: body=%s", body)
+
+	// K2 旧 token 即刻 401 且双键均消失（redis.Nil 直查）
+	status, body = doAuthRequest(t, tokT2, "GET", ts.URL+"/api/v1/users/"+strconv.FormatInt(uid2, 10), "")
+	require.Equal(t, http.StatusUnauthorized, status, "停用后 K2 旧 token 必须 401: body=%s", body)
+	_, err = rdb.Get(ctx0(), "iam:apikey-user:ak-disable-revoke").Result()
+	require.ErrorIs(t, err, redis.Nil, "停用后 K2 反查键必须消失（KickoutAPIKey 双删）")
+	_, err = rdb.Get(ctx0(), "iam:apikey-token:ak-disable-revoke").Result()
+	require.ErrorIs(t, err, redis.Nil, "停用后 K2 映射键必须消失")
+}
+
+// ctx0 集成测试 Redis 直查共用 context（每调用新建——无超时需求，容器生命周期由
+// newTestApp cleanup 管理）。
+func ctx0() context.Context { return context.Background() }
+
 func deref(s *string) string {
 	if s == nil {
 		return ""

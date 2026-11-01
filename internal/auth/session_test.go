@@ -160,7 +160,7 @@ func TestConcurrentApiKeyFullLogin(t *testing.T) {
 				errs <- err
 				return
 			}
-			if err := sm.BindAPIKey(ctx, "ak-race", token); err != nil {
+			if err := sm.BindAPIKey(ctx, "ak-race", token, 21); err != nil {
 				errs <- err
 				return
 			}
@@ -205,7 +205,7 @@ func TestKickoutAPIKeyRevokesSessionAndMapping(t *testing.T) {
 
 	token, err := sm.Login(ctx, SessionPayload{UserID: 31, UserName: "ak-kick"})
 	require.NoError(t, err)
-	require.NoError(t, sm.BindAPIKey(ctx, "ak-revoke", token))
+	require.NoError(t, sm.BindAPIKey(ctx, "ak-revoke", token, 31))
 
 	// 撤销前：映射命中、会话存活
 	_, ok := sm.ResolveAPIKey(ctx, "ak-revoke")
@@ -230,12 +230,100 @@ func TestKickoutAPIKeyRevokesSessionAndMapping(t *testing.T) {
 	require.NoError(t, sm.KickoutAPIKey(ctx, "ak-revoke"), "重复撤销必须幂等")
 	require.NoError(t, sm.KickoutAPIKey(ctx, "ak-never-issued"), "无映射 key 撤销必须幂等 nil")
 
-	// 死 token 残留场景：映射指向不存在会话 → 撤销仅剩映射清理，不报错
+	// 死 token 残留场景：映射指向不存在会话 → 撤销仅剩双键清理，不报错
 	dead := "dead0000dead0000dead0000dead0000dead0000dead0000dead0000dead0000"
-	require.NoError(t, sm.BindAPIKey(ctx, "ak-dead-mapping", dead))
+	require.NoError(t, sm.BindAPIKey(ctx, "ak-dead-mapping", dead, 31))
 	require.NoError(t, sm.KickoutAPIKey(ctx, "ak-dead-mapping"))
 	_, ok = sm.ResolveAPIKey(ctx, "ak-dead-mapping")
 	assert.False(t, ok, "死 token 残留场景映射必须被清理")
+}
+
+// TestBindAPIKeyDualKeys IN-14/D-16 双键契约直证：BindAPIKey 后 apikey-token 键
+// （TTL=timeout）与 apikey-user 反查键（无 TTL——键寿命与 sys_api_key 行同寿命）
+// 同时存在且载荷正确；LookupAPIKeyUser 命中/miss/损坏键三分支（损坏视同无键）。
+func TestBindAPIKeyDualKeys(t *testing.T) {
+	sm, mr, rdb := newTestManager(t)
+	ctx := context.Background()
+	const ttl = 30 * time.Minute
+
+	token, err := sm.Login(ctx, SessionPayload{UserID: 55, UserName: "dual-key"})
+	require.NoError(t, err)
+	require.NoError(t, sm.BindAPIKey(ctx, "ak-dual", token, 55))
+
+	// 映射键存在且带 TTL；反查键存在且无 TTL（redis TTL 协议：-1 = 无过期）
+	tokVal, err := rdb.Get(ctx, keyAPIKeyPrefix+"ak-dual").Result()
+	require.NoError(t, err)
+	assert.Equal(t, token, tokVal)
+	ttlGot, err := rdb.TTL(ctx, keyAPIKeyPrefix+"ak-dual").Result()
+	require.NoError(t, err)
+	assert.Greater(t, ttlGot, time.Duration(0), "apikey-token 键必须带 TTL")
+	uidVal, err := rdb.Get(ctx, keyAPIKeyUserPrefix+"ak-dual").Result()
+	require.NoError(t, err)
+	assert.Equal(t, "55", uidVal, "反查键必须存 userID 十进制串")
+	ttlUser, err := rdb.TTL(ctx, keyAPIKeyUserPrefix+"ak-dual").Result()
+	require.NoError(t, err)
+	assert.Equal(t, time.Duration(-1), ttlUser, "反查键必须无 TTL（键寿命与 sys_api_key 行同寿命）")
+
+	// 反查命中
+	uid, ok := sm.LookupAPIKeyUser(ctx, "ak-dual")
+	require.True(t, ok)
+	assert.Equal(t, int64(55), uid)
+
+	// miss：键不存在 → false 无副作用
+	_, ok = sm.LookupAPIKeyUser(ctx, "ak-never-bound")
+	assert.False(t, ok, "无反查键必须 ok=false")
+
+	// 损坏键（非数字载荷）视同无键：ok=false（幂等语义，不做 panic/错误放大）
+	require.NoError(t, rdb.Set(ctx, keyAPIKeyUserPrefix+"ak-corrupt", "not-a-number", 0).Err())
+	_, ok = sm.LookupAPIKeyUser(ctx, "ak-corrupt")
+	assert.False(t, ok, "损坏反查键必须视同无键 ok=false")
+
+	// 无 TTL 契约对照：FastForward 推过 timeout 后映射键过期消失、反查键仍在
+	//（IN-14 缺口的正解——过期窗口内恒可反查）
+	mr.FastForward(ttl + time.Second)
+	_, err = rdb.Get(ctx, keyAPIKeyPrefix+"ak-dual").Result()
+	require.Error(t, err, "推过 timeout 后映射键必须过期")
+	uid, ok = sm.LookupAPIKeyUser(ctx, "ak-dual")
+	require.True(t, ok, "反查键无 TTL——映射过期后仍可反查（IN-14 存在理由直证）")
+	assert.Equal(t, int64(55), uid)
+}
+
+// TestKickoutAPIKeyCleansDualKeys IN-14 清理路径一：KickoutAPIKey（管理面停用/
+// 删除的撤销链）后双键均消失——键寿命与 key 行同寿命（UpdateStatus/Delete 两调用
+// 点零改动即得清理）。
+func TestKickoutAPIKeyCleansDualKeys(t *testing.T) {
+	sm, _, rdb := newTestManager(t)
+	ctx := context.Background()
+
+	token, err := sm.Login(ctx, SessionPayload{UserID: 66, UserName: "dual-clean"})
+	require.NoError(t, err)
+	require.NoError(t, sm.BindAPIKey(ctx, "ak-clean", token, 66))
+
+	require.NoError(t, sm.KickoutAPIKey(ctx, "ak-clean"))
+	_, err = rdb.Get(ctx, keyAPIKeyPrefix+"ak-clean").Result()
+	assert.Error(t, err, "撤销后 apikey-token 键必须消失")
+	_, err = rdb.Get(ctx, keyAPIKeyUserPrefix+"ak-clean").Result()
+	assert.Error(t, err, "撤销后 apikey-user 反查键必须消失（同寿命双删）")
+}
+
+// TestUnbindAPIKeyCleansDualKeys IN-14 清理路径二：UnbindAPIKey（复用分支发现
+// 关联用户禁用/已删）后双键均消失——复用分支清理路径同寿命语义；幂等 DEL no-op。
+func TestUnbindAPIKeyCleansDualKeys(t *testing.T) {
+	sm, _, rdb := newTestManager(t)
+	ctx := context.Background()
+
+	token, err := sm.Login(ctx, SessionPayload{UserID: 77, UserName: "dual-unbind"})
+	require.NoError(t, err)
+	require.NoError(t, sm.BindAPIKey(ctx, "ak-unbind", token, 77))
+
+	require.NoError(t, sm.UnbindAPIKey(ctx, "ak-unbind"))
+	_, err = rdb.Get(ctx, keyAPIKeyPrefix+"ak-unbind").Result()
+	assert.Error(t, err, "解绑后 apikey-token 键必须消失")
+	_, err = rdb.Get(ctx, keyAPIKeyUserPrefix+"ak-unbind").Result()
+	assert.Error(t, err, "解绑后 apikey-user 反查键必须消失")
+
+	// 幂等：重复解绑 no-op
+	require.NoError(t, sm.UnbindAPIKey(ctx, "ak-unbind"), "重复解绑必须幂等")
 }
 
 // TestApiKeyBindingBranches apiKey→token 映射两分支：BindAPIKey 后 ResolveAPIKey
@@ -246,7 +334,7 @@ func TestApiKeyBindingBranches(t *testing.T) {
 
 	token, err := sm.Login(ctx, SessionPayload{UserID: 11, UserName: "ak-user"})
 	require.NoError(t, err)
-	require.NoError(t, sm.BindAPIKey(ctx, "ak-live", token))
+	require.NoError(t, sm.BindAPIKey(ctx, "ak-live", token, 11))
 
 	got, ok := sm.ResolveAPIKey(ctx, "ak-live")
 	require.True(t, ok, "映射命中且会话存活必须返回 token")

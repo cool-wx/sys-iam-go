@@ -25,10 +25,18 @@ import (
 //     管理面停用/删除 key）经 KickoutAPIKey 主动删映射连带会话；用户轴的登出/踢下线
 //     仍不主动删——无 token→apiKey 反向索引，指向死 token 时由 ResolveAPIKey 的会话
 //     Exists 双检兜底走完整登录并覆盖该键（TTL 窗口内无害残留，02-CONTEXT.md 认可）
+//   - iam:apikey-user:{apiKey}  String: userID 十进制串，无 TTL——键生命周期与
+//     sys_api_key 行同寿命；过期/停用 key 登录拒绝时经此反查撤销其存量会话
+//     （IN-14/D-16：自然过期 key 无管理面撤销触发点，ApikeyLogin 拒绝分支是唯一
+//     兜底触发点；撤销粒度为 user 轴——KickoutUser 连坐该用户密码登录活跃会话，
+//     安全从严的 D-16 拍板语义）。与 apikey-token 键在 BindAPIKey 一个 MULTI/EXEC
+//     原子块内双写；KickoutAPIKey/UnbindAPIKey 清理路径同寿命双删
 const (
 	keySessionPrefix    = "iam:session:"
 	keyUserTokensPrefix = "iam:user-tokens:"
 	keyAPIKeyPrefix     = "iam:apikey-token:"
+	// keyAPIKeyUserPrefix apiKey→user 反查索引（IN-14/D-16）：无 TTL String，见上方契约注释
+	keyAPIKeyUserPrefix = "iam:apikey-user:"
 )
 
 // ErrSessionNotFound 会话不存在/已过期。包级哨兵错误——注意 go-redis 的 HGetAll
@@ -182,17 +190,46 @@ func (sm *SessionManager) KickoutUser(ctx context.Context, userID int64) error {
 	return nil
 }
 
-// BindAPIKey 绑定 apiKey→token 映射（TTL=timeout，与会话同寿命）。
-func (sm *SessionManager) BindAPIKey(ctx context.Context, apiKey, token string) error {
-	return sm.rdb.Set(ctx, keyAPIKeyPrefix+apiKey, token, sm.timeout).Err()
+// BindAPIKey 绑定 apiKey→token 映射（TTL=timeout，与会话同寿命）+ apiKey→user
+// 反查索引（IN-14/D-16：无 TTL，键寿命与 sys_api_key 行同寿命）。两键在一个
+// MULTI/EXEC 原子块内双写（照 Login 先例）——写坏一半整体回滚，不会出现"有映射
+// 无反查键"的半态（半态会使 IN-14 撤销链对完整登录过的 key 失效）。
+func (sm *SessionManager) BindAPIKey(ctx context.Context, apiKey, token string, userID int64) error {
+	_, err := sm.rdb.TxPipelined(ctx, func(p redis.Pipeliner) error {
+		p.Set(ctx, keyAPIKeyPrefix+apiKey, token, sm.timeout)
+		p.Set(ctx, keyAPIKeyUserPrefix+apiKey, strconv.FormatInt(userID, 10), 0)
+		return nil
+	})
+	return err
 }
 
-// UnbindAPIKey 解除 apiKey→token 映射（WR-02：复用分支发现关联用户被禁用/已删时
-// 清理——映射指向的会话不再可信，不得留作禁用身份的续命通道）。幂等：键不存在
-// DEL 为 no-op；Redis 故障原样上抛由调用方取舍（清映射失败最坏退化为旧行为——
-// 下次复用分支再次拒绝并重试清理，无放大效应）。
+// LookupAPIKeyUser apiKey→user 反查（IN-14 撤销链第一步）：键缺失与载荷损坏统一
+// ok=false——损坏键视同无键（幂等语义，调用方走"无反查键"分支直接拒绝，无副作用）。
+func (sm *SessionManager) LookupAPIKeyUser(ctx context.Context, apiKey string) (int64, bool) {
+	uidStr, err := sm.rdb.Get(ctx, keyAPIKeyUserPrefix+apiKey).Result()
+	if err != nil {
+		// redis.Nil（键不存在）或 Redis 故障——后者由调用方尽力而为语义兜底
+		return 0, false
+	}
+	uid, err := strconv.ParseInt(uidStr, 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return uid, true
+}
+
+// UnbindAPIKey 解除 apiKey→token 映射 + apiKey→user 反查索引双键（WR-02：复用分支
+// 发现关联用户被禁用/已删时清理——映射指向的会话不再可信，不得留作禁用身份的
+// 续命通道；两键同寿命同清理，复用 IN-14 双键契约）。幂等：键不存在 DEL 为 no-op；
+// Redis 故障原样上抛由调用方取舍（清映射失败最坏退化为旧行为——下次复用分支再次
+// 拒绝并重试清理，无放大效应）。
 func (sm *SessionManager) UnbindAPIKey(ctx context.Context, apiKey string) error {
-	return sm.rdb.Del(ctx, keyAPIKeyPrefix+apiKey).Err()
+	_, err := sm.rdb.TxPipelined(ctx, func(p redis.Pipeliner) error {
+		p.Del(ctx, keyAPIKeyPrefix+apiKey)
+		p.Del(ctx, keyAPIKeyUserPrefix+apiKey)
+		return nil
+	})
+	return err
 }
 
 // KickoutAPIKey 撤销指定 API Key 已签发的存量会话（WR-06 修复，CR-01/D-09 用户轴
@@ -223,12 +260,15 @@ func (sm *SessionManager) KickoutAPIKey(ctx context.Context, apiKey string) erro
 		return err
 	}
 	// 会话已不存在（映射指向死 token）时 userIDStr 为空串：SRem 落在不存在的索引键上
-	// 为 no-op、DEL 幂等——仅剩映射清理生效，整链不产生错误。
+	// 为 no-op、DEL 幂等——仅剩双键清理生效，整链不产生错误。反查键在此一并清理
+	// （IN-14/D-16：管理面停用/删除 key 的撤销链清双键——键寿命与 key 行同寿命；
+	// UpdateStatus/Delete 两调用点零改动即得清理）。
 	userTokensKey := keyUserTokensPrefix + userIDStr
 	_, err = sm.rdb.TxPipelined(ctx, func(p redis.Pipeliner) error {
 		p.Del(ctx, sessionKey)
 		p.SRem(ctx, userTokensKey, token)
 		p.Del(ctx, mappingKey)
+		p.Del(ctx, keyAPIKeyUserPrefix+apiKey)
 		return nil
 	})
 	return err

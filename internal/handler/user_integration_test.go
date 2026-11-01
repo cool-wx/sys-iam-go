@@ -159,6 +159,11 @@ func TestCreateUserContract(t *testing.T) {
 
 var idsOnce sync.Once
 
+// testRedisAddr 当前测试的 Redis 容器地址（newTestApp 内赋值——同包测试可读，
+// 零调用点改动；openCheckRedis 等需要直查 Redis 键状态的断言经此拨号，
+// 03-03 IN-14 双键直查断言引入）。
+var testRedisAddr string
+
 // newTestApp 启动独立 MySQL+Redis 双容器（Phase 2 认证链依赖）+ 完整 app 装配 +
 // httptest server + 种子 admin（真实存量 BCrypt 哈希，D-10：每测试独立容器互不污染）。
 // Phase 3 起种子先于 app.New：boot 对账（app.New 内）从 sys_user_role/sys_role_menu
@@ -173,6 +178,7 @@ func newTestApp(t *testing.T) (*httptest.Server, string, func() string, int64) {
 	require.NoError(t, err, "mysql testcontainer 启动与 DDL 引导失败")
 	redisAddr, stopRedis, err := testutil.RunRedis(ctx)
 	require.NoError(t, err, "redis testcontainer 启动失败")
+	testRedisAddr = redisAddr
 
 	// 进程级雪花单例只装配一次：跨测试共享同一节点实例，杜绝多实例同毫秒 seq 回绕撞 ID
 	// （Phase 3 起移到种子之前——seedUser/seedRole 直插行依赖 ids.NewID 生成主键）

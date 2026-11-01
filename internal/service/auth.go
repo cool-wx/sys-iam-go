@@ -81,10 +81,11 @@ func (s *AuthService) Logout(ctx context.Context, token string) error {
 }
 
 // ApikeyLogin API Key 登录（分支顺序与消息照源 AuthApplicationService.java:63-77，
-// D-03）：①key 无效/停用/过期 → 10503 ②apiKey→token 映射命中且会话存活且关联
+// D-03）：①key 无效/停用/过期 → 10503（拒绝前经反查键撤销其存量会话，IN-14/D-16
+// ——尽力而为不阻断 10503）②apiKey→token 映射命中且会话存活且关联
 // 用户仍 ENABLED → 复用同一 token（会话内 roles 即权威快照，不重查重装配）③未关联
 // 用户 10504 ④关联用户不存在 10505 ⑤关联用户禁用 10506 ⑥完整登录 + 绑定
-// apiKey→token 映射。
+// apiKey→token 映射与 apiKey→user 反查索引。
 //
 // 并发竞态显式决策（AUTH-02 边缘，02-CONTEXT.md 认可）：两个并发 apikeyLogin 同时
 // miss 映射时各自完整登录——两个 token 各自有效、互不污染，映射 SET 最后写者赢；
@@ -95,7 +96,21 @@ func (s *AuthService) ApikeyLogin(ctx context.Context, req *dto.ApiKeyLoginReq) 
 		return nil, err
 	}
 	if key == nil {
-		// key 不存在/停用/过期统一 10503（FindByKey 登录过滤语义，AKEY-02）
+		// key 不存在/停用/过期统一 10503（FindByKey 登录过滤语义，AKEY-02）。
+		// 拒绝前反查撤销（IN-14/D-16）：自然过期/停用 key 的存量会话无管理面撤销
+		// 触发点，本分支是其唯一兜底触发点——经 iam:apikey-user:{key} 反查关联
+		// 用户，命中则 KickoutUser 撤销其全部会话（旧 token 下一请求 401）。
+		// 撤销粒度 user 轴为 D-16 拍板语义：密码登录活跃会话连坐可接受，安全从严
+		// （精确到"仅该 key 签发的 token"需 token 级反向索引，现网单 key 单活 token
+		// 模型下 apikey-token 映射 TTL 过期恰是缺口本身，反查键落 user 轴最稳——
+		// 无 TTL 恒可反查）。尽力而为：撤销失败不阻断 10503 响应（错误吞掉仅留
+		// 日志语义，Redis 故障时 T-3-11 accept 裁决）；DEL 反查键防同一损坏 key
+		// 反复触发撤销链。反查键不存在时无任何副作用（从未完整登录过的 key）。
+		apiKey := derefStr(req.ApiKey)
+		if uid, ok := s.sm.LookupAPIKeyUser(ctx, apiKey); ok {
+			_ = s.sm.KickoutUser(ctx, uid)
+			_ = s.sm.UnbindAPIKey(ctx, apiKey)
+		}
 		return nil, errcode.ErrApiKeyInvalid
 	}
 
@@ -138,9 +153,10 @@ func (s *AuthService) ApikeyLogin(ctx context.Context, req *dto.ApiKeyLoginReq) 
 	if err != nil {
 		return nil, err
 	}
-	// 完整登录成功后绑定 apiKey→token 映射（TTL=timeout；登出/踢下线不主动删——
-	// 指向死 token 时由 ResolveAPIKey 双检兜底，见 SessionManager.BindAPIKey 注释）
-	if err := s.sm.BindAPIKey(ctx, key.ApiKey, resp.Token); err != nil {
+	// 完整登录成功后绑定 apiKey→token 映射（TTL=timeout）+ apiKey→user 反查索引
+	// （IN-14/D-16，无 TTL 同块双写；登出/踢下线不主动删映射——指向死 token 时由
+	// ResolveAPIKey 双检兜底，见 SessionManager.BindAPIKey 注释）
+	if err := s.sm.BindAPIKey(ctx, key.ApiKey, resp.Token, *key.UserID); err != nil {
 		return nil, err
 	}
 	return resp, nil
