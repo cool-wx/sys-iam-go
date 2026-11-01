@@ -152,6 +152,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	fileInfoRepo := repository.NewFileInfoRepo(db)
 	fileCategoryRepo := repository.NewFileCategoryRepo(db)
 	ologRepo := repository.NewOperationLogRepo(db)
+	faultInfoRepo := repository.NewFaultInfoRepo(db)
 	// OpLogWriter 构造 + worker 启动（D-07 异步落库；D-05 声明制挂载的 sink 载体）。
 	// sink 注入 repo.InsertBatch——批量写收口数据访问层；chan 满丢弃不阻塞业务。
 	ologW := middleware.NewOpLogWriterWithSink(ologRepo.InsertBatch, logger)
@@ -168,6 +169,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	fileSvc := service.NewFileService(db, fileInfoRepo, fileCategoryRepo, fileStorage)
 	fileCategorySvc := service.NewFileCategoryService(fileCategoryRepo)
 	ologSvc := service.NewOperationLogService(ologRepo)
+	faultSvc := service.NewFaultService(db, faultInfoRepo)
 	userHandler := handler.NewUserHandler(userSvc)
 	authHandler := handler.NewAuthHandler(authSvc)
 	menuHandler := handler.NewMenuHandler(menuSvc)
@@ -181,6 +183,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	fileHandler := handler.NewFileHandler(fileSvc)
 	fileCategoryHandler := handler.NewFileCategoryHandler(fileCategorySvc)
 	ologHandler := handler.NewOlogHandler(ologSvc)
+	faultHandler := handler.NewFaultHandler(faultSvc)
 
 	engine := newRouter(h, handlers{
 		Auth:           authHandler,
@@ -196,6 +199,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		Files:          fileHandler,
 		FileCategories: fileCategoryHandler,
 		Ologs:          ologHandler,
+		Faults:         faultHandler,
 	}, middleware.Auth(sessionMgr), enf, logger, ologW)
 
 	return &App{

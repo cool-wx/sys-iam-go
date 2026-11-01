@@ -26,6 +26,7 @@ type handlers struct {
 	Files          *handler.FileHandler
 	FileCategories *handler.FileCategoryHandler
 	Ologs          *handler.OlogHandler
+	Faults         *handler.FaultHandler
 }
 
 // newRouter 装配路由：四中间件全局链（RequestID→AccessLog→Recovery→BodyLimit）+
@@ -185,6 +186,16 @@ func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, az authz.Au
 	// 操作日志查询路由（OLOG-03，Phase 4 04-03）：分页 1/10 特例 + 三 like 模糊
 	// （handler 唯一 ParseWithDefaults 调用点）；读路由不记操作日志
 	pri.GET("/api/v1/logs", middleware.RequirePerm(az, authz.PermLogList), hs.Ologs.List)
+
+	// 故障域五路由（FAUL-01，Phase 4 04-04）：CRUD；list 分页 1/15 + code 索引列
+	// eq 直传过滤。fault 域 perm 串为发明串（sys_menu 无对应项，D-16 研究核对
+	// 结论）——v1 仅 super_admin 可用（matcher 豁免，shift 域先例）；三条写路由
+	// 记操作日志（module=FaultInfoController 源类简名）
+	pri.POST("/api/v1/faults", middleware.RequirePerm(az, authz.PermFaultAdd), middleware.Oplog(ologW, "FaultInfoController", "create"), hs.Faults.Create)
+	pri.PUT("/api/v1/faults/:id", middleware.RequirePerm(az, authz.PermFaultEdit), middleware.Oplog(ologW, "FaultInfoController", "update"), hs.Faults.Update)
+	pri.GET("/api/v1/faults/:id", middleware.RequirePerm(az, authz.PermFaultQuery), hs.Faults.Get)
+	pri.GET("/api/v1/faults", middleware.RequirePerm(az, authz.PermFaultList), hs.Faults.List)
+	pri.DELETE("/api/v1/faults/:id", middleware.RequirePerm(az, authz.PermFaultRemove), middleware.Oplog(ologW, "FaultInfoController", "delete"), hs.Faults.Delete)
 
 	return engine
 }
