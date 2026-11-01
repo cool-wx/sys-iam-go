@@ -22,9 +22,9 @@ import (
 // 本库 admin 用户真实存量 Hutool BCrypt 哈希（明文 admin123）——Go x/crypto/bcrypt
 // 兼容性已在研究阶段实测（02-RESEARCH：三源活体代证），此处作为 fixture 直证零迁移。
 const (
-	testAdminHash    = "$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2"
-	testAdminPass    = "admin123"
-	testAdminName    = "admin"
+	testAdminHash     = "$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2"
+	testAdminPass     = "admin123"
+	testAdminName     = "admin"
 	testAdminRealName = "管理员"
 )
 
