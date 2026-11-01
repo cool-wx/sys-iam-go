@@ -37,6 +37,40 @@ func TestParseClamp(t *testing.T) {
 	}
 }
 
+// TestParseWithDefaults 特例分页钳位（D-09 Olog 1/10 例外）：缺省值参数化生效、
+// 上限钳位语义与 Parse 一致、既有 Parse 全局 1/15 行为零变化。
+func TestParseWithDefaults(t *testing.T) {
+	cases := []struct {
+		name     string
+		page     string
+		size     string
+		defPage  int
+		defSize  int
+		wantPage int
+		wantSize int
+	}{
+		{"缺省空参特例1/10", "", "", 1, 10, 1, 10},
+		{"零与负取各自默认", "0", "0", 1, 10, 1, 10},
+		{"size超上限照旧钳100", "2", "200", 1, 10, 2, 100},
+		{"非法输入取默认", "abc", "x", 1, 10, 1, 10},
+		{"合法原样", "3", "20", 1, 10, 3, 20},
+		{"页码超maxPage照旧钳位", "2000000", "10", 1, 10, maxPage, 10},
+		{"自定义默认值生效", "", "", 2, 30, 2, 30},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p, s := ParseWithDefaults(tc.page, tc.size, tc.defPage, tc.defSize)
+			assert.Equal(t, tc.wantPage, p, "page 输入=%q", tc.page)
+			assert.Equal(t, tc.wantSize, s, "size 输入=%q", tc.size)
+		})
+	}
+
+	// 委托一致性：Parse == ParseWithDefaults(全局默认)——既有行为零变化
+	p, s := Parse("", "")
+	assert.Equal(t, 1, p)
+	assert.Equal(t, defaultSize, s, "全局 Parse 缺省必须仍为 1/15（prohibition）")
+}
+
 // TestPageDataEmptyItemsMarshal Items 为 nil 时序列化必须输出 [] 而非 null
 // （ENG-01 空输入边界定案：空列表输出空数组）。
 func TestPageDataEmptyItemsMarshal(t *testing.T) {

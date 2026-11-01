@@ -22,8 +22,15 @@ const (
 // Parse 钳位分页参数：缺省/空串/解析失败/<1 → 页码 1、页大小 15；页大小 >100 →
 // 100；页码 >maxPage → maxPage（防 (page-1)*size 溢出静默回退第 1 页，WR-03）。
 func Parse(page, size string) (pageOut, sizeOut int) {
-	pageOut = clamp(page, defaultPage)
-	sizeOut = clamp(size, defaultSize)
+	return ParseWithDefaults(page, size, defaultPage, defaultSize)
+}
+
+// ParseWithDefaults 特例分页钳位：钳位逻辑与 Parse 完全一致，仅缺省值参数化——
+// 供源 DTO 字段默认值 ≠ 1/15 全局值的域使用（唯一调用方 Olog：源 LogQuery 默认
+// 1/10，D-09 特例）。既有 Parse 全局 1/15 行为零变化（prohibition：不得改缺省）。
+func ParseWithDefaults(page, size string, defPage, defSize int) (pageOut, sizeOut int) {
+	pageOut = clamp(page, defPage)
+	sizeOut = clamp(size, defSize)
 	if sizeOut > maxSize {
 		sizeOut = maxSize
 	}
