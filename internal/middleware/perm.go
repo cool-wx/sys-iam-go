@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"log/slog"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -24,6 +25,11 @@ import (
 //
 // super_admin 豁免不在中间件判断——model matcher 首位短路已覆盖（D-07 唯一
 // 判据在 enforcer g 层：撤销 super_admin g 行后豁免下一请求立即失效）。
+//
+// enforcer 故障分支必须 slog.Error 留痕（WR-03）：授权链故障是 IAM 的 P0 事件，
+// 表现为全站无差别 500（每条请求都过 RequirePerm），AccessLog 只有 status 行——
+// 无根因日志则 casbin/gorm-adapter/DB 故障完全不可诊断。日志键仅 sub（userID 十进
+// 制串）/perm（权限串）/error（根因）三键，不含 token/请求体等敏感值。
 func RequirePerm(az authz.Authorizer, perm string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		identity, ok := auth.FromContext(c.Request.Context())
@@ -34,6 +40,10 @@ func RequirePerm(az authz.Authorizer, perm string) gin.HandlerFunc {
 		}
 		allowed, err := az.Enforce(strconv.FormatInt(identity.UserID, 10), perm)
 		if err != nil {
+			slog.Error("enforcer enforce failed",
+				"sub", strconv.FormatInt(identity.UserID, 10),
+				"perm", perm,
+				"error", err)
 			resp.Fail(c, errcode.ErrInternal)
 			c.Abort()
 			return

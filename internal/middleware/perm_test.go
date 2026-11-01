@@ -4,8 +4,10 @@
 package middleware
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -124,4 +126,26 @@ func TestRequirePermMiddleware(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRequirePermEnforcerErrorLogs enforcer 故障分支必须 slog.Error 留痕（WR-03
+// 回归）：授权链故障是 IAM P0 事件，全站无差别 500 时日志必须含根因可归因三键——
+// 消息、sub（userID 十进制串）、perm 串、error 原文；不得含敏感值（token/请求体）。
+func TestRequirePermEnforcerErrorLogs(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	rootCause := errors.New("gorm-adapter connection refused")
+	engine := newPermTestEnv(t, &fakeAuthorizer{err: rootCause}, "system:user:list")
+	status, body := doPermProbe(t, engine, "Bearer tok")
+
+	require.Equal(t, http.StatusInternalServerError, status, "fail-closed 500 行为不变: body=%s", body)
+	logs := buf.String()
+	require.Contains(t, logs, "enforcer enforce failed", "日志必须含可检索消息: %s", logs)
+	require.Contains(t, logs, "sub=42", "日志必须含 sub 归因键: %s", logs)
+	require.Contains(t, logs, "perm=system:user:list", "日志必须含 perm 串: %s", logs)
+	require.Contains(t, logs, rootCause.Error(), "日志必须含 error 根因原文: %s", logs)
+	assert.NotContains(t, logs, "Bearer", "日志不得含 token 等敏感值")
 }
