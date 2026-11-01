@@ -136,7 +136,7 @@
 
 - 源 `editUser`（UserApplicationService.java:115-155）签名**不含 username 参数**——源系统 username 创建后不可改（登录锚点）。全源码树 grep：`UsernameChangedEvent` 仅出现在事件类定义与监听器方法两处，**无任何 publish 调用点**；`editUsername/changeUsername/updateUsername/renameUser` 零命中。
 - Go 侧一致：`UserService.Update` 白名单刻意不含 username/password（internal/service/user.go:130-133 注释明文"源 editUser 不可改语义：用户名为登录锚点"）。
-- 结论：SYNC-01 字面的"6 个事件"中，username 事件**在源与 Go 都没有触发路径**。处置建议见 Open Questions Q1（倾向：handler 与事件类型照源补齐（约 10 行，契约形态与 SYNC-01 文字对齐），user.Update 不设发布点，VERIFICATION.md 注明"无触发路径系源语义"）。
+- 结论：SYNC-01 字面的"6 个事件"中，username 事件**在源与 Go 都没有触发路径**。处置已裁决（见 Open Questions (RESOLVED) Q1）：handler 与事件类型照源补齐（约 10 行，契约形态与 SYNC-01 文字对齐），user.Update 不设发布点，VERIFICATION.md 注明"无触发路径系源语义"。
 
 ### 重点 4：Go 侧挂点清单与波及面（HIGH 置信）
 
@@ -454,22 +454,28 @@ handler 直接持 `*gorm.DB` 用 `tx.Model(&po.XxxPO{}).Where(...).Update(col, v
 | handler UPDATE 列名/值拼接注入 | Tampering | gorm 占位符 + 常量列名（Pattern 2 形态，禁 fmt.Sprintf 拼 SQL） |
 | 事件载荷伪造（旧名注入） | Tampering | 载荷仅服务端构造（查库旧值+请求新值），无客户端直传字段；UPDATE WHERE 以 ID 为锚不依赖 OldName |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> 2026-11-02 计划修订标注：Q1-Q4 已全部在 Phase 5 计划中裁决落地，无未决问题。逐条 Resolution 如下。
 
 1. **UsernameChangedEvent 处置（源死代码，SYNC-01 字面计 6 事件）**
    - What we know: 源从未发布该事件（重点 3）；Go username 无编辑路径；事件类+监听器在源齐备。
    - What's unclear: "6 个事件"验收按字面要 handler 形态齐备，还是按触发路径实现 5 个即可。
    - Recommendation: 实现 handler + 事件类型（~10 行，契约齐），user.Update 不设发布点；VERIFICATION.md 注明"无触发路径系源语义（username 为登录锚点不可改）"。规划时作为 checkpoint 向用户口头确认一次即可（不阻塞）。
+   - **Resolution:** 采纳 Recommendation——handler + 事件类型契约照源补齐、user.Update 不设发布点。落地：05-01 Task 1（OnUsernameChanged 方法注释注明源死代码语义）+ 05-01 flagged_assumptions（显式挂起，验收时人工复核）+ 05-03 Task 2（VERIFICATION.md 记录「无触发路径系源语义」）。
 2. **sys_role_dept.role_name 是否纳入 RoleNameChanged 同步面**
    - What we know: 该表是 Go 增量扩展（D-10，源不存在），role_name 冗余由 AssignScopes 写入（role.go:414）；源 RoleNameSync 只同步 role_menu+user_role 两表。
    - What's unclear: 不同步则该表冗余列在改名后陈旧（读侧谁消费它尚未逐一排查——当前仅存取 API 回显）。
    - Recommendation: 纳入（handler 第三条 UPDATE，同 `<>` 条件）——Go 内一致性强于"源没有此表"的字面对齐；plan 明文记录为 Go 扩展非源行为。
+   - **Resolution:** 采纳——纳入同步面。落地：05-01 Task 1 listeners 映射第 4 条（OnRoleNameChanged 第三条 UPDATE：sys_role_dept.role_name，注释「Go 扩展非源行为」）。
 3. **清单第 8 项（SIGTERM 后日志完整落库）证据形态**
    - What we know: 组合证据已有（重点 6 #8）；缺"入队→真实 Stop→断言 DB 行"单测；IN-04（Stop 双 Flush）同面待 disposition。
    - Recommendation: 本阶段顺带补一个小集成测试（复用 newShutdownApp + olog 入队 + Stop + checkDB 断言），同时给 IN-04 一个 disposition——比纯文档证据链更硬，成本 ~40 行。
+   - **Resolution:** 采纳——补一体化直证测试而非仅文档链。落地：05-03 Task 2（TestOlogSurvivesStop：入队→真实 Stop→checkDB 断言落库 + IN-04 disposition + VERIFICATION.md 记录）。
 4. **WR-07 统一范围（仅 file_category vs 三域同改）**
    - What we know: 三域同款双形态（重点 5）；方向 A 每域 1 行。
    - Recommendation: 三域同改（方向 A），避免"同仓库两种根语义"残留；既有测试无形态锁定，零回归风险。
+   - **Resolution:** 采纳——三域同改（方向 A）。落地：05-03 Task 1（file_category/dept/menu 三域移根 parent_id=nil 唯一形态 + WR-08 file 断言真化同任务收口）。
 
 ## Assumptions Log
 
