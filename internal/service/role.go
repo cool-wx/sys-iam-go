@@ -189,9 +189,18 @@ func (s *RoleService) AssignMenus(ctx context.Context, roleID int64, menuIDs []i
 		}
 		return err
 	}
+	// reqIDs map 去重（WR-02，照 AssignRoles reqSeen 模板）：请求体重复 menuID 会让
+	// BatchCreateRoleMenus 在 sys_role_menu 插入完全重复行（两表仅普通索引无唯一键），
+	// 脏数据持续累积且 GET /roles/:id/menuIds 原样回显失真。
 	reqIDs := make([]int64, 0, len(menuIDs))
+	reqSeen := make(map[int64]struct{}, len(menuIDs))
 	for _, mid := range menuIDs {
-		reqIDs = append(reqIDs, int64(mid))
+		id := int64(mid)
+		if _, dup := reqSeen[id]; dup {
+			continue
+		}
+		reqSeen[id] = struct{}{}
+		reqIDs = append(reqIDs, id)
 	}
 	menuNameOf := make(map[int64]string, len(reqIDs))
 	// 同一次 FindByIDs 结果顺带收集 casbin p 行原料（勿二次查库）：Permission
@@ -282,9 +291,17 @@ func (s *RoleService) AssignScopes(ctx context.Context, roleID int64, deptIDs []
 		}
 		return err
 	}
+	// reqIDs map 去重（WR-02，照 AssignRoles reqSeen 模板，同 AssignMenus 纪律）：
+	// 重复 deptID 会在 sys_role_dept 插入完全重复行。
 	reqIDs := make([]int64, 0, len(deptIDs))
+	reqSeen := make(map[int64]struct{}, len(deptIDs))
 	for _, did := range deptIDs {
-		reqIDs = append(reqIDs, int64(did))
+		id := int64(did)
+		if _, dup := reqSeen[id]; dup {
+			continue
+		}
+		reqSeen[id] = struct{}{}
+		reqIDs = append(reqIDs, id)
 	}
 	deptNameOf := make(map[int64]string, len(reqIDs))
 	if len(reqIDs) > 0 {

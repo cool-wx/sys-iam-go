@@ -310,6 +310,20 @@ func TestRoleAssignMenus(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &menusEnv))
 	assert.Equal(t, []string{"990302", "990303"}, menusEnv.Data, "校验失败不得改动存量分配")
 
+	// --- 重复 menuId 去重（WR-02）：["甲","甲","乙"] → sys_role_menu 恰 2 行且
+	// GET 回显不重复（请求体重复 ID 不得落脏行）---
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID+"/menus",
+		`{"menuIds":["990301","990301","990302"]}`)
+	require.Equal(t, http.StatusOK, status, "含重复 menuId 的分配应 200（去重后执行）: body=%s", body)
+	var dupCnt int64
+	require.NoError(t, checkDB.Raw(
+		"SELECT COUNT(*) FROM sys_role_menu WHERE role_id = ?", roleNum,
+	).Scan(&dupCnt).Error)
+	assert.Equal(t, int64(2), dupCnt, "重复 menuId 必须去重，sys_role_menu 不得有重复行（WR-02）")
+	status, body = getMenus()
+	require.NoError(t, json.Unmarshal(body, &menusEnv))
+	assert.Equal(t, []string{"990301", "990302"}, menusEnv.Data, "GET 回显不得含重复 menuId（WR-02）")
+
 	// --- 空数组=全回收（合法语义）---
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID+"/menus", `{"menuIds":[]}`)
 	require.Equal(t, http.StatusOK, status, "空数组回收应 200: body=%s", body)
@@ -404,6 +418,16 @@ func TestRoleAssignScopes(t *testing.T) {
 	status, body = getScopes()
 	require.NoError(t, json.Unmarshal(body, &scopesEnv))
 	assert.Equal(t, []string{"990601"}, scopesEnv.Data, "校验失败不得改动存量配置")
+
+	// --- 重复 deptId 去重（WR-02）：["甲","甲"] → sys_role_dept 恰 1 行 ---
+	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID+"/scopes",
+		`{"deptIds":["990601","990601"]}`)
+	require.Equal(t, http.StatusOK, status, "含重复 deptId 的分配应 200（去重后执行）: body=%s", body)
+	var dupCnt int64
+	require.NoError(t, checkDB.Raw(
+		"SELECT COUNT(*) FROM sys_role_dept WHERE role_id = ?", roleNum,
+	).Scan(&dupCnt).Error)
+	assert.Equal(t, int64(1), dupCnt, "重复 deptId 必须去重，sys_role_dept 不得有重复行（WR-02）")
 
 	// --- 空数组=全回收（合法语义）：GET 空 [] 且 sys_role_dept 直查零行 ---
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID+"/scopes", `{"deptIds":[]}`)
