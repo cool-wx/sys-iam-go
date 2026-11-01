@@ -219,6 +219,90 @@ func TestUserRolesBuiltinAssignGuard(t *testing.T) {
 	assert.Equal(t, int64(1), gRows, "特权分配后 g 行必须同步写入")
 }
 
+// TestUserRolesBuiltinAssignGuardRevokedSession CR-04 回归：守卫判据源是 enforcer
+// g 层实时状态而非会话 roles 快照。REVIEW 攻击链逐步直证——受害者持 super_admin +
+// editor（editor 带 system:user:edit p 行）登录（会话快照装配含 super_admin）→
+// 管理员仅回收 super_admin（SyncUserRoles 删 g 行，会话不踢、快照不刷新）→ 同一
+// 旧 token 经 RequirePerm（editor p 行放行）重分配 builtin → 403/10603。快照判据
+// 此处放行 200（回收被旧会话完全抵消），g 层判据前置拦截。
+func TestUserRolesBuiltinAssignGuardRevokedSession(t *testing.T) {
+	ts, dsn, adminToken, _ := newTestApp(t)
+	token := adminToken()
+	seedDept(t, dsn, 100, "总部")
+	checkDB := openCheckDB(t, dsn)
+
+	// 受害者 + editor 角色（带 system:user:edit p 行）——回收后仍须过 RequirePerm
+	// 门（editor g 行+p 行放行），攻击请求才能到达 AssignRoles 守卫
+	victimID := seedUser(t, dsn, "revoke-victim", testAdminHash, "受害者", 1, false)
+	victimIDStr := strconv.FormatInt(victimID, 10)
+	editorRoleID := seedRoleWithScope(t, dsn, "编辑者", "revoke_editor_role", false, 5)
+	editorRoleStr := strconv.FormatInt(editorRoleID, 10)
+	execMust(t, checkDB,
+		"INSERT INTO sys_menu (id, name, permission, create_time, update_time) VALUES (990491, '回收链菜单', 'system:user:edit', NOW(), NOW())")
+	status, body := doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+editorRoleStr+"/menus",
+		`{"menuIds":["990491"]}`)
+	require.Equal(t, http.StatusOK, status, "授菜单必须成功: body=%s", body)
+	status, body = assignRoles(t, ts, token, victimIDStr, `"`+editorRoleStr+`"`)
+	require.Equal(t, http.StatusOK, status, "授编辑者角色必须成功: body=%s", body)
+
+	// newTestApp 已 seed role_code='super_admin' 的 builtin 角色（uk_role_code 唯一，
+	// 不可再插同行）——查库取 id（守卫判据按 role_code 字面量 'super_admin' 匹配，
+	// g 行角色码必须精确等于该串）
+	var superRoleID int64
+	require.NoError(t, checkDB.Raw("SELECT id FROM sys_role WHERE role_code = 'super_admin'").Scan(&superRoleID).Error)
+	require.NotZero(t, superRoleID, "种子 super_admin 角色必须存在")
+	superRoleIDStr := strconv.FormatInt(superRoleID, 10)
+
+	// 管理员把 super_admin + editor 分配给受害者 → g 行双写（回收前基线）
+	status, body = assignRoles(t, ts, token, victimIDStr, `"`+editorRoleStr+`", "`+superRoleIDStr+`"`)
+	require.Equal(t, http.StatusOK, status, "管理员分配 super_admin+editor 必须 200: body=%s", body)
+
+	// 受害者登录：会话快照装配含 super_admin（此刻 g 层与快照一致）
+	victimToken := loginAs(t, ts, "revoke-victim", testAdminPass)
+
+	// 回收前对照：受害者（g 层实时持 super_admin）重分配 builtin → 200
+	// （守卫不误伤真实豁免者；全量替换含双角色保住 editor g 行）
+	status, body = assignRoles(t, ts, victimToken, victimIDStr, `"`+superRoleIDStr+`", "`+editorRoleStr+`"`)
+	require.Equal(t, http.StatusOK, status, "回收前 g 层持 super_admin 者分配 builtin 必须 200: body=%s", body)
+
+	// 管理员回收：全量替换仅剩 editor → SyncUserRoles 删 (victim, super_admin) g 行
+	// （AssignRoles 不踢会话、不刷新快照——攻击链的窗口前提）
+	status, body = assignRoles(t, ts, token, victimIDStr, `"`+editorRoleStr+`"`)
+	require.Equal(t, http.StatusOK, status, "管理员回收 super_admin 必须 200: body=%s", body)
+	var gCnt int64
+	require.NoError(t, checkDB.Raw(
+		"SELECT COUNT(*) FROM casbin_rule WHERE ptype = 'g' AND v0 = ? AND v1 = 'super_admin'",
+		victimIDStr,
+	).Scan(&gCnt).Error)
+	require.Equal(t, int64(0), gCnt, "前置条件：回收后 super_admin g 行必须已删除")
+
+	// CR-04 核心断言：同一旧 token（快照仍含 super_admin、RequirePerm 经 editor
+	// p 行放行）立即重分配 builtin → 403/10603
+	status, body = assignRoles(t, ts, victimToken, victimIDStr, `"`+superRoleIDStr+`", "`+editorRoleStr+`"`)
+	require.Equal(t, http.StatusForbidden, status, "回收后旧会话重分配 builtin 必须 403（CR-04）: body=%s", body)
+	var forbidden struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(body, &forbidden))
+	assert.Equal(t, 10603, forbidden.Code, "业务码必须 10603: body=%s", body)
+	assert.Contains(t, forbidden.Message, "系统内置角色仅超级管理员可分配", "body=%s", body)
+
+	// 双轨零写证明：守卫前置拦截，super_admin g 行保持删除、sys_user_role 保持仅
+	// editor（回收不被旧会话抵消）
+	require.NoError(t, checkDB.Raw(
+		"SELECT COUNT(*) FROM casbin_rule WHERE ptype = 'g' AND v0 = ? AND v1 = 'super_admin'",
+		victimIDStr,
+	).Scan(&gCnt).Error)
+	assert.Equal(t, int64(0), gCnt, "被拒请求不得复活 super_admin g 行（前置拦截零写）")
+	var urCnt int64
+	require.NoError(t, checkDB.Raw(
+		"SELECT COUNT(*) FROM sys_user_role ur JOIN sys_role r ON ur.role_id = r.id WHERE ur.user_id = ? AND r.role_code = 'super_admin'",
+		victimID,
+	).Scan(&urCnt).Error)
+	assert.Equal(t, int64(0), urCnt, "被拒请求不得写入 sys_user_role 关联（前置拦截零写）")
+}
+
 // TestUserRolesInvalidRole 分配含不存在 roleId：400 + 消息精确含
 // 「角色不存在: [逗号拼接]」式串（缺失集合式，格式照源）；校验前置不动存量。
 func TestUserRolesInvalidRole(t *testing.T) {

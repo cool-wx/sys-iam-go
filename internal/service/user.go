@@ -328,30 +328,28 @@ func userNotFound(id int64) *errcode.Error {
 	return errcode.New(errcode.CodeNotFound, fmt.Sprintf("用户不存在: %d", id))
 }
 
-// assignerIsSuperAdmin 判定当前操作者会话 roles 快照是否含 super_admin（CR-03
-// builtin 分配守卫判据）。与 enforcer 豁免判据（D-07 g 层）刻意区分：此处是
-// 【管理操作准入】判定（谁能分配 builtin 角色），非运行期授权判定——角色分配端点
-// 已被 RequirePerm(system:user:edit) gate，会话快照仅做提权收紧的第二判据（会话
-// roles 由登录装配，super_admin 角色回收后新登录即失去分配资格，窗口有限）。
-// identity 缺失（防御分支，正常装配不可达）返回 false fail-closed。
-func assignerIsSuperAdmin(ctx context.Context) bool {
+// assignerIsSuperAdmin 判定当前操作者在 enforcer g 层是否实时持有 super_admin
+// （CR-03 builtin 分配守卫判据；CR-04 修复：判据源从会话 roles 快照改为 enforcer
+// g 层实时判定）。初版判据遍历 identity.Roles——那是登录时装配的静态快照：
+// super_admin 被回收（SyncUserRoles 删 g 行）后存量会话未被踢、快照仍含该角色码，
+// 且会话滚动续期（持续活跃则永不过期）——旧会话可立即重新自分配 builtin 角色，
+// 回收操作被完全抵消且守卫无法自愈（CR-04 攻击链）。g 层判据与 D-07 豁免判据
+// 同源同轴：g 行删除即刻失去分配资格，回收不可被旧会话绕行。identity 缺失（防御
+// 分支，正常装配不可达）返回 false fail-closed；enforcer 查询错误原样上抛
+// （调用方 500，绝不吞错静默放行/拒绝）。
+func (s *UserService) assignerIsSuperAdmin(ctx context.Context) (bool, error) {
 	identity, ok := auth.FromContext(ctx)
 	if !ok {
-		return false
+		return false, nil
 	}
-	for _, rc := range identity.Roles {
-		if rc == "super_admin" {
-			return true
-		}
-	}
-	return false
+	return s.enf.HasRole(identity.UserID, "super_admin")
 }
 
 // AssignRoles 分配用户角色（全量替换语义，USER-04/D-12）：用户校验（「用户不存在:
 // {id}」）→ roleRepo.FindByIDs 前置全量校验（缺失集合译 400「角色不存在: [逗号拼接]」，
 // 消息格式照源；校验前置优于源"事务内先删后校验"，与 02-02 assignMenus 同决策）
-// → builtin 提权守卫（CR-03：请求含 builtin 角色时要求操作者持 super_admin，否则
-// 403/10603 前置拦截零写调用）→ db.Transaction{ DeleteUserRolesByUserID +
+// → builtin 提权守卫（CR-03/CR-04：请求含 builtin 角色时要求操作者在 enforcer g 层
+// 实时持有 super_admin，否则 403/10603 前置拦截零写调用）→ db.Transaction{ DeleteUserRolesByUserID +
 // BatchCreateUserRoles }——删旧插新同事务，杜绝"删后插前"窗口期。空数组=全回收
 // （合法语义）。
 //
@@ -404,13 +402,20 @@ func (s *UserService) AssignRoles(ctx context.Context, userID int64, roleIDs []i
 		return errcode.New(errcode.CodeInvalidParam, "角色不存在: ["+strings.Join(missing, ", ")+"]")
 	}
 	// builtin 提权守卫（CR-03，前置拦截零写调用）：请求集合含 builtin 角色时要求
-	// 操作者会话 roles 快照含 super_admin，否则 403/10603——堵住仅持 system:user:edit
-	// 的操作者经合法角色分配端点把 super_admin 分配给自己/他人的提权链（g 行经
-	// SyncUserRoles 即时双写，下一请求即生效；D-07 豁免判据在 enforcer g 层，拿到
-	// super_admin g 行=拿到全权）。与 RoleService.Delete 的 builtin 守卫同哲学：
-	// 前置拦截，业务表与 casbin 双轨零写入。identity 缺失（防御分支，正常装配必有）
-	// 视为无 super_admin，fail-closed。普通角色分配完全不受影响。
-	if !assignerIsSuperAdmin(ctx) {
+	// 操作者 enforcer g 层实时持有 super_admin，否则 403/10603——堵住仅持
+	// system:user:edit 的操作者经合法角色分配端点把 super_admin 分配给自己/他人
+	// 的提权链（g 行经 SyncUserRoles 即时双写，下一请求即生效；D-07 豁免判据在
+	// enforcer g 层，拿到 super_admin g 行=拿到全权）。CR-04：判据读 enforcer g 层
+	// 实时状态而非会话快照——super_admin 被回收的存量会话（未踢、滚动续期）下一
+	// 请求即失去分配资格，回收不可被旧会话抵消。与 RoleService.Delete 的 builtin
+	// 守卫同哲学：前置拦截，业务表与 casbin 双轨零写入。identity 缺失（防御分支，
+	// 正常装配必有）视为无 super_admin fail-closed；enforcer 查询错误上抛 500
+	// （既有语义）。普通角色分配完全不受影响。
+	isSuper, err := s.assignerIsSuperAdmin(ctx)
+	if err != nil {
+		return err
+	}
+	if !isSuper {
 		for _, rid := range reqIDs {
 			if b := builtinOf[rid]; b != nil && *b {
 				return errcode.ErrBuiltinRoleAssign

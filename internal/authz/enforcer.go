@@ -160,6 +160,28 @@ func (e *Enforcer) SyncRoleUsers(roleCode string, userIDs []int64) error {
 	return nil
 }
 
+// HasRole 报告用户在 enforcer g 层是否直接持有指定角色（g 层读原语，CR-04）：
+// builtin 分配守卫的管理准入判据（service assignerIsSuperAdmin 封装）——判据源是
+// enforcer 实时策略而非登录会话 roles 快照（D-07「唯一判据在 enforcer g 层」纪律
+// 对管理操作准入的延伸）：快照是登录时装配的静态副本，super_admin 回收后存量会话
+// 未被踢仍含旧角色码且滚动续期永不过期，快照判据可被旧会话完全抵消；g 行经
+// SyncUserRoles 即时同步，回收下一请求即生效（与 PERM-02 即时生效同轴）。userID
+// 转十进制串与 SyncUserRoles/ClearUser 的 g 行 sub 口径一致。查询错误原样上抛由
+// 调用方 fail-closed（不吞错返回 false——静默 false 会把存储故障译成资格误判，
+// 上抛走 500 既有语义）。
+func (e *Enforcer) HasRole(userID int64, roleCode string) (bool, error) {
+	roles, err := e.inner.GetRolesForUser(strconv.FormatInt(userID, 10))
+	if err != nil {
+		return false, err
+	}
+	for _, r := range roles {
+		if r == roleCode {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // ClearRole 双清角色的 p 行与 g 行（角色删除级联：RemoveFilteredGroupingPolicy
 // 的 fieldIndex=1 是 role 位）。builtin 角色已被 service 守卫拦截，不会走到这里。
 func (e *Enforcer) ClearRole(roleCode string) error {

@@ -92,6 +92,36 @@ func TestRevokeSuperAdminImmediate(t *testing.T) {
 	assert.False(t, allowed, "撤销 super_admin g 行后豁免必须下一调用即失效")
 }
 
+// TestHasRoleGLayer HasRole g 层读原语直证（CR-04）：g 行存在 → true；删 g 行后
+// 下一调用即 false——判据源是 enforcer 实时策略而非任何快照（回收即刻生效，D-07
+// 同轴）；未持有角色 / 无 g 行用户 → false 且无 error。
+func TestHasRoleGLayer(t *testing.T) {
+	e := newMemSynced(t)
+	_, err := e.inner.AddGroupingPolicy("9001", "super_admin")
+	require.NoError(t, err)
+	_, err = e.inner.AddGroupingPolicy("9001", "editor")
+	require.NoError(t, err)
+
+	has, err := e.HasRole(9001, "super_admin")
+	require.NoError(t, err)
+	assert.True(t, has, "g 行存在时 HasRole 必须 true")
+
+	has, err = e.HasRole(9001, "viewer")
+	require.NoError(t, err)
+	assert.False(t, has, "g 行存在但角色未持有必须 false")
+
+	// 回收（删 g 行）后下一调用即 false——CR-04 判据实时性直证
+	_, err = e.inner.RemoveFilteredGroupingPolicy(0, "9001")
+	require.NoError(t, err)
+	has, err = e.HasRole(9001, "super_admin")
+	require.NoError(t, err)
+	assert.False(t, has, "回收 g 行后 HasRole 下一调用即 false（判据不得读快照）")
+
+	has, err = e.HasRole(9002, "super_admin")
+	require.NoError(t, err)
+	assert.False(t, has, "无 g 行用户必须 false 且无 error")
+}
+
 // TestSyncRolePermsReplacesAll SyncRolePerms 幂等全量替换直证：先手工两行 p 策略，
 // SyncRolePerms 单行替换后该角色 GetPolicy 恰一行（旧两行被清）。
 func TestSyncRolePermsReplacesAll(t *testing.T) {
