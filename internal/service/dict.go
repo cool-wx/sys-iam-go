@@ -9,6 +9,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/cool-wx/sys-iam-go/internal/event"
 	"github.com/cool-wx/sys-iam-go/internal/model/dto"
 	"github.com/cool-wx/sys-iam-go/internal/model/po"
 	"github.com/cool-wx/sys-iam-go/internal/repository"
@@ -17,15 +18,18 @@ import (
 )
 
 // DictService 字典域服务（类型 + 数据合并一个 service——04-RESEARCH Implementation
-// Guidance 建议形态；数据侧依赖类型 repo 做存在性校验与冗余名读取）。
+// Guidance 建议形态；数据侧依赖类型 repo 做存在性校验与冗余名读取）。pub 用于字典
+// 类型改名事件发布（Phase 5 SYNC-01）：本 plan 一次改齐构造签名，DictTypeNameChanged
+// 发布挂点在 05-02 实装——字段暂存不用。
 type DictService struct {
 	typeRepo *repository.DictTypeRepo
 	dataRepo *repository.DictDataRepo
+	pub      event.Publisher
 }
 
 // NewDictService 构造。
-func NewDictService(typeRepo *repository.DictTypeRepo, dataRepo *repository.DictDataRepo) *DictService {
-	return &DictService{typeRepo: typeRepo, dataRepo: dataRepo}
+func NewDictService(typeRepo *repository.DictTypeRepo, dataRepo *repository.DictDataRepo, pub event.Publisher) *DictService {
+	return &DictService{typeRepo: typeRepo, dataRepo: dataRepo, pub: pub}
 }
 
 // ---- 字典类型侧（DICT-01）----

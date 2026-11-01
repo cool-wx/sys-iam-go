@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/cool-wx/sys-iam-go/internal/event"
 	"github.com/cool-wx/sys-iam-go/internal/model/dto"
 	"github.com/cool-wx/sys-iam-go/internal/model/po"
 	"github.com/cool-wx/sys-iam-go/internal/repository"
@@ -14,14 +15,16 @@ import (
 	"github.com/cool-wx/sys-iam-go/pkg/errcode"
 )
 
-// MenuService 菜单域服务。
+// MenuService 菜单域服务。pub 用于改名事件发布（Phase 5 SYNC-01）：本 plan 一次
+// 改齐构造签名，MenuNameChanged 发布挂点在 05-02 实装——字段暂存不用。
 type MenuService struct {
 	repo *repository.MenuRepo
+	pub  event.Publisher
 }
 
 // NewMenuService 构造。
-func NewMenuService(repo *repository.MenuRepo) *MenuService {
-	return &MenuService{repo: repo}
+func NewMenuService(repo *repository.MenuRepo, pub event.Publisher) *MenuService {
+	return &MenuService{repo: repo, pub: pub}
 }
 
 // Create 创建菜单：DTO→PO（服务端默认值 status=ENABLED、visible=true——对齐 DDL

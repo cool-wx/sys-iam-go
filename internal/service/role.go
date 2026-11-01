@@ -13,6 +13,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/cool-wx/sys-iam-go/internal/authz"
+	"github.com/cool-wx/sys-iam-go/internal/event"
 	"github.com/cool-wx/sys-iam-go/internal/model/dto"
 	"github.com/cool-wx/sys-iam-go/internal/model/po"
 	"github.com/cool-wx/sys-iam-go/pkg/errcode"
@@ -34,11 +35,15 @@ type RoleService struct {
 	relationRepo *repository.RelationRepo
 	deptRepo     *repository.DeptRepo
 	enf          *authz.Enforcer
+	// pub 改名事件发布依赖（Phase 5 SYNC-01）：本 plan 一次改齐构造签名
+	//（照 04-01 perms.go 六域常量先例消除装配串行链），RoleNameChanged 发布
+	// 挂点在 05-02 实装——字段暂存不用（Go 允许未使用的 struct 字段）。
+	pub event.Publisher
 }
 
 // NewRoleService 构造。
-func NewRoleService(db *gorm.DB, roleRepo *repository.RoleRepo, menuRepo *repository.MenuRepo, relationRepo *repository.RelationRepo, deptRepo *repository.DeptRepo, enf *authz.Enforcer) *RoleService {
-	return &RoleService{db: db, roleRepo: roleRepo, menuRepo: menuRepo, relationRepo: relationRepo, deptRepo: deptRepo, enf: enf}
+func NewRoleService(db *gorm.DB, roleRepo *repository.RoleRepo, menuRepo *repository.MenuRepo, relationRepo *repository.RelationRepo, deptRepo *repository.DeptRepo, enf *authz.Enforcer, pub event.Publisher) *RoleService {
+	return &RoleService{db: db, roleRepo: roleRepo, menuRepo: menuRepo, relationRepo: relationRepo, deptRepo: deptRepo, enf: enf, pub: pub}
 }
 
 // Create 创建角色：服务端默认值 dataScope=1/status=ENABLED/builtin=false

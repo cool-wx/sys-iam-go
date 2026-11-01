@@ -14,6 +14,7 @@ import (
 	"github.com/cool-wx/sys-iam-go/internal/auth"
 	"github.com/cool-wx/sys-iam-go/internal/authz"
 	"github.com/cool-wx/sys-iam-go/internal/datascope"
+	"github.com/cool-wx/sys-iam-go/internal/event"
 	"github.com/cool-wx/sys-iam-go/internal/model/dto"
 	"github.com/cool-wx/sys-iam-go/internal/model/po"
 	"github.com/cool-wx/sys-iam-go/internal/repository"
@@ -36,10 +37,14 @@ type UserService struct {
 	deptRepo     *repository.DeptRepo
 	sm           *auth.SessionManager
 	enf          *authz.Enforcer
+	// pub 改真名事件发布依赖（Phase 5 SYNC-01）：本 plan 一次改齐构造签名，
+	// UserRealNameChanged 发布挂点在 05-02 实装——字段暂存不用。UsernameChanged
+	// 无发布点（源死代码语义，username 为登录锚点不可改，Q1 裁决）。
+	pub event.Publisher
 }
 
 // NewUserService 构造。
-func NewUserService(db *gorm.DB, repo *repository.UserRepo, relationRepo *repository.RelationRepo, roleRepo *repository.RoleRepo, deptRepo *repository.DeptRepo, sm *auth.SessionManager, enf *authz.Enforcer) *UserService {
+func NewUserService(db *gorm.DB, repo *repository.UserRepo, relationRepo *repository.RelationRepo, roleRepo *repository.RoleRepo, deptRepo *repository.DeptRepo, sm *auth.SessionManager, enf *authz.Enforcer, pub event.Publisher) *UserService {
 	return &UserService{
 		db:           db,
 		repo:         repo,
@@ -48,6 +53,7 @@ func NewUserService(db *gorm.DB, repo *repository.UserRepo, relationRepo *reposi
 		deptRepo:     deptRepo,
 		sm:           sm,
 		enf:          enf,
+		pub:          pub,
 	}
 }
 

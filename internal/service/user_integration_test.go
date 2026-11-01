@@ -4,6 +4,7 @@ package service_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,6 +14,7 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 
 	"github.com/cool-wx/sys-iam-go/internal/auth"
+	"github.com/cool-wx/sys-iam-go/internal/event"
 	"github.com/cool-wx/sys-iam-go/internal/model/dto"
 	"github.com/cool-wx/sys-iam-go/internal/repository"
 	"github.com/cool-wx/sys-iam-go/internal/service"
@@ -22,6 +24,21 @@ import (
 
 // strPtr 返回字符串指针。
 func strPtr(s string) *string { return &s }
+
+// fakePublisher 事件发布 mock（05-01 直构造点补参——pub 不可传 nil，05-02 起
+// user.Update 将真调 s.pub.Publish，nil 会 panic；此 fake 同时成为 05-02 发布
+// 条件单测的 mock 点）。
+type fakePublisher struct {
+	mu     sync.Mutex
+	events []event.NameChangedEvent
+}
+
+func (f *fakePublisher) Publish(_ context.Context, evt event.NameChangedEvent) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.events = append(f.events, evt)
+	return nil
+}
 
 // TestUpdateAuditWithIdentity ctx 注入 Identity 后 Update：DB 行 update_by_id/
 // update_by_name 必须等于该 identity（ENG-02 update 侧"有 identity"分支的行级证明；
@@ -44,10 +61,12 @@ func TestUpdateAuditWithIdentity(t *testing.T) {
 
 	repo := repository.NewUserRepo(db)
 	// 02-03 起 NewUserService 扩依赖（db+relation/role/dept repo+sm）；03-01 起
-	// 再扩 enf（Casbin enforcer）。本测试仅走 Create/Update 路径不触达 sm/enf
-	// （会话与策略同步仅 AssignRoles/Delete 路径），均传 nil 即可。
+	// 再扩 enf（Casbin enforcer）；05-01 起再扩 pub（事件发布，Phase 5 SYNC-01）。
+	// 本测试仅走 Create/Update 路径不触达 sm/enf（会话与策略同步仅 AssignRoles/
+	// Delete 路径），均传 nil 即可；pub 传 fakePublisher（不可 nil——05-02 起
+	// Update 改真名将真调 Publish）。
 	svc := service.NewUserService(db, repo,
-		repository.NewRelationRepo(db), repository.NewRoleRepo(db), repository.NewDeptRepo(db), nil, nil)
+		repository.NewRelationRepo(db), repository.NewRoleRepo(db), repository.NewDeptRepo(db), nil, nil, &fakePublisher{})
 
 	// create（无 identity 上下文——create_by 保持 NULL，不影响本断言目标）。
 	// 02-03 起 Create 强制部门校验链（deptId 必填且必须存在）——先 seed 部门再挂载。

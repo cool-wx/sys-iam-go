@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/cool-wx/sys-iam-go/internal/event"
 	"github.com/cool-wx/sys-iam-go/internal/model/dto"
 	"github.com/cool-wx/sys-iam-go/internal/model/po"
 	"github.com/cool-wx/sys-iam-go/internal/repository"
@@ -14,14 +15,16 @@ import (
 	"github.com/cool-wx/sys-iam-go/pkg/errcode"
 )
 
-// DeptService 部门域服务。
+// DeptService 部门域服务。pub 用于改名提交成功后发布 DeptNameChanged 事件
+// （Phase 5 SYNC-01/02：冗余名称列同步，发布时序契约见 internal/event 包注释）。
 type DeptService struct {
 	repo *repository.DeptRepo
+	pub  event.Publisher
 }
 
 // NewDeptService 构造。
-func NewDeptService(repo *repository.DeptRepo) *DeptService {
-	return &DeptService{repo: repo}
+func NewDeptService(repo *repository.DeptRepo, pub event.Publisher) *DeptService {
+	return &DeptService{repo: repo, pub: pub}
 }
 
 // Create 创建部门：DTO→PO（服务端默认值 status=ENABLED——对齐 DDL default 与源
@@ -53,7 +56,28 @@ func (s *DeptService) Create(ctx context.Context, req *dto.DeptCreateReq) (*dto.
 // Update 更新部门（部分更新，ENG-05）：白名单 deptName/parentId/sort/status/remark；
 // parentId 显式传入时联动父校验 + parentName 重冗余（源 editDept 同构语义）。
 // 落库后回读返回最新契约；审计由 repo.Patch 显式并入（ENG-02）。
+//
+// 改名同步（Phase 5 SYNC-01/02，源 DeptApplicationService.editDept 发布条件逐字
+// 移植）：请求显式带 deptName 时先回读旧行（同时把"行不存在"提前拦为 404，照 Get
+// 同款译域）；Patch 成功（SkipDefaultTransaction 下单语句已提交——「提交后发布」
+// 由代码顺序天然满足，D-02，发布语句绝不放在 Patch 之前或事务闭包内）之后，仅当
+// 新名≠旧行名时发布 DeptNameChanged（源按值变化检测，禁无条件发布——防"仅改备注"
+// 也触发关联表冗余同步）；Publish 失败上抛 500（D-03，客户端重试经幂等 UPDATE
+// 自愈，沿 casbin 双轨纪律）。
 func (s *DeptService) Update(ctx context.Context, id int64, req *dto.DeptUpdateReq) (*dto.DeptResp, error) {
+	// 发布条件需要旧名：仅当请求显式带部门名时回读旧行（源 oldName 取值前置）；
+	// 行不存在提前 404 拦截，Patch 与发布一个都不触发。
+	var old *po.DeptPO
+	if req.DeptName != nil {
+		var err error
+		old, err = s.repo.FindByID(ctx, id)
+		if err != nil {
+			if errors.Is(err, errcode.ErrNotFound) {
+				return nil, errcode.New(errcode.CodeNotFound, fmt.Sprintf("部门不存在: %d", id))
+			}
+			return nil, err
+		}
+	}
 	cols := map[string]any{}
 	if req.DeptName != nil {
 		cols["dept_name"] = *req.DeptName
@@ -96,6 +120,25 @@ func (s *DeptService) Update(ctx context.Context, id int64, req *dto.DeptUpdateR
 			return nil, errcode.New(errcode.CodeNotFound, fmt.Sprintf("部门不存在: %d", id))
 		}
 		return nil, err
+	}
+	// 改名事件发布（Patch 返回 nil 即已提交，D-02）：新名≠旧行名才发布——oldName
+	// 取回读行值、NULL 兜底 ""（源 oldName != null ? oldName : "" 同款）。
+	if old != nil && req.DeptName != nil {
+		oldName := ""
+		if old.DeptName != nil {
+			oldName = *old.DeptName
+		}
+		if *req.DeptName != oldName {
+			evt := event.NameChangedEvent{
+				Type:    event.DeptNameChanged,
+				ID:      id,
+				OldName: oldName,
+				NewName: *req.DeptName,
+			}
+			if err := s.pub.Publish(ctx, evt); err != nil {
+				return nil, err // → 500（D-03：同步 UPDATE 失败可观察，重试幂等自愈）
+			}
+		}
 	}
 	return s.Get(ctx, id)
 }

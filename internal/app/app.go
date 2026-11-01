@@ -19,6 +19,7 @@ import (
 	"github.com/cool-wx/sys-iam-go/internal/auth"
 	"github.com/cool-wx/sys-iam-go/internal/authz"
 	"github.com/cool-wx/sys-iam-go/internal/config"
+	"github.com/cool-wx/sys-iam-go/internal/event"
 	"github.com/cool-wx/sys-iam-go/internal/handler"
 	"github.com/cool-wx/sys-iam-go/internal/health"
 	"github.com/cool-wx/sys-iam-go/internal/middleware"
@@ -157,13 +158,18 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	// sink 注入 repo.InsertBatch——批量写收口数据访问层；chan 满丢弃不阻塞业务。
 	ologW := middleware.NewOpLogWriterWithSink(ologRepo.InsertBatch, logger)
 	ologW.Start()
-	userSvc := service.NewUserService(db, userRepo, relationRepo, roleRepo, deptRepo, sessionMgr, enf)
+	// 名称同步事件装配（Phase 5 SYNC-01/02，D-01/D-02）：基建先于消费者（照 ologW
+	// 先例）——dispatcher 构造 + 全部 6 个同步 handler 注册；5 个名称域 service 经
+	// Publisher 接口注入（Dispatcher 实现该接口），发布时序契约见 internal/event。
+	dispatcher := event.NewDispatcher()
+	event.RegisterAll(dispatcher, db)
+	userSvc := service.NewUserService(db, userRepo, relationRepo, roleRepo, deptRepo, sessionMgr, enf, dispatcher)
 	authSvc := service.NewAuthService(userRepo, relationRepo, apiKeyRepo, sessionMgr)
-	menuSvc := service.NewMenuService(menuRepo)
-	deptSvc := service.NewDeptService(deptRepo)
-	roleSvc := service.NewRoleService(db, roleRepo, menuRepo, relationRepo, deptRepo, enf)
+	menuSvc := service.NewMenuService(menuRepo, dispatcher)
+	deptSvc := service.NewDeptService(deptRepo, dispatcher)
+	roleSvc := service.NewRoleService(db, roleRepo, menuRepo, relationRepo, deptRepo, enf, dispatcher)
 	apiKeySvc := service.NewApiKeyService(userRepo, apiKeyRepo, sessionMgr)
-	dictSvc := service.NewDictService(dictTypeRepo, dictDataRepo)
+	dictSvc := service.NewDictService(dictTypeRepo, dictDataRepo, dispatcher)
 	configSvc := service.NewConfigService(configRepo)
 	shiftSvc := service.NewShiftService(shiftRepo)
 	fileSvc := service.NewFileService(db, fileInfoRepo, fileCategoryRepo, fileStorage)
