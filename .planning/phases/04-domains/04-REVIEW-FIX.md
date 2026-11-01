@@ -1,10 +1,10 @@
 ---
 phase: 04-domains
-fixed_at: 2026-11-01T16:05:00Z
+fixed_at: 2026-11-01T17:45:00Z
 review_path: .planning/phases/04-domains/04-REVIEW.md
-iteration: 1
-findings_in_scope: 7
-fixed: 7
+iteration: 2
+findings_in_scope: 2
+fixed: 2
 skipped: 0
 status: all_fixed
 ---
@@ -145,3 +145,78 @@ None — scope 内全部修复。
 _Fixed: 2026-11-01T16:05:00Z_
 _Fixer: Claude (gsd-code-fixer)_
 _Iteration: 1_
+
+---
+
+# Iteration 2 增量报告（2026-11-01T17:45:00Z）
+
+**Source review:** .planning/phases/04-domains/04-REVIEW.md（iter-2 复审：7/7 verified-fixed，新报 WR-06 + IN-02）
+**Summary:**
+- Findings in scope: 2（WR-06 + IN-02，编排者裁定两项都修——IN-02 虽 Info 但一行归零）
+- Fixed: 2
+- Skipped: 0
+
+**验证环境说明（#2825）：** 全部构建/vet/单测/集成测试运行于隔离 worktree
+`.claude/worktrees/rf-04-2475989-1793542182`（分支 `gsd-reviewfix/04-2475989`，基于 02acc9f），
+清理时 fast-forward 回 `gsd/phase-02-rbac`。集成测试经 testcontainers 自起 MySQL+Redis 容器。
+
+## Fixed Issues
+
+### WR-06: truncateBytes 回退循环对本身非法的 UTF-8 输入存在 CPU 放大面（~18.8ms/请求）
+
+**Files modified:** `internal/middleware/op_log.go`, `internal/middleware/op_log_test.go`
+**Commit:** 76e16a1
+**Applied fix:** 与 REVIEW 建议**同目标、修正实现**：消除 O(n²)（每剥 1 字节 ValidString 全量
+重扫），全路径至多 2 次 O(n) 扫描。合法输入用尾部解码回退切点；输入本身非法时一次 range
+定位首个非法序列起点直接截断（其后合法内容一并丢弃——params 是请求原文日志，语义无损）。
+**与 REVIEW 建议的偏差及原因：** 建议的 `RuneStart` 逐字节回退有两侧缺陷——(1) 切点**恰在
+rune 边界**时尾字节是完整 rune 的 continuation（如全「错」60000B 的 `0x99`），会被误剥成
+不完整序列，既有用例断言的 20000 rune 将回归成 19999；(2) 切点在多字节中间时剥完
+continuation 停在孤立起始字节（如 `E9`）上，合法输入也会掉进 O(n) 兜底扫描。故改用
+`DecodeLastRuneInString` 尾部完整解码判定：「RuneError 且 size==1」才视为切点碎片剥除
+（合法编码 U+FFFD 解码同为 RuneError 但 size==3，不误剥），完整 rune（ASCII / 恰边界多字节
+结尾 / 合法 U+FFFD）不剥。18.8ms 恶意构造（30000A+0xFF+30000B）在新实现下走「尾部 O(1)
+判定 + ValidString 失败 + 一次 range 定位」，放大面消除。
+**新增测试：** 前置 0xFF 构造（iter-2 实测 18.8ms 场景）断言 30000A 正确切点 + 5ms 时间
+上界（与 O(n²) 相差近两个数量级，机器抖动不致误报）、切点尾部非法字节、密集非法点
+（0.6ms 构造族）、合法 U+FFFD 恰边界不误截；既有截断用例（TestTruncateBytesUTF8Safe /
+TestMaskSensitiveOrderWithTruncation）零回归。
+
+### IN-02: bindJSON 超限文案改由 MaxBytesError.Limit 生成（CR-01 已知残留归零）
+
+**Files modified:** `internal/handler/user.go`, `internal/handler/bindjson_message_test.go`（新建）
+**Commit:** b47fc19
+**Applied fix:** 照 REVIEW 建议形态：文案实参 `middleware.MaxBodyMB` → `tooLarge.Limit>>20`
+（实际触发的截断层上限，无需感知「是哪一层截断」）；各 BodyLimit 层上限均整 MB 派生，右移
+整除安全。改动面与现状相同（只换实参来源），随之移除不再使用的 `middleware` import。
+Oplog errReader 回放路径原样传递 MaxBytesError，Limit 字段回放后不变，无兼容问题。
+**新增测试（免容器，同包直调未导出 bindJSON）：** 流式构造「合法 JSON 头 + 超长字符串值」
+body 读至超限点（全零/乱码字节会在第一块就 SyntaxError 读不到超限点——构造注意点），
+断言 multipart 超 20MB 时文案含「请求体超过 20MB 上限」而非「1MB」、JSON 路由 1MB 既有
+文案不回归。**反证已做：** 修复前版本（stash 还原）下两条断言必失败，测试真实抓住漂移。
+
+## Verification（iter-2）
+
+均在上述 worktree 运行：
+
+- `go build ./...` 通过；`go vet ./...` 通过
+- 单测：`internal/middleware`（WR-06 新旧用例全套）、`pkg/...` 全过；
+  `internal/handler`（IN-02 新用例，免容器）通过
+- 集成测试（TZ=UTC，testcontainers 双容器）：
+  `go test -tags=integration -run 'TestOpLog|TestFile|TestFaultImport' ./internal/handler/ -count=1`
+  PASS（207s）——TestOpLog 系列走真实 Oplog 中间件 + truncateBytes 落库 utf8mb4 链路，
+  对 WR-06 同时构成集成验证
+- 全量回归由编排者统一收口
+
+## Commits（iter-2）
+
+| Finding | Commit | 说明 |
+|---------|--------|------|
+| WR-06 | 76e16a1 | truncateBytes 非法输入 O(n²) 回退消除（一次 O(n) 定位首个非法点） |
+| IN-02 | b47fc19 | bindJSON 超限文案改由 MaxBytesError.Limit 生成 |
+
+---
+
+_Fixed: 2026-11-01T17:45:00Z_
+_Fixer: Claude (gsd-code-fixer)_
+_Iteration: 2_
