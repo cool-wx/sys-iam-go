@@ -26,13 +26,13 @@
     {
       "number": "5",
       "name": "名称同步事件与验收收尾",
-      "status": "in_progress"
+      "status": "complete"
     }
   ],
   "next": {
-    "command": "/gsd-progress --next",
-    "label": "Advance to the next step (verify)",
-    "reason": "Phase 5 of 5 · 80% · ready to verify"
+    "command": "/gsd-new-milestone",
+    "label": "Start a new milestone",
+    "reason": "All phases complete — start a new milestone"
   },
-  "updated_at": "2026-11-02T03:13:14.458Z"
+  "updated_at": "2026-11-02T06:13:42.624Z"
 }
