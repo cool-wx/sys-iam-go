@@ -92,8 +92,8 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 名称同步事件（SYNC）
 
-- [ ] **SYNC-01**: 6 个名称变更事件（dept/dictType/menu/role/username/realName）同步关联表（realName 波及 14 张表）
-- [ ] **SYNC-02**: 事件事务提交后发布、handler 独立事务执行（防死锁时序）、UPDATE 带 `!= newName` 条件（NULL 语义锁定测试）
+- [x] **SYNC-01**: 6 个名称变更事件（dept/dictType/menu/role/username/realName）同步关联表（realName 波及 14 张表）
+- [x] **SYNC-02**: 事件事务提交后发布、handler 独立事务执行（防死锁时序）、UPDATE 带 `!= newName` 条件（NULL 语义锁定测试）
 
 ### 工程化与横切（ENG）
 
@@ -194,8 +194,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SHFT-02 | Phase 4 | Complete |
 | FAUL-01 | Phase 4 | Complete |
 | FAUL-02 | Phase 4 | Complete |
-| SYNC-01 | Phase 5 | Pending |
-| SYNC-02 | Phase 5 | Pending |
+| SYNC-01 | Phase 5 | Complete |
+| SYNC-02 | Phase 5 | Complete |
 
 **Coverage:**
 - v1 requirements: 54 total

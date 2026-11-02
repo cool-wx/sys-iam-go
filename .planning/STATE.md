@@ -2,17 +2,17 @@
 gsd_state_version: "1.0"
 current_phase: 05
 current_phase_name: 名称同步事件与验收收尾
-status: executing
-stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-11-02T02:04:30.865Z"
+status: verifying
+stopped_at: Completed 05-03-PLAN.md
+last_updated: "2026-11-02T03:13:17.064Z"
 last_activity: 2026-11-02
 last_activity_desc: Phase 05 execution started
-state_head: 2eb85d20bc2e81ebd30b5400e9cb86636702618f
+state_head: 1da22023a665f25da3fac062b1dfe3f9db13eb19
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 16
-  completed_plans: 15
+  completed_plans: 16
   percent: 80
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-02, Phase 4 transition)
 
 Phase: 05 (名称同步事件与验收收尾) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-02 — Phase 05 execution started
 
 Progress: [████████░░] 80%
@@ -74,6 +74,7 @@ Progress: [████████░░] 80%
 | Phase 04 P04 | 36min | 2 tasks | 13 files |
 | Phase 05 P01 | 58min | 2 tasks | 12 files |
 | Phase 05 P02 | 122min | 2 tasks | 7 files |
+| Phase 05 P03 | 60min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -127,6 +128,9 @@ Recent decisions affecting current work:
 - [Phase 05]: [Phase 05] 05-02: 发布条件逐字移植源语义并以四形态单测锁定（改名恰 1 条/仅改 remark 零发布/同名零发布/404 零发布）——防「仅改备注」放大成 26 条 UPDATE 的 T-5-04 缓解面直证
 - [Phase 05]: [Phase 05] 05-02: resource-constrained 测试纪律确立——go test -p 1 串行 + 分批 -run 正则 + 批间容器清理（1.6GB 宿主机任意时刻 ≤1 测试容器，编排器硬性约束，05-03 延续）
 - [Phase 05]: [Phase 05] 05-02: gsd/phase-02-rbac 为唯一分支（origin/HEAD），#3819 守卫经明示逃生门 git.allow_default_branch_commits=true 放行（branching_strategy: none 既定实践显式化）
+- [Phase 05]: 三域移根根形态唯一化（WR-07 方向 A）：cols[parent_id]=nil 写 NULL，根 = parent_id NULL 与 Create 根同形态——对源 Create null/Update 0 不对称的 Go 内一致性修正（显式偏离源），存量 0 行读侧双兼容不迁移
+- [Phase 05]: IN-04 disposition：App.Stop 双 Flush 经 stopOnce 幂等冗余，落库不变量已由 TestOlogSurvivesStop（入队→真实 Stop→DB 断言）直证——行为正确无需另改
+- [Phase 05]: 资源约束纪律延续（1.6GB 宿主机硬性约束）：全量回归 -p 1 串行 14 批 + 批间容器清理核查零残留，开发库 mysql/redis 容器全程未触碰——v1 全量验收回归门全绿（ROADMAP 成功标准 3 关闭）
 
 ### Pending Todos
 
@@ -139,7 +143,7 @@ None yet.
 - [现场部署] system:role:edit 仅授予管理员角色（WR-05 部署信任边界——角色菜单编辑即自授面，deferred 挂账）
 - [现场部署] 生产存量 super_admin 行 data_scope=NULL 需经 PUT /roles/:id 置 5（03-02 留档）
 - [现场部署] Nacos craft-satoken.yaml timeout 真值校正（D-06 已 30d 代理 + IAM_AUTH_SESSION_TIMEOUT 可覆盖；rnacos 空实例确认永不可得）
-- [Phase 4] WR-07/WR-08（advisory）：文件分类「移至根」响应 parentId="0" 与 Create 根 null 双形态 + 对应集成断言永真——04-REVIEW-DISPOSITION 记录在案（IN-03..05 同），可 `/gsd-code-review 04 --fix` 或随 Phase 5 处理
+- ~~[Phase 4] WR-07/WR-08（advisory）：文件分类「移至根」响应 parentId="0" 与 Create 根 null 双形态 + 对应集成断言永真~~ — 05-03 收口（三域移根 parent_id 落 NULL 唯一形态 + file 断言 envelope 真化，23303e5；VERIFICATION.md 修复记录在案）
 - ~~[Phase 3] IN-14 过期 key 存量会话无自动撤销触发点~~ — 03-03 收口（iam:apikey-user: 反查键三件落地，过期 key 登录拒绝即撤销存量会话）
 - ~~[Phase 3] 管理端点全量授权~~ — 03-03 收口（34+2 路由逐路由 requirePerm，RequireRoles 仅 kickout 叠加保留）
 
@@ -153,6 +157,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-02T02:04:30.670Z
-Stopped at: Completed 05-02-PLAN.md
+Last session: 2026-11-02T03:13:16.861Z
+Stopped at: Completed 05-03-PLAN.md
 Resume file: None
