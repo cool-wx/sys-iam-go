@@ -21,7 +21,8 @@ import (
 // DeptNameChanged → dispatcher 同步分发 → handler 独立事务幂等 UPDATE →
 // sys_user.dept_name（dept_id 锚）与 sys_dept.parent_name（parent_id 锚）可断言。
 // 覆盖五语义：Create 自动冗余基线、改名双表同步正例、参数化特殊字符（T-5-01）、
-// 仅改备注零同步（发布条件负例）、幂等重放自愈 + 同名重放零 UPDATE。
+// 仅改备注零同步（发布条件负例）、幂等重放自愈 + 同名重放幂等拉齐（CR-01 修订：
+// 显式带名即发布，同名重发经 handler `<>` 条件自愈，非零 UPDATE 短路）。
 func TestDeptNameSync(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
 	checkDB := openCheckDB(t, dsn)
@@ -82,12 +83,15 @@ func TestDeptNameSync(t *testing.T) {
 	requireSynced(t, userDeptNameOf(t, checkDB, userID), "研发三部", "重放改名后陈旧 sys_user.dept_name 被 <> 拉齐（自愈）")
 	requireSynced(t, deptParentNameOf(t, checkDB, deptB), "研发三部", "重放改名后 sys_dept.parent_name 同步")
 
-	// --- 同名重放：新名==旧行名不发布 → 零同步 UPDATE（哨兵值保持直证）---
+	// --- 同名重放（CR-01 修订语义）：显式带名即发布——同名 PUT 仍发布 1 条事件，
+	// handler 幂等 UPDATE（`冗余列 <> newName`）把陈旧哨兵值拉齐为新名（自愈直证；
+	// 旧守卫「新名==旧行名不发布」下此请求零发布、哨兵值保持——该语义经 CR-01
+	// 裁决废弃，与 service 层 name_sync_service_integration_test.go 形态 (c) 同款对齐）---
 	execMust(t, checkDB, "UPDATE sys_user SET dept_name = ? WHERE id = ?", "哨兵值", userID)
 	status, body = putDept(deptA, `{"deptName":"研发三部"}`)
 	require.Equal(t, http.StatusOK, status, "同名重放失败: %s", body)
-	requireSynced(t, userDeptNameOf(t, checkDB, userID), "哨兵值",
-		"同名 PUT 不发布事件——sys_user.dept_name 必须保持哨兵值（零同步 UPDATE）")
+	requireSynced(t, userDeptNameOf(t, checkDB, userID), "研发三部",
+		"同名 PUT 重发事件——sys_user.dept_name 哨兵值被幂等 UPDATE 拉齐（CR-01 自愈）")
 }
 
 // userDeptNameOf 查 sys_user.dept_name（DB 行级断言原料）。
