@@ -139,6 +139,20 @@ func (s *UserService) Create(ctx context.Context, req *dto.UserCreateReq) (*dto.
 // 忽略，绝无客户端直写路径，02-03 USER-01"冗余不可伪造"truth 全覆盖）。
 // deptId 显式传入时走与 Create 相同的校验链。
 func (s *UserService) Update(ctx context.Context, id int64, req *dto.UpdateUserReq) (*dto.UserResp, error) {
+	// 改名同步回读（Phase 5 SYNC-01，源 UserApplicationService.editUser 发布条件
+	// 逐字移植）：仅当请求显式带真名时回读旧行（源 oldRealName 取值前置）；行不存在
+	// 提前 404 拦截（照 userNotFound 译域），Patch 与发布一个都不触发。
+	var old *po.UserPO
+	if req.RealName != nil {
+		var err error
+		old, err = s.repo.FindByID(ctx, id)
+		if err != nil {
+			if errors.Is(err, errcode.ErrNotFound) {
+				return nil, userNotFound(id)
+			}
+			return nil, err
+		}
+	}
 	cols := map[string]any{}
 	if req.RealName != nil {
 		cols["real_name"] = *req.RealName
@@ -178,6 +192,31 @@ func (s *UserService) Update(ctx context.Context, id int64, req *dto.UpdateUserR
 	}
 	if err := s.repo.Patch(ctx, id, cols); err != nil {
 		return nil, err
+	}
+	// 改名事件发布（Patch 返回 nil 即已提交，D-02）：仅当本次请求带了真名且回读
+	// 成功、新真名≠旧真名时发布（源条件 `realName != null &&
+	// !realName.equals(oldRealName)` 逐字移植）。UserPO.RealName 为 *string——旧行
+	// NULL 兜底 ""（源 oldName != null ? oldName : "" 同款）。**不改白名单**
+	// （username/password 刻意排除——username 为登录锚点不可改，UsernameChanged 无
+	// 发布点系源死代码语义，Q1 裁决）；**不动 internal/auth**（D-04：会话快照照源
+	// 不刷新，下次登录生效）。Publish 失败上抛 500（D-03：客户端重试经幂等 UPDATE
+	// 自愈，沿 casbin 双轨纪律）。
+	if old != nil && req.RealName != nil {
+		oldName := ""
+		if old.RealName != nil {
+			oldName = *old.RealName
+		}
+		if *req.RealName != oldName {
+			evt := event.NameChangedEvent{
+				Type:    event.RealNameChanged,
+				ID:      id,
+				OldName: oldName,
+				NewName: *req.RealName,
+			}
+			if err := s.pub.Publish(ctx, evt); err != nil {
+				return nil, err // → 500（D-03：同步 UPDATE 失败可观察，重试幂等自愈）
+			}
+		}
 	}
 	return s.Get(ctx, id)
 }
