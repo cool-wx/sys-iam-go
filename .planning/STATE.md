@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 05
 current_phase_name: 名称同步事件与验收收尾
 status: executing
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-11-01T23:53:06.976Z"
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-11-02T02:04:30.865Z"
 last_activity: 2026-11-02
 last_activity_desc: Phase 05 execution started
-state_head: f974c4641c95b78dd974ab74c060de2982ddefbb
+state_head: 2eb85d20bc2e81ebd30b5400e9cb86636702618f
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 16
-  completed_plans: 13
+  completed_plans: 15
   percent: 80
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-02, Phase 4 transition)
 ## Current Position
 
 Phase: 05 (名称同步事件与验收收尾) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-11-02 — Phase 05 execution started
 
@@ -73,6 +73,7 @@ Progress: [████████░░] 80%
 | Phase 04 P03 | ~90min（含 429 中断） | 2 tasks | 15 files |
 | Phase 04 P04 | 36min | 2 tasks | 13 files |
 | Phase 05 P01 | 58min | 2 tasks | 12 files |
+| Phase 05 P02 | 122min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -123,6 +124,9 @@ Recent decisions affecting current work:
 - [Phase 04]: FileCategory 上级分类不存在按 04-02 PLAN 拍板 404/10300（与部门域 400 不同）；Update 加 WR-04 成环拦截照 dept 同构
 - [Phase 05]: [Phase 05] 05-01: 事件机制零框架自建（map[Type][]Listener 同步逐个分发、首错即返、未注册 nil）——service 提交后发布+handler 独立事务+`<>` 幂等 UPDATE 三语义立稳，SYNC-02 源死锁时序修正如约落地
 - [Phase 05]: [Phase 05] 05-01: 5 个 service 构造签名一次改齐注入 Publisher（照 04-01 perms.go 先例），05-02 起零装配层改动；listeners 35 条 UPDATE 逐条内联不做 helper 收敛（逐条形态即审计面，与源监听器逐行对应）
+- [Phase 05]: [Phase 05] 05-02: 发布条件逐字移植源语义并以四形态单测锁定（改名恰 1 条/仅改 remark 零发布/同名零发布/404 零发布）——防「仅改备注」放大成 26 条 UPDATE 的 T-5-04 缓解面直证
+- [Phase 05]: [Phase 05] 05-02: resource-constrained 测试纪律确立——go test -p 1 串行 + 分批 -run 正则 + 批间容器清理（1.6GB 宿主机任意时刻 ≤1 测试容器，编排器硬性约束，05-03 延续）
+- [Phase 05]: [Phase 05] 05-02: gsd/phase-02-rbac 为唯一分支（origin/HEAD），#3819 守卫经明示逃生门 git.allow_default_branch_commits=true 放行（branching_strategy: none 既定实践显式化）
 
 ### Pending Todos
 
@@ -149,6 +153,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-01T23:53:06.810Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-11-02T02:04:30.670Z
+Stopped at: Completed 05-02-PLAN.md
 Resume file: None
