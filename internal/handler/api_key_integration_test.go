@@ -1,8 +1,8 @@
 //go:build integration
 
-// API Key 域集成测试（02-03 AKEY-01/02）：CRUD 五端点 + 明文 key 32 hex 一次性
-// 返回 + 仅 status 单列语义 + 停用/过期不可登录直证（T-2-16）+ 六组路由无 token
-// 401 遍历（AUTH-06 白名单外无遗漏）——真实 MySQL+Redis 双容器。
+// API Key 域集成测试：CRUD 五端点 + 明文 key 32 hex 一次性
+// 返回 + 仅 status 单列语义 + 停用/过期不可登录直证 + 六组路由无 token
+// 401 遍历（白名单外无遗漏）——真实 MySQL+Redis 双容器。
 package handler_test
 
 import (
@@ -37,11 +37,11 @@ type apiKeyEnvelope struct {
 	} `json:"data"`
 }
 
-// TestApiKeyCRUD CRUD 主链路（AKEY-01）：create 明文 key 32 hex；带不存在 userId
+// TestApiKeyCRUD CRUD 主链路：create 明文 key 32 hex；带不存在 userId
 // 400「用户不存在: {id}」；带有效 userId username 冗余 = user.Username（源语义取
 // username 非 realName）；PUT status 停用后其余列不动（仅 status 单列语义直证）；
 // list 分页 envelope；delete 后 GET 404。另含六组路由 GET 无 token 401 遍历
-// （AUTH-06：白名单外无遗漏）。
+// （白名单外无遗漏）。
 func TestApiKeyCRUD(t *testing.T) {
 	ts, _, adminToken, adminID := newTestApp(t)
 	token := adminToken()
@@ -99,7 +99,7 @@ func TestApiKeyCRUD(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &after))
 
 	assert.Equal(t, "DISABLED", deref(after.Data.Status), "status 应已停用")
-	assert.Equal(t, before.Data.ApiKey, after.Data.ApiKey, "api_key 不得被写路径覆写（T-2-15）")
+	assert.Equal(t, before.Data.ApiKey, after.Data.ApiKey, "api_key 不得被写路径覆写")
 	assert.Equal(t, before.Data.Username, after.Data.Username, "username 不得变化")
 	assert.Equal(t, before.Data.UserID, after.Data.UserID, "user_id 不得变化")
 	assert.Equal(t, before.Data.ExpireTime, after.Data.ExpireTime, "expire_time 不得变化")
@@ -144,9 +144,9 @@ func TestApiKeyCRUD(t *testing.T) {
 	assert.Equal(t, 10300, delEnv.Code)
 	assert.Equal(t, "API Key 不存在: "+linked.Data.ID, delEnv.Message, "body=%s", body)
 
-	_ = linkedKey // 明文已在断言中使用；不落任何日志行（T-2-15）
+	_ = linkedKey // 明文已在断言中使用；不落任何日志行
 
-	// --- 六组路由 GET 无 token 401 遍历（AUTH-06 白名单外无遗漏）---
+	// --- 六组路由 GET 无 token 401 遍历（白名单外无遗漏）---
 	for _, path := range []string{
 		"/api/v1/users",
 		"/api/v1/users/123",
@@ -171,7 +171,7 @@ func TestApiKeyCRUD(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, status, "DELETE 无 token 必须 401: body=%s", body)
 }
 
-// TestApiKeyDisabledCannotLogin 停用立即生效直证（AKEY-02/T-2-16）：经管理面
+// TestApiKeyDisabledCannotLogin 停用立即生效直证：经管理面
 // create 的 key 先 apikey-login 200 → PUT status 停用 → 同 key apikey-login
 // 401/10503（FindByKey 登录查询恒带 status=ENABLED）。
 func TestApiKeyDisabledCannotLogin(t *testing.T) {
@@ -210,8 +210,8 @@ func TestApiKeyDisabledCannotLogin(t *testing.T) {
 	assert.Equal(t, http.StatusOK, status, "重新启用后必须可登录: body=%s", body)
 }
 
-// TestApiKeyRevokeKillsExistingSession 停用/删除 key 撤销已签发存量会话直证（WR-06
-// 修复，CR-01 用户轴同族语义——认证中间件仅校验 Redis 会话存在性、不回查 key 状态，
+// TestApiKeyRevokeKillsExistingSession 停用/删除 key 撤销已签发存量会话直证（
+// 用户轴同族语义——认证中间件仅校验 Redis 会话存在性、不回查 key 状态，
 // 停用只封 FindByKey 新登录不逐旧会话则被撤销凭据的 token 在整个滚动 TTL 内继续
 // 完全可用）：api key 登录拿 tokenK → tokenK 可访问业务端点（会话存活基线）→ 停用
 // key → tokenK 即刻 401（存量会话已撤，非仅登录封禁）；登录封禁语义不变（10503）；
@@ -237,7 +237,7 @@ func TestApiKeyRevokeKillsExistingSession(t *testing.T) {
 	status, body = doAuthRequest(t, tokenK, "GET", ts.URL+"/api/v1/users", "")
 	require.Equal(t, http.StatusOK, status, "撤销前 key 会话必须可用: body=%s", body)
 
-	// --- 停用轴：停用 key → 存量会话即刻撤销（WR-06 主断言）---
+	// --- 停用轴：停用 key → 存量会话即刻撤销（主断言）---
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/api-keys/"+created.Data.ID+"/status", `{"status":"DISABLED"}`)
 	require.Equal(t, http.StatusOK, status, "body=%s", body)
 	status, body = doAuthRequest(t, tokenK, "GET", ts.URL+"/api/v1/users", "")
@@ -248,7 +248,7 @@ func TestApiKeyRevokeKillsExistingSession(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &unauthEnv))
 	assert.Equal(t, 10100, unauthEnv.Code, "401/10100 未认证语义: body=%s", body)
 
-	// 登录封禁语义不变（AKEY-02：FindByKey 恒带 ENABLED 过滤）
+	// 登录封禁语义不变（FindByKey 恒带 ENABLED 过滤）
 	status, body = apikeyLogin(t, ts, key)
 	require.Equal(t, http.StatusUnauthorized, status, "停用 key 登录必须 401: body=%s", body)
 	var loginEnv struct {
@@ -271,10 +271,10 @@ func TestApiKeyRevokeKillsExistingSession(t *testing.T) {
 	status, body = doAuthRequest(t, token, "DELETE", ts.URL+"/api/v1/api-keys/"+created.Data.ID, "")
 	require.Equal(t, http.StatusOK, status, "body=%s", body)
 	status, body = doAuthRequest(t, tokenK2, "GET", ts.URL+"/api/v1/users", "")
-	require.Equal(t, http.StatusUnauthorized, status, "删除 key 后旧 token 必须即刻 401（WR-06 Delete 同构）: body=%s", body)
+	require.Equal(t, http.StatusUnauthorized, status, "删除 key 后旧 token 必须即刻 401（Delete 同构）: body=%s", body)
 }
 
-// TestApiKeyExpiredCannotLogin 过期 key 不可登录（AKEY-02）：seed expire_time 为
+// TestApiKeyExpiredCannotLogin 过期 key 不可登录：seed expire_time 为
 // 过去时间的 key → apikey-login 401/10503（FindByKey 恒带 expire_time > NOW() 过滤）。
 func TestApiKeyExpiredCannotLogin(t *testing.T) {
 	ts, dsn, adminToken, adminID := newTestApp(t)
@@ -298,7 +298,7 @@ type apiKeyEnvelope_Data struct {
 }
 
 // openCheckRedis 打开测试专用 go-redis 连接（拨号 newTestApp 赋值的 testRedisAddr
-// ——当前用例的 Redis 容器）+ cleanup 关闭。IN-14 双键（iam:apikey-token:/
+// ——当前用例的 Redis 容器）+ cleanup 关闭。双键（iam:apikey-token:/
 // iam:apikey-user:）存在性直查断言用。
 func openCheckRedis(t *testing.T) *redis.Client {
 	t.Helper()
@@ -307,10 +307,10 @@ func openCheckRedis(t *testing.T) *redis.Client {
 	return rdb
 }
 
-// TestApiKeyExpireRevocation IN-14/D-16 验收核心（过期 key 存量会话撤销）：
+// TestApiKeyExpireRevocation 验收核心（过期 key 存量会话撤销）：
 // 有效 key K 关联用户 U → apikey-login 成功拿 token T（双键已写）→ 直改 DB 置
 // expire_time 为过去（模拟自然过期——无管理面触发点的缺口场景）→ 再次 apikey-login
-// 401/10503 且**存量会话已被反查撤销**（T 请求 pri 端点 401——IN-14 核心断言）→
+// 401/10503 且**存量会话已被反查撤销**（T 请求 pri 端点 401——核心断言）→
 // 第二次拒绝后反查键已 DEL（防反复触发）。幂等路径：从未登录过的过期 key 登录
 // 10503 原样（无反查键无副作用）。停用分支（管理面撤销链端到端）：K2 停用经
 // UpdateStatus → KickoutAPIKey → 旧 token 401 且双键均消失（redis.Nil 直查）。
@@ -325,11 +325,11 @@ func TestApiKeyExpireRevocation(t *testing.T) {
 	status, body := apikeyLogin(t, ts, "ak-expire-revoke")
 	require.Equal(t, http.StatusOK, status, "有效 key 登录应 200: body=%s", body)
 	tokT := extractToken(t, body)
-	// 完整登录后双键在（IN-14 撤销链的前提）
+	// 完整登录后双键在（撤销链的前提）
 	_, err := rdb.Get(ctx0(), "iam:apikey-user:ak-expire-revoke").Result()
 	require.NoError(t, err, "完整登录后反查键必须已写: %v", err)
 
-	// 直改 DB 过期（绕过管理面——自然过期无撤销触发点，恰是 IN-14 缺口场景）
+	// 直改 DB 过期（绕过管理面——自然过期无撤销触发点，恰是缺口场景）
 	checkDB := openCheckDB(t, dsn)
 	execMust(t, checkDB, "UPDATE sys_api_key SET expire_time = ? WHERE api_key = ?",
 		"2020-01-01 00:00:00", "ak-expire-revoke")
@@ -343,7 +343,7 @@ func TestApiKeyExpireRevocation(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &envelope))
 	assert.Equal(t, 10503, envelope.Code, "body=%s", body)
 
-	// IN-14 核心断言：旧 token T 请求 pri 端点 → 401（存量会话已被反查撤销）
+	// 核心断言：旧 token T 请求 pri 端点 → 401（存量会话已被反查撤销）
 	status, body = doAuthRequest(t, tokT, "GET", ts.URL+"/api/v1/users/"+strconv.FormatInt(uid, 10), "")
 	require.Equal(t, http.StatusUnauthorized, status, "过期 key 二次登录后旧 token 必须 401（存量会话已撤）: body=%s", body)
 	var unauth struct {

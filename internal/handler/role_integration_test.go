@@ -27,9 +27,9 @@ type roleEnvelope struct {
 	} `json:"data"`
 }
 
-// TestRoleCRUD 角色 CRUD 全链（ROLE-01）：create 默认值（dataScope=1/status=
+// TestRoleCRUD 角色 CRUD 全链：create 默认值（dataScope=1/status=
 // ENABLED/builtin=false）→ get → patch（roleName 变更 + builtin 键被忽略，
-// WR-01 守卫）→ create builtin=true 400（WR-01）→ 角色编码重复 400 → 四连删事务
+// 守卫直证）→ create builtin=true 400 → 角色编码重复 400 → 四连删事务
 // （user_role/role_menu/role_dept/role 关联表零残留）+ 404 域消息 + pri 组 401 保护。
 func TestRoleCRUD(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
@@ -64,7 +64,7 @@ func TestRoleCRUD(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &getEnv))
 	assert.Equal(t, "测试角色", getEnv.Data.RoleName)
 
-	// --- patch：roleName 变更 + builtin 键被忽略（WR-01：builtin 不可经 edit 翻转，
+	// --- patch：roleName 变更 + builtin 键被忽略（builtin 不可经 edit 翻转，
 	// 否则先翻转 false 再 DELETE 即绕过 builtin 删除守卫）---
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID,
 		`{"roleName":"测试角色（改）","builtin":true}`)
@@ -72,9 +72,9 @@ func TestRoleCRUD(t *testing.T) {
 	var patchEnv roleEnvelope
 	require.NoError(t, json.Unmarshal(body, &patchEnv))
 	assert.Equal(t, "测试角色（改）", patchEnv.Data.RoleName)
-	assert.False(t, patchEnv.Data.Builtin, "builtin 键必须被忽略，不得经 edit 翻转（WR-01）")
+	assert.False(t, patchEnv.Data.Builtin, "builtin 键必须被忽略，不得经 edit 翻转")
 
-	// --- create builtin=true 显式拒绝 400（WR-01：防 role:add 制造守卫永不可删的
+	// --- create builtin=true 显式拒绝 400（防 role:add 制造守卫永不可删的
 	// "永生角色"）---
 	status, body = doAuthRequest(t, token, "POST", ts.URL+"/api/v1/roles",
 		`{"roleName":"永生角色","roleCode":"builtin_create_guard","builtin":true}`)
@@ -87,7 +87,7 @@ func TestRoleCRUD(t *testing.T) {
 	assert.Equal(t, 10400, builtinEnv.Code, "body=%s", body)
 	assert.Contains(t, builtinEnv.Message, "builtin", "body=%s", body)
 
-	// --- dataScope 域校验（IN-02）：域外值 99/-1 → 400/10401；域内 3 → 200 ---
+	// --- dataScope 域校验：域外值 99/-1 → 400/10401；域内 3 → 200 ---
 	for _, bad := range []string{"99", "-1"} {
 		status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID,
 			`{"dataScope":`+bad+`}`)
@@ -150,14 +150,14 @@ func TestRoleCRUD(t *testing.T) {
 	require.NoError(t, checkDB.Raw("SELECT COUNT(*) FROM sys_role_dept WHERE role_id = ?", roleNum).Scan(&roleDeptN).Error)
 	assert.Equal(t, int64(0), userRoleN, "sys_user_role 中该 role_id 必须零残留（四连删事务）")
 	assert.Equal(t, int64(0), roleMenuN, "sys_role_menu 中该 role_id 必须零残留（四连删事务）")
-	assert.Equal(t, int64(0), roleDeptN, "sys_role_dept 中该 role_id 必须零残留（四连删事务，D-10 第三删）")
+	assert.Equal(t, int64(0), roleDeptN, "sys_role_dept 中该 role_id 必须零残留（四连删事务第三删）")
 
 	// --- delete 不存在 id：404 ---
 	status, body = doAuthRequest(t, token, "DELETE", ts.URL+"/api/v1/roles/99002", "")
 	require.Equal(t, http.StatusNotFound, status, "body=%s", body)
 }
 
-// TestRoleBuiltinDeleteConflict builtin 角色删除硬拦截（ROLE-02/D-14）：DELETE 返回
+// TestRoleBuiltinDeleteConflict builtin 角色删除硬拦截：DELETE 返回
 // HTTP 409 + code=10602 + message「系统内置角色不可删除」，且该角色其后仍可 GET
 // （零删除证明——前置拦截，四连删一个都不触发）。测试容器 sys_role 为空，builtin
 // 角色由 SQL seed（勿动任何既有 builtin 行）。
@@ -188,12 +188,12 @@ func TestRoleBuiltinDeleteConflict(t *testing.T) {
 	assert.True(t, getEnv.Data.Builtin)
 }
 
-// TestRoleBuiltinDisableConflict builtin 角色停用硬拦截（WR-06 回归）：PUT
+// TestRoleBuiltinDisableConflict builtin 角色停用硬拦截（回归）：PUT
 // /roles/:id {"status":"DISABLED"} → HTTP 409 + code=10604 + message「系统内置角色
 // 不可停用」，status 保持 ENABLED、casbin p/g 行零变化（前置拦截零写调用——停用
-// 路径 ClearRole 会双清豁免 g 行且 boot 对账不还魂，重启不自愈锁死，WR-06 后果链）。
+// 路径 ClearRole 会双清豁免 g 行且 boot 对账不还魂，重启不自愈锁死——后果链）。
 // 另证：builtin 非 status 更新不受守卫误伤；非 builtin 角色 DISABLED/ENABLED 往返
-// 照常（WR-04 运行期同步语义不变）。
+// 照常（运行期同步语义不变）。
 func TestRoleBuiltinDisableConflict(t *testing.T) {
 	ts, dsn, adminToken, adminID := newTestApp(t)
 	token := adminToken()
@@ -214,7 +214,7 @@ func TestRoleBuiltinDisableConflict(t *testing.T) {
 	).Scan(&pCnt).Error)
 	require.Equal(t, int64(1), pCnt, "前置条件：p 行必须已写入")
 
-	// WR-06 核心：builtin 角色停用 → 409/10604
+	// 核心：builtin 角色停用 → 409/10604
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/990451",
 		`{"status":"DISABLED"}`)
 	require.Equal(t, http.StatusConflict, status, "builtin 停用必须 409: body=%s", body)
@@ -248,7 +248,7 @@ func TestRoleBuiltinDisableConflict(t *testing.T) {
 		`{"roleName":"停用守卫角色（改名）"}`)
 	require.Equal(t, http.StatusOK, status, "builtin 非 status 更新必须放行: body=%s", body)
 
-	// 对照：非 builtin 角色 DISABLED/ENABLED 往返照常（WR-04 语义不变）
+	// 对照：非 builtin 角色 DISABLED/ENABLED 往返照常（运行期同步语义不变）
 	normalID := mustCreate(t, token, ts.URL+"/api/v1/roles", `{"roleName":"普通停用角色","roleCode":"disable_normal_role"}`)
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+normalID, `{"status":"DISABLED"}`)
 	require.Equal(t, http.StatusOK, status, "非 builtin 角色停用必须放行: body=%s", body)
@@ -256,7 +256,7 @@ func TestRoleBuiltinDisableConflict(t *testing.T) {
 	require.Equal(t, http.StatusOK, status, "非 builtin 角色恢复必须放行: body=%s", body)
 }
 
-// TestRoleListFilter 角色分页条件查询（ROLE-03）：roleName 命中/未命中 + trim 语义
+// TestRoleListFilter 角色分页条件查询：roleName 命中/未命中 + trim 语义
 // （空格包裹仍命中）+ items 按 id 升序 + 无参数默认分页钳位 1/15。
 func TestRoleListFilter(t *testing.T) {
 	ts, _, adminToken, _ := newTestApp(t)
@@ -333,7 +333,7 @@ func TestRoleListFilter(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &allEnv))
 	assert.Equal(t, 1, allEnv.Data.Page, "无参数默认 page=1")
 	assert.Equal(t, 15, allEnv.Data.Size, "无参数默认 size=15")
-	// 03-01 起 newTestApp 内建 super_admin 种子角色（先于测试 fixture 创建——
+	// newTestApp 内建 super_admin 种子角色（先于测试 fixture 创建——
 	// 雪花单调递增，id 恒小于测试内三角色），全量基线 3→4
 	assert.Equal(t, int64(4), allEnv.Data.Total)
 	require.Len(t, allEnv.Data.Items, 4)
@@ -341,7 +341,7 @@ func TestRoleListFilter(t *testing.T) {
 	assert.Equal(t, idB, allEnv.Data.Items[2].ID)
 }
 
-// TestRoleAssignMenus 角色菜单分配（ROLE-03/D-13）：分配→GET 返回 menuIds→再分配
+// TestRoleAssignMenus 角色菜单分配：分配→GET 返回 menuIds→再分配
 // 反映全量替换（非追加）→ menuId 缺失 400「菜单不存在: [...]」且不动存量 → 冗余列
 // 落库断言。菜单 fixture 经 SQL 直插（固定 id，避开雪花）。
 func TestRoleAssignMenus(t *testing.T) {
@@ -399,7 +399,7 @@ func TestRoleAssignMenus(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &menusEnv))
 	assert.Equal(t, []string{"990302", "990303"}, menusEnv.Data, "校验失败不得改动存量分配")
 
-	// --- 重复 menuId 去重（WR-02）：["甲","甲","乙"] → sys_role_menu 恰 2 行且
+	// --- 重复 menuId 去重：["甲","甲","乙"] → sys_role_menu 恰 2 行且
 	// GET 回显不重复（请求体重复 ID 不得落脏行）---
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID+"/menus",
 		`{"menuIds":["990301","990301","990302"]}`)
@@ -408,10 +408,10 @@ func TestRoleAssignMenus(t *testing.T) {
 	require.NoError(t, checkDB.Raw(
 		"SELECT COUNT(*) FROM sys_role_menu WHERE role_id = ?", roleNum,
 	).Scan(&dupCnt).Error)
-	assert.Equal(t, int64(2), dupCnt, "重复 menuId 必须去重，sys_role_menu 不得有重复行（WR-02）")
+	assert.Equal(t, int64(2), dupCnt, "重复 menuId 必须去重，sys_role_menu 不得有重复行")
 	status, body = getMenus()
 	require.NoError(t, json.Unmarshal(body, &menusEnv))
-	assert.Equal(t, []string{"990301", "990302"}, menusEnv.Data, "GET 回显不得含重复 menuId（WR-02）")
+	assert.Equal(t, []string{"990301", "990302"}, menusEnv.Data, "GET 回显不得含重复 menuId")
 
 	// --- 空数组=全回收（合法语义）---
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID+"/menus", `{"menuIds":[]}`)
@@ -446,9 +446,9 @@ func TestRoleAssignMenus(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, status, "body=%s", body)
 }
 
-// TestRoleAssignMenusDisabledRejected 停用角色写路径封口（WR-07 回归，角色轴）：
+// TestRoleAssignMenusDisabledRejected 停用角色写路径封口（回归，角色轴）：
 // 停用角色的 AssignMenus 必须 400 前置拒绝——否则 SyncRolePerms 会把 p 行写回，
-// 停用语义（WR-04 授权即刻撤销）被合法 API 复活（运行期 matcher 无 status 概念）。
+// 停用语义（授权即刻撤销）被合法 API 复活（运行期 matcher 无 status 概念）。
 // 断言 casbin p 行零复活 + sys_role_menu 零变化（前置拦截零写调用）；恢复 ENABLED
 // 后分配照常（守卫不误伤正常路径）。
 func TestRoleAssignMenusDisabledRejected(t *testing.T) {
@@ -476,12 +476,12 @@ func TestRoleAssignMenusDisabledRejected(t *testing.T) {
 	}
 	require.Equal(t, int64(1), countRolePRows(), "前置条件：停用前 p 行必须已写入")
 
-	// 停用（WR-04：ClearRole 双清 casbin，业务表 sys_role_menu 保持不动）
+	// 停用（ClearRole 双清 casbin，业务表 sys_role_menu 保持不动）
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID, `{"status":"DISABLED"}`)
 	require.Equal(t, http.StatusOK, status, "停用必须成功: body=%s", body)
-	require.Equal(t, int64(0), countRolePRows(), "前置条件：停用必须双清 p 行（WR-04 语义基线）")
+	require.Equal(t, int64(0), countRolePRows(), "前置条件：停用必须双清 p 行（语义基线）")
 
-	// WR-07 核心：对停用角色 AssignMenus → 400 前置拒绝
+	// 核心：对停用角色 AssignMenus → 400 前置拒绝
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID+"/menus",
 		`{"menuIds":["990471"]}`)
 	require.Equal(t, http.StatusBadRequest, status, "停用角色分配菜单必须 400: body=%s", body)
@@ -494,8 +494,8 @@ func TestRoleAssignMenusDisabledRejected(t *testing.T) {
 	assert.Contains(t, rejEnv.Message, "角色已停用", "body=%s", body)
 	assert.Contains(t, rejEnv.Message, roleID, "message 应含停用角色 id: body=%s", body)
 
-	// 零写证明：p 行零复活；sys_role_menu 保持停用前关联（业务表不动，WR-04 事实源语义）
-	require.Equal(t, int64(0), countRolePRows(), "被拒请求不得把 p 行写回（WR-07 封口直证）")
+	// 零写证明：p 行零复活；sys_role_menu 保持停用前关联（业务表不动，事实源语义）
+	require.Equal(t, int64(0), countRolePRows(), "被拒请求不得把 p 行写回（封口直证）")
 	var rmCnt int64
 	require.NoError(t, checkDB.Raw("SELECT COUNT(*) FROM sys_role_menu WHERE role_id = ?", roleNum).Scan(&rmCnt).Error)
 	assert.Equal(t, int64(1), rmCnt, "被拒请求不得改动 sys_role_menu（业务表停用期间不动）")
@@ -509,10 +509,10 @@ func TestRoleAssignMenusDisabledRejected(t *testing.T) {
 	require.Equal(t, int64(1), countRolePRows(), "恢复后 p 行必须重建")
 }
 
-// TestRoleAssignScopes 角色数据权限范围部门分配（PERM-03 档位 4 存储面，D-10；
+// TestRoleAssignScopes 角色数据权限范围部门分配（档位 4 存储面；
 // PUT/GET /api/v1/roles/:id/scopes 独立子资源端点）：分配→GET 回读→再分配反映
 // 全量替换→缺失 deptId 400「部门不存在: [...]」且不动存量→空数组全回收（直查
-// sys_role_dept 零行）→冗余列落库（dept_name 查库值非请求体，T-2-15）→非授权
+// sys_role_dept 零行）→冗余列落库（dept_name 查库值非请求体）→非授权
 // 角色 403/10200（RequirePerm fail-closed）→删除持有 scopes 的角色后 sys_role_dept
 // 零残留（四连删直证）。部门 fixture 经 SQL 直插（固定 id，照 TestRoleAssignMenus）。
 func TestRoleAssignScopes(t *testing.T) {
@@ -571,7 +571,7 @@ func TestRoleAssignScopes(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &scopesEnv))
 	assert.Equal(t, []string{"990601"}, scopesEnv.Data, "校验失败不得改动存量配置")
 
-	// --- 重复 deptId 去重（WR-02）：["甲","甲"] → sys_role_dept 恰 1 行 ---
+	// --- 重复 deptId 去重：["甲","甲"] → sys_role_dept 恰 1 行 ---
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID+"/scopes",
 		`{"deptIds":["990601","990601"]}`)
 	require.Equal(t, http.StatusOK, status, "含重复 deptId 的分配应 200（去重后执行）: body=%s", body)
@@ -579,7 +579,7 @@ func TestRoleAssignScopes(t *testing.T) {
 	require.NoError(t, checkDB.Raw(
 		"SELECT COUNT(*) FROM sys_role_dept WHERE role_id = ?", roleNum,
 	).Scan(&dupCnt).Error)
-	assert.Equal(t, int64(1), dupCnt, "重复 deptId 必须去重，sys_role_dept 不得有重复行（WR-02）")
+	assert.Equal(t, int64(1), dupCnt, "重复 deptId 必须去重，sys_role_dept 不得有重复行")
 
 	// --- 空数组=全回收（合法语义）：GET 空 [] 且 sys_role_dept 直查零行 ---
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID+"/scopes", `{"deptIds":[]}`)
@@ -592,7 +592,7 @@ func TestRoleAssignScopes(t *testing.T) {
 	require.NoError(t, checkDB.Raw("SELECT COUNT(*) FROM sys_role_dept WHERE role_id = ?", roleNum).Scan(&cnt).Error)
 	assert.Equal(t, int64(0), cnt, "空数组全回收后 sys_role_dept 必须零行（全删重建语义）")
 
-	// --- 重新分配 [甲, 乙] 后断言 role_dept 冗余列（dept_name 查库值，T-2-15）---
+	// --- 重新分配 [甲, 乙] 后断言 role_dept 冗余列（dept_name 查库值）---
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+roleID+"/scopes",
 		`{"deptIds":["990601","990602"]}`)
 	require.Equal(t, http.StatusOK, status, "body=%s", body)
@@ -623,11 +623,11 @@ func TestRoleAssignScopes(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &forbidden))
 	assert.Equal(t, 10200, forbidden.Code, "body=%s", body)
 
-	// --- 四连删直证：删除持有 scopes 的角色后 sys_role_dept 无残留（D-10 第三删）---
+	// --- 四连删直证：删除持有 scopes 的角色后 sys_role_dept 无残留（第三删）---
 	status, body = doAuthRequest(t, token, "DELETE", ts.URL+"/api/v1/roles/"+roleID, "")
 	require.Equal(t, http.StatusOK, status, "删除角色应 200: body=%s", body)
 	require.NoError(t, checkDB.Raw("SELECT COUNT(*) FROM sys_role_dept WHERE role_id = ?", roleNum).Scan(&cnt).Error)
-	assert.Equal(t, int64(0), cnt, "角色删除四连删后 sys_role_dept 必须零残留（D-10）")
+	assert.Equal(t, int64(0), cnt, "角色删除四连删后 sys_role_dept 必须零残留")
 
 	// --- 分配到不存在的角色：404 域消息 ---
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/99002/scopes", `{"deptIds":[]}`)

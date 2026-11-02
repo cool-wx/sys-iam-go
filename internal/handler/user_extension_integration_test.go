@@ -1,8 +1,8 @@
 //go:build integration
 
-// 用户装配域扩展集成测试（02-03 USER-01..05,07）：roles 子资源全量替换、状态停用
-// 踢会话（D-09 安全增强）、重置密码踢会话、builtin 删除 409 拦截、删除清理关联、
-// 两查询装配防 N+1（USER-05）——真实 MySQL+Redis 双容器。
+// 用户装配域扩展集成测试：roles 子资源全量替换、状态停用
+// 踢会话（安全增强）、重置密码踢会话、builtin 删除 409 拦截、删除清理关联、
+// 两查询装配防 N+1——真实 MySQL+Redis 双容器。
 package handler_test
 
 import (
@@ -62,12 +62,11 @@ func getUserRoles(t *testing.T, ts *httptest.Server, token, userID string) ([]ro
 	return envelope.Data, body
 }
 
-// grantUserPerm 为运行时用户授权单条 perm（03-03 全量收口适配）：DB 直插 perm 菜单
+// grantUserPerm 为运行时用户授权单条 perm（全量收口适配）：DB 直插 perm 菜单
 // + seedRoleWithScope 角色，再走 API 授权链（PUT /roles/:id/menus + PUT /users/:id/roles）
 // 同步 enforcer——g/p 行运行时写入使被测用户当前会话下一请求即持 perm。boot 对账只
-// 覆盖 newTestApp 种子三件套；本 helper 服务 app.New 之后经 API 创建的用户（03-01
-// 曾以"改走未挂 gate 端点"绕行，03-03 全量收口后无未挂 gate 的管理端点，探活必须
-// 修种子授权——prohibition：不拆 gate）。
+// 覆盖 newTestApp 种子三件套；本 helper 服务 app.New 之后经 API 创建的用户：
+// 管理端点全部挂 gate，探活必须经 API 授权链（纪律：不拆 gate）。
 func grantUserPerm(t *testing.T, ts *httptest.Server, token, dsn string, userID int64, perm, roleCode string) {
 	t.Helper()
 	db := openCheckDB(t, dsn)
@@ -103,7 +102,7 @@ func userRoleCount(t *testing.T, db *gorm.DB, userID int64) int64 {
 	return cnt
 }
 
-// TestUserRolesAssignReplace 角色分配全量替换语义（USER-04/D-12）：分配两角色 →
+// TestUserRolesAssignReplace 角色分配全量替换语义：分配两角色 →
 // GET 返回 2 角色 → 再分配 1 角色 → GET 反映全量替换（重分配不叠加）→ PUT 空数组 →
 // GET 空 []。DB 行断言：sys_user_role.username 列存 realName（源命名与内容不符
 // 原样移植）、role_name 冗余为角色名。
@@ -163,7 +162,7 @@ func TestUserRolesAssignReplace(t *testing.T) {
 	require.Equal(t, int64(0), userRoleCount(t, checkDB, uid))
 }
 
-// TestUserRolesBuiltinAssignGuard builtin 角色分配提权守卫（CR-03 回归）：
+// TestUserRolesBuiltinAssignGuard builtin 角色分配提权守卫（回归）：
 // 仅持 system:user:edit 的操作者把 builtin 角色分配给任意用户 → 403/10603 且
 // sys_user_role 与 casbin g 行零变化（前置拦截零写调用）；super_admin 分配
 // builtin 角色 → 200（守卫不误伤特权路径）。
@@ -175,7 +174,7 @@ func TestUserRolesBuiltinAssignGuard(t *testing.T) {
 	uidStr := createRawUser(t, ts, token, `{"username":"guard-target","password":"pw-123456","realName":"守卫目标","deptId":"100"}`)
 	uid, _ := strconv.ParseInt(uidStr, 10, 64)
 
-	// 操作者：仅持 user:edit 的角色（无 super_admin）——CR-03 攻击链主体
+	// 操作者：仅持 user:edit 的角色（无 super_admin）——攻击链主体
 	editorID := seedUser(t, dsn, "guard-editor", testAdminHash, "编辑者", 1, false)
 	grantUserPerm(t, ts, token, dsn, editorID, "system:user:edit", "guard_editor_role")
 	editorToken := loginAs(t, ts, "guard-editor", testAdminPass)
@@ -209,7 +208,7 @@ func TestUserRolesBuiltinAssignGuard(t *testing.T) {
 	status, body = assignRoles(t, ts, editorToken, uidStr, `"`+normalRole+`"`)
 	require.Equal(t, http.StatusOK, status, "非 builtin 角色分配必须不受守卫影响: body=%s", body)
 
-	// 特权路径：super_admin 分配 builtin 角色 → 200（D-07 豁免者管理自有角色合法）
+	// 特权路径：super_admin 分配 builtin 角色 → 200（豁免者管理自有角色合法）
 	status, body = assignRoles(t, ts, token, uidStr, `"`+superRoleIDStr+`"`)
 	require.Equal(t, http.StatusOK, status, "super_admin 分配 builtin 角色必须放行: body=%s", body)
 	require.NoError(t, checkDB.Raw(
@@ -219,7 +218,7 @@ func TestUserRolesBuiltinAssignGuard(t *testing.T) {
 	assert.Equal(t, int64(1), gRows, "特权分配后 g 行必须同步写入")
 }
 
-// TestUserRolesBuiltinAssignGuardRevokedSession CR-04 回归：守卫判据源是 enforcer
+// TestUserRolesBuiltinAssignGuardRevokedSession 回归：守卫判据源是 enforcer
 // g 层实时状态而非会话 roles 快照。REVIEW 攻击链逐步直证——受害者持 super_admin +
 // editor（editor 带 system:user:edit p 行）登录（会话快照装配含 super_admin）→
 // 管理员仅回收 super_admin（SyncUserRoles 删 g 行，会话不踢、快照不刷新）→ 同一
@@ -276,10 +275,10 @@ func TestUserRolesBuiltinAssignGuardRevokedSession(t *testing.T) {
 	).Scan(&gCnt).Error)
 	require.Equal(t, int64(0), gCnt, "前置条件：回收后 super_admin g 行必须已删除")
 
-	// CR-04 核心断言：同一旧 token（快照仍含 super_admin、RequirePerm 经 editor
+	// 核心断言：同一旧 token（快照仍含 super_admin、RequirePerm 经 editor
 	// p 行放行）立即重分配 builtin → 403/10603
 	status, body = assignRoles(t, ts, victimToken, victimIDStr, `"`+superRoleIDStr+`", "`+editorRoleStr+`"`)
-	require.Equal(t, http.StatusForbidden, status, "回收后旧会话重分配 builtin 必须 403（CR-04）: body=%s", body)
+	require.Equal(t, http.StatusForbidden, status, "回收后旧会话重分配 builtin 必须 403: body=%s", body)
 	var forbidden struct {
 		Code    int    `json:"code"`
 		Message string `json:"message"`
@@ -303,7 +302,7 @@ func TestUserRolesBuiltinAssignGuardRevokedSession(t *testing.T) {
 	assert.Equal(t, int64(0), urCnt, "被拒请求不得写入 sys_user_role 关联（前置拦截零写）")
 }
 
-// TestAssignRolesDisabledRoleRejected 停用角色写路径封口（WR-07 回归，用户轴）：
+// TestAssignRolesDisabledRoleRejected 停用角色写路径封口（回归，用户轴）：
 // 请求集合含停用角色时 AssignRoles 必须 400 前置拒绝——否则 SyncUserRoles 会把 g
 // 行写回，停用语义被合法 API 复活（matcher 只看 casbin 行、无 status 概念，g 行即
 // 权限）。断言单停用角色与混合集合（正常+停用）均整体拒绝、casbin g 行与
@@ -323,7 +322,7 @@ func TestAssignRolesDisabledRoleRejected(t *testing.T) {
 	status, body := doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/roles/"+disabledRole, `{"status":"DISABLED"}`)
 	require.Equal(t, http.StatusOK, status, "停用必须成功: body=%s", body)
 
-	// WR-07 核心：单停用角色分配 → 400
+	// 核心：单停用角色分配 → 400
 	status, body = assignRoles(t, ts, token, uidStr, `"`+disabledRole+`"`)
 	require.Equal(t, http.StatusBadRequest, status, "含停用角色的分配必须 400: body=%s", body)
 	var rejEnv struct {
@@ -379,7 +378,7 @@ func TestUserRolesInvalidRole(t *testing.T) {
 	assert.Empty(t, refs)
 }
 
-// TestUserStatusDisableKickout 停用即踢存量会话三段直证（USER-02/T-2-13/D-09）：
+// TestUserStatusDisableKickout 停用即踢存量会话三段直证：
 // ①停用后旧 token 访问 401 ②停用用户登录被拒 10502 ③重新启用后可登录。
 func TestUserStatusDisableKickout(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
@@ -390,7 +389,7 @@ func TestUserStatusDisableKickout(t *testing.T) {
 	uid, err := strconv.ParseInt(uidStr, 10, 64)
 	require.NoError(t, err)
 
-	// 03-03 全量收口后详情端点同样挂 requirePerm gate——探活用户必须持
+	// 详情端点同样挂 requirePerm gate——探活用户必须持
 	// system:user:query（API 授权链运行时同步 enforcer）
 	grantUserPerm(t, ts, token, dsn, uid, "system:user:query", "probe_status_role")
 
@@ -424,7 +423,7 @@ func TestUserStatusDisableKickout(t *testing.T) {
 	assert.Equal(t, http.StatusOK, status, "启用后新登录必须可用: body=%s", body)
 }
 
-// TestResetPasswordFlow 重置密码流（USER-03/T-2-14/D-09）：登录 tokenA → admin 重置
+// TestResetPasswordFlow 重置密码流：登录 tokenA → admin 重置
 // （无旧密码校验）→ tokenA 即刻 401 → 用 123456 登录成功且 firstLogin=true → 旧密码
 // 已被覆写失效。
 func TestResetPasswordFlow(t *testing.T) {
@@ -436,7 +435,7 @@ func TestResetPasswordFlow(t *testing.T) {
 	uid, err := strconv.ParseInt(uidStr, 10, 64)
 	require.NoError(t, err)
 
-	// 03-03 全量收口后探活用户必须持 system:user:query（API 授权链，同上）
+	// 探活用户必须持 system:user:query（API 授权链，同上）
 	grantUserPerm(t, ts, token, dsn, uid, "system:user:query", "probe_reset_role")
 
 	tokenA := loginAs(t, ts, "reset-user", "pw-123456")
@@ -484,7 +483,7 @@ func TestResetPasswordFlow(t *testing.T) {
 	assert.Equal(t, 10501, oldPwEnv.Code)
 }
 
-// TestDeleteBuiltinUser409 builtin 用户删除硬拦截（USER-07/D-14）：DELETE builtin=true
+// TestDeleteBuiltinUser409 builtin 用户删除硬拦截：DELETE builtin=true
 // 用户 → HTTP 409 + code=10601「系统内置用户不可删除」（零删除调用前置拦截）→
 // 用户仍存在。
 func TestDeleteBuiltinUser409(t *testing.T) {
@@ -517,7 +516,7 @@ func TestDeleteBuiltinUser409(t *testing.T) {
 }
 
 // TestDeleteUserCleansRelations 普通用户删除清理关联：分配角色后 DELETE → 200、
-// sys_user_role 该 user_id 行数 0、casbin g 行（用户→角色）同步清零（CR-01 预清
+// sys_user_role 该 user_id 行数 0、casbin g 行（用户→角色）同步清零（预清
 // 模式回归——预清在事务前执行，删除成功即策略已撤）、GET 404 域消息（先删关联
 // 再删用户，源顺序）。
 func TestDeleteUserCleansRelations(t *testing.T) {
@@ -540,12 +539,12 @@ func TestDeleteUserCleansRelations(t *testing.T) {
 		"SELECT COUNT(*) FROM casbin_rule WHERE ptype = 'g' AND v0 = ? AND v1 = 'role_del'",
 		uidStr,
 	).Scan(&gRows).Error)
-	require.Equal(t, int64(1), gRows, "删除前 casbin g 行必须存在（D-13 双轨）")
+	require.Equal(t, int64(1), gRows, "删除前 casbin g 行必须存在（双轨）")
 
 	status, body = doAuthRequest(t, token, "DELETE", ts.URL+"/api/v1/users/"+uidStr, "")
 	require.Equal(t, http.StatusOK, status, "普通用户删除应 200: body=%s", body)
 
-	// 关联零残留 + 用户行已删 + casbin g 行同步清零（预清模式，CR-01）
+	// 关联零残留 + 用户行已删 + casbin g 行同步清零（预清模式）
 	require.Equal(t, int64(0), userRoleCount(t, checkDB, uid), "sys_user_role 关联必须清零")
 	require.NoError(t, checkDB.Raw(
 		"SELECT COUNT(*) FROM casbin_rule WHERE ptype = 'g' AND v0 = ? AND v1 = 'role_del'",
@@ -567,7 +566,7 @@ func TestDeleteUserCleansRelations(t *testing.T) {
 	assert.Equal(t, "用户不存在: "+uidStr, nfEnv.Message)
 }
 
-// TestUserListDetailRolesAssembly 两查询装配（USER-05）：3 用户各配不同角色 →
+// TestUserListDetailRolesAssembly 两查询装配：3 用户各配不同角色 →
 // list 与 get 的 roles 形状正确、互不串扰；无角色用户 roles 为 [] 非 null。
 func TestUserListDetailRolesAssembly(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
@@ -650,7 +649,7 @@ func TestUserListDetailRolesAssembly(t *testing.T) {
 	assert.Contains(t, string(body), `"roles":[]`, "无角色用户详情 roles 必须 [] 非 null")
 }
 
-// TestDeleteUserKicksSessions 删除即踢存量会话（USER-07/D-09，CR-01 修复回归）：
+// TestDeleteUserKicksSessions 删除即踢存量会话（修复回归）：
 // 目标用户登录拿 token 确认可用 → admin 删除 → 旧 token 即刻 401/10100。认证中间件
 // 仅校验 Redis 会话存在性、不回查 DB——删除后不踢则被删账号旧 token 在整个会话 TTL
 // 内继续完全可用（删除形同未遂），删除必须与 UpdateStatus/ResetPassword 同语义踢会话。
@@ -663,7 +662,7 @@ func TestDeleteUserKicksSessions(t *testing.T) {
 	uid, err := strconv.ParseInt(uidStr, 10, 64)
 	require.NoError(t, err)
 
-	// 03-03 全量收口后探活用户必须持 system:user:query（API 授权链，同上——
+	// 探活用户必须持 system:user:query（API 授权链，同上——
 	// 无角色普通用户走任何管理端点都会被授权层 403 污染认证语义）
 	grantUserPerm(t, ts, token, dsn, uid, "system:user:query", "probe_delkick_role")
 
@@ -684,7 +683,7 @@ func TestDeleteUserKicksSessions(t *testing.T) {
 	assert.Equal(t, 10100, envelope.Code, "删除后旧 token 应落未登录 10100: body=%s", body)
 }
 
-// TestUserStatusInvalidEnumRejected 状态变更端点非法枚举值 400（WR-03 回归）：
+// TestUserStatusInvalidEnumRejected 状态变更端点非法枚举值 400（回归）：
 // 合法停用后，拼写错误的启用值（"ENABLD"）必须 400/10401（UnmarshalJSON 收紧报错
 // → 绑定层译参数校验失败），状态不得被静默兜底为 ENABLED 反转——登录仍 10502。
 // api-keys status 端点同型直证一行。
@@ -735,8 +734,8 @@ func TestUserStatusInvalidEnumRejected(t *testing.T) {
 	assert.Equal(t, 10401, apiKeyBad.Code, "body=%s", body)
 }
 
-// TestUserUpdateDeptNameNotWritable dept_name 不可经请求体直写（IN-03 回归，
-// 02-03 USER-01"冗余不可伪造"truth 全覆盖）：Update 只带 deptName 不带 deptId →
+// TestUserUpdateDeptNameNotWritable dept_name 不可经请求体直写（回归，
+// "冗余不可伪造"truth 全覆盖）：Update 只带 deptName 不带 deptId →
 // 200 但 dept_name 列保持服务端查库值不变（客户端展示冗余零直写路径）；带 deptId
 // 变更时 dept_name 才以查库值联动覆写。
 func TestUserUpdateDeptNameNotWritable(t *testing.T) {
@@ -756,7 +755,7 @@ func TestUserUpdateDeptNameNotWritable(t *testing.T) {
 	require.NoError(t, checkDB.Raw(
 		"SELECT dept_name FROM sys_user WHERE username = 'deptname-guard'",
 	).Scan(&deptName).Error)
-	assert.Equal(t, "总部", deptName, "dept_name 必须保持服务端查库值，不得被请求体直写（IN-03）")
+	assert.Equal(t, "总部", deptName, "dept_name 必须保持服务端查库值，不得被请求体直写")
 
 	// 带 deptId 变更 → dept_name 以查库值联动覆写（唯一合法路径）
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/users/"+uidStr,
@@ -765,5 +764,5 @@ func TestUserUpdateDeptNameNotWritable(t *testing.T) {
 	require.NoError(t, checkDB.Raw(
 		"SELECT dept_name FROM sys_user WHERE username = 'deptname-guard'",
 	).Scan(&deptName).Error)
-	assert.Equal(t, "研发部", deptName, "deptId 变更时 dept_name 必须以查库值联动覆写（T-2-15）")
+	assert.Equal(t, "研发部", deptName, "deptId 变更时 dept_name 必须以查库值联动覆写")
 }

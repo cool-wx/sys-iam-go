@@ -26,7 +26,7 @@ import (
 
 // s3TestConfig S3 smoke 测试端点/凭证（env 可覆盖；默认值为本机 rustfs 容器
 // 实证值 localhost:9000 admin/admin——不锚定容器名，只探测端口，环境自适应：
-// 与 Phase 1 镜像探测先例同构；CI/其他机器不可达即 skip）。
+// 与镜像探测先例同构；CI/其他机器不可达即 skip）。
 func s3TestConfig(t *testing.T) config.S3Config {
 	t.Helper()
 	return config.S3Config{
@@ -68,7 +68,7 @@ func requireS3Reachable(t *testing.T, endpoint string) {
 }
 
 func TestS3StorageSmoke(t *testing.T) {
-	// S3 真容器 smoke（FILE-05，rustfs Up 时真跑 / 不可达 skip）：EnsureBucket
+	// S3 真容器 smoke（rustfs Up 时真跑 / 不可达 skip）：EnsureBucket
 	// 建桶幂等 → Put 随机 1KB → GetStream 字节一致 → Delete → StatObject 确认
 	// 消失。测试桶独立随机前缀（iamtest-{rand}）不污染默认桶，结束后清理。
 	cfg := s3TestConfig(t)

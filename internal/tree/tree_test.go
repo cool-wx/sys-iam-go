@@ -47,7 +47,7 @@ func build(nodes []node) []node {
 }
 
 // TestBuildEmptyListReturnsEmptyNonNil 空列表输入：返回空且非 nil（JSON 出口 []
-// 而非 null，ENG-01 空输入边界在树端点的等价要求）。
+// 而非 null，空输入边界在树端点的等价要求）。
 func TestBuildEmptyListReturnsEmptyNonNil(t *testing.T) {
 	roots := build(nil)
 	require.NotNil(t, roots, "空输入必须返回非 nil 切片")
@@ -101,7 +101,7 @@ func TestBuildZeroParentPromotedToRoot(t *testing.T) {
 }
 
 // TestBuildOrphanParentPromotedToRoot parentId 指向不存在节点：提升为根
-// （DEPT-02 验收语义直证——源服务层 `map.get(pid) == null → roots.add(dept)`；
+// （验收语义直证——源服务层 `map.get(pid) == null → roots.add(dept)`；
 // 实体死代码的"孤儿丢弃"语义在此被排除）。真根与孤儿同现于根层。
 func TestBuildOrphanParentPromotedToRoot(t *testing.T) {
 	nodes := []node{
@@ -119,7 +119,7 @@ func TestBuildOrphanParentPromotedToRoot(t *testing.T) {
 }
 
 // TestBuildCycleDoesNotHang 环引用（A.parent=B、B.parent=A）不死循环：
-// Build 必须在有限时间返回（T-2-09 直证——无递归父链遍历，环不可达即终止）。
+// Build 必须在有限时间返回（直证——无递归父链遍历，环不可达即终止）。
 // 环引用双方 parent 均命中节点索引（非 map 未命中），按源服务层语义与 plan 实现
 // 规格（"map 未命中 id → 归入 roots"）均不归根：输出树只含真根，环节点静默不产出
 // （与源一致——环即脏数据，源 buildTree 同样将其排除在 roots 之外）。
@@ -135,7 +135,7 @@ func TestBuildCycleDoesNotHang(t *testing.T) {
 	select {
 	case roots = <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("Build 在环引用 fixture 上未于 2s 内返回——死循环回归（T-2-09）")
+		t.Fatal("Build 在环引用 fixture 上未于 2s 内返回——死循环回归")
 	}
 	require.Len(t, roots, 1, "环节点双方 parent 均命中索引，不应出现在根层")
 	assert.Equal(t, int64(1), roots[0].ID)

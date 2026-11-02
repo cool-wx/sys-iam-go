@@ -68,7 +68,7 @@ func (h *ConfigHandler) Get(c *gin.Context) {
 }
 
 // GetByKey 处理 GET /api/v1/configs/key/:key：响应 data 为 configValue 字符串
-// 本体（源 getByKey 返回 String 语义，CONF-01——非 ConfigResp 对象包装）。
+// 本体（源 getByKey 返回 String 语义——非 ConfigResp 对象包装）。
 func (h *ConfigHandler) GetByKey(c *gin.Context) {
 	key := c.Param("key")
 	po, err := h.svc.GetByKey(c.Request.Context(), key)

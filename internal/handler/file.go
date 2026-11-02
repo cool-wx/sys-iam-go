@@ -1,5 +1,5 @@
 // Package handler 文件域 HTTP handler（薄层三段式；Upload 为 multipart 新形态、
-// Download 为流式出站新形态——FILE-01/02/03）。
+// Download 为流式出站新形态）。
 package handler
 
 import (
@@ -42,13 +42,13 @@ func (h *FileHandler) Upload(c *gin.Context) {
 	resp.OK(c, data)
 }
 
-// Download 处理 GET /api/v1/files/download/:id（FILE-02 流式，全链不整载）：
+// Download 处理 GET /api/v1/files/download/:id（流式，全链不整载）：
 // Content-Length 由 DataFromReader 按真实字节数写出；Content-Disposition 手写
 //
 //	attachment; filename*=UTF-8'' + url.PathEscape
 //
 // ——RFC 5987 形态承载中文与特殊字符，PathEscape 对 CR/LF 与控制字符百分号编码，
-// 头注入面天然消除（T-4-03），恒 attachment 不以同源 inline 渲染（T-4-05 缓解面）。
+// 头注入面天然消除，恒 attachment 不以同源 inline 渲染（缓解面）。
 func (h *FileHandler) Download(c *gin.Context) {
 	id, ok := parseID(c, "无效的文件 ID")
 	if !ok {
@@ -68,7 +68,7 @@ func (h *FileHandler) Download(c *gin.Context) {
 	extraHeaders := map[string]string{
 		"Content-Disposition": `attachment; filename*=UTF-8''` + url.PathEscape(fileName),
 	}
-	// DataFromReader 内部 io.Copy 流式写出（恒不先全量读内存——FILE-02 RSS 验收；
+	// DataFromReader 内部 io.Copy 流式写出（恒不先全量读内存——RSS 验收；
 	// 存储读中断的半截响应已由 GetStream 的 StatObject 前置把 404 挡在响应前）
 	c.DataFromReader(http.StatusOK, res.Size, res.ContentType, res.Reader, extraHeaders)
 }

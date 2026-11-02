@@ -16,12 +16,12 @@ import (
 	"github.com/cool-wx/sys-iam-go/internal/event"
 )
 
-// TestDeptNameSync 部门改名端到端同步直证（Phase 5 SYNC-01/02 tracer，05-01 Task 2；
-// 05-02 扩展同一文件覆盖其余 4 域）。链路：PUT 改名 → service 提交后发布
+// TestDeptNameSync 部门改名端到端同步直证。
+// 链路：PUT 改名 → service 提交后发布
 // DeptNameChanged → dispatcher 同步分发 → handler 独立事务幂等 UPDATE →
 // sys_user.dept_name（dept_id 锚）与 sys_dept.parent_name（parent_id 锚）可断言。
-// 覆盖五语义：Create 自动冗余基线、改名双表同步正例、参数化特殊字符（T-5-01）、
-// 仅改备注零同步（发布条件负例）、幂等重放自愈 + 同名重放幂等拉齐（CR-01 修订：
+// 覆盖五语义：Create 自动冗余基线、改名双表同步正例、参数化特殊字符、
+// 仅改备注零同步（发布条件负例）、幂等重放自愈 + 同名重放幂等拉齐（修订：
 // 显式带名即发布，同名重发经 handler `<>` 条件自愈，非零 UPDATE 短路）。
 func TestDeptNameSync(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
@@ -64,7 +64,7 @@ func TestDeptNameSync(t *testing.T) {
 	requireSynced(t, userDeptNameOf(t, checkDB, userID), "研发一部新名", "改名后 sys_user.dept_name 同步（dept 事件表 1）")
 	requireSynced(t, deptParentNameOf(t, checkDB, deptB), "研发一部新名", "改名后 sys_dept.parent_name 同步（dept 事件表 2）")
 
-	// --- 参数化直证（T-5-01 缓解）：新名含单引号+双引号，占位符不破 SQL ---
+	// --- 参数化直证：新名含单引号+双引号，占位符不破 SQL ---
 	status, body = putDept(deptA, `{"deptName":"研'发\"引号部"}`)
 	require.Equal(t, http.StatusOK, status, "特殊字符改名失败: %s", body)
 	requireSynced(t, userDeptNameOf(t, checkDB, userID), "研'发\"引号部", "含引号新名 sys_user.dept_name 同步正确")
@@ -83,15 +83,15 @@ func TestDeptNameSync(t *testing.T) {
 	requireSynced(t, userDeptNameOf(t, checkDB, userID), "研发三部", "重放改名后陈旧 sys_user.dept_name 被 <> 拉齐（自愈）")
 	requireSynced(t, deptParentNameOf(t, checkDB, deptB), "研发三部", "重放改名后 sys_dept.parent_name 同步")
 
-	// --- 同名重放（CR-01 修订语义）：显式带名即发布——同名 PUT 仍发布 1 条事件，
+	// --- 同名重放（修订语义）：显式带名即发布——同名 PUT 仍发布 1 条事件，
 	// handler 幂等 UPDATE（`冗余列 <> newName`）把陈旧哨兵值拉齐为新名（自愈直证；
-	// 旧守卫「新名==旧行名不发布」下此请求零发布、哨兵值保持——该语义经 CR-01
+	// 旧守卫「新名==旧行名不发布」下此请求零发布、哨兵值保持——该语义经
 	// 裁决废弃，与 service 层 name_sync_service_integration_test.go 形态 (c) 同款对齐）---
 	execMust(t, checkDB, "UPDATE sys_user SET dept_name = ? WHERE id = ?", "哨兵值", userID)
 	status, body = putDept(deptA, `{"deptName":"研发三部"}`)
 	require.Equal(t, http.StatusOK, status, "同名重放失败: %s", body)
 	requireSynced(t, userDeptNameOf(t, checkDB, userID), "研发三部",
-		"同名 PUT 重发事件——sys_user.dept_name 哨兵值被幂等 UPDATE 拉齐（CR-01 自愈）")
+		"同名 PUT 重发事件——sys_user.dept_name 哨兵值被幂等 UPDATE 拉齐（自愈）")
 }
 
 // userDeptNameOf 查 sys_user.dept_name（DB 行级断言原料）。
@@ -156,7 +156,7 @@ func stringColOf(t *testing.T, db *gorm.DB, query string, args ...any) *string {
 	return row.Col
 }
 
-// TestRoleNameSync 角色改名端到端同步直证（SYNC-01 role 事件 3 表）：sys_role_menu
+// TestRoleNameSync 角色改名端到端同步直证（role 事件 3 表）：sys_role_menu
 // （AssignMenus 冗余写入）+ sys_user_role（AssignRoles 冗余写入）+ sys_role_dept
 // （AssignScopes 冗余写入，Go 扩展 Q2）的 role_name 在 PUT 改名后全部同步为新名。
 func TestRoleNameSync(t *testing.T) {
@@ -187,7 +187,7 @@ func TestRoleNameSync(t *testing.T) {
 	requireSynced(t, stringColOf(t, checkDB, "SELECT role_name AS col FROM sys_role_dept WHERE role_id = ?", roleID), "巡检长", "改名后 sys_role_dept.role_name 同步（role 事件表 3，Go 扩展 Q2）")
 }
 
-// TestMenuNameSync 菜单改名端到端同步直证（SYNC-01 menu 事件 2 表）：sys_role_menu
+// TestMenuNameSync 菜单改名端到端同步直证（menu 事件 2 表）：sys_role_menu
 // .menu_name（menu_id 锚）+ sys_menu.parent_name（parent_id 锚，子菜单冗余）。
 func TestMenuNameSync(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
@@ -209,7 +209,7 @@ func TestMenuNameSync(t *testing.T) {
 	requireSynced(t, stringColOf(t, checkDB, "SELECT parent_name AS col FROM sys_menu WHERE id = ?", childID), "菜单甲新名", "改名后子菜单 sys_menu.parent_name 同步（menu 事件表 2）")
 }
 
-// TestDictTypeNameSync 字典类型改名端到端同步直证（SYNC-01 dictType 事件 1 表）：
+// TestDictTypeNameSync 字典类型改名端到端同步直证（dictType 事件 1 表）：
 // sys_dict_data.dict_type_name（dict_type_id 锚，CreateDictData 服务端查库冗余）。
 func TestDictTypeNameSync(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
@@ -235,14 +235,14 @@ func assertCol(t *testing.T, db *gorm.DB, want, msg string, query string, args .
 	requireSynced(t, stringColOf(t, db, query, args...), want, msg)
 }
 
-// assertColNull 断言单行单列查询值为 NULL(SYNC-02 NULL 语义锁定出口——禁 IS NULL
+// assertColNull 断言单行单列查询值为 NULL(NULL 语义锁定出口——禁 IS NULL
 // 放行分支的直证:冗余列为 NULL 的行在改名后仍为 NULL,SQL `<>` 三值逻辑恒不中)。
 func assertColNull(t *testing.T, db *gorm.DB, msg string, query string, args ...any) {
 	t.Helper()
 	require.Nil(t, stringColOf(t, db, query, args...), "%s（列值非 NULL）", msg)
 }
 
-// TestRealNameSync14Tables 用户改真名 → 14 张表冗余列全部同步为新真名（SYNC-01
+// TestRealNameSync14Tables 用户改真名 → 14 张表冗余列全部同步为新真名（
 // realName 事件全量面，26 条 UPDATE 逐表断言非抽样）：sys_user 双审计列、
 // sys_user_role.username（**值为新真名——展示名语义**，源命名错位原样移植）、
 // 11 张 BaseWithOperator 域表 create_by_name/update_by_name、
@@ -300,7 +300,7 @@ func TestRealNameSync14Tables(t *testing.T) {
 		"SELECT real_name AS col FROM sys_operation_log WHERE id = ?", 7012)
 }
 
-// TestNullNameRowsNotSynced NULL 语义锁定（SYNC-02 prohibition 直证）：冗余列为
+// TestNullNameRowsNotSynced NULL 语义锁定（设计禁令直证）：冗余列为
 // NULL 的行在改名后仍为 NULL——SQL `<>` 对 NULL 比较恒不中，禁 IS NULL 放行分支。
 // 每域配一行非 NULL 控制行：控制行被同步（证明改名确实生效）而 NULL 行保持 NULL。
 func TestNullNameRowsNotSynced(t *testing.T) {
@@ -344,7 +344,7 @@ func TestNullNameRowsNotSynced(t *testing.T) {
 		"SELECT real_name AS col FROM sys_operation_log WHERE id = ?", 7107)
 }
 
-// TestIdempotentSelfHeal 幂等自愈重放（SYNC-02，realName 轴直证）：①有效改名同步；
+// TestIdempotentSelfHeal 幂等自愈重放（realName 轴直证）：①有效改名同步；
 // ②手工把已同步行改回陈旧值 → 再一次有效改名（旧名→另一新名）→ `<>` 命中，陈旧行
 // 被拉齐到最新名（跳跃自愈）；③对已同步行直调 handler 重放同一事件 → `<>` 不中，
 // 该行值不变。

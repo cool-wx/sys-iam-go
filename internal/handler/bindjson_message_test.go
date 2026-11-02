@@ -65,18 +65,18 @@ func serveBindJSON(t *testing.T, bodyBytes int, contentType string) string {
 	return rec.Body.String()
 }
 
-// TestBindJSONMaxBytesMessageFromLimit IN-02 直证：超限文案由 MaxBytesError.Limit
+// TestBindJSONMaxBytesMessageFromLimit 直证：超限文案由 MaxBytesError.Limit
 // （实际触发的截断层上限）生成，不再按 middleware.MaxBodyMB 固定取值——
-// multipart Content-Type 打 JSON 契约路由超全局 20MB 兜底（CR-01）时文案报
-// 「20MB」，修复前固定报「1MB」与实际上限漂移（CR-01 已知残留归零）。
+// multipart Content-Type 打 JSON 契约路由超全局 20MB 兜底时文案报
+// 「20MB」，修复前固定报「1MB」与实际上限漂移（已知残留归零）。
 // JSON 路由 1MB 既有文案不回归。
 func TestBindJSONMaxBytesMessageFromLimit(t *testing.T) {
 	// multipart 打 JSON 路由：全局 BodyLimit 对 multipart 套 MaxMultipartMB
-	// 兜底封顶（CR-01），20MB+1 的 body 读至超限点触发 Limit=20MB 的
+	// 兜底封顶，20MB+1 的 body 读至超限点触发 Limit=20MB 的
 	// MaxBytesError。
 	body := serveBindJSON(t, int(middleware.MaxMultipartMB)<<20+1, "multipart/form-data; boundary=x")
-	assert.Contains(t, body, "请求体超过 20MB 上限", "文案必须由实际触发的截断层 limit 生成（IN-02）")
-	assert.NotContains(t, body, "1MB", "文案不得再按 MaxBodyMB 固定生成（IN-02 漂移）")
+	assert.Contains(t, body, "请求体超过 20MB 上限", "文案必须由实际触发的截断层 limit 生成")
+	assert.NotContains(t, body, "1MB", "文案不得再按 MaxBodyMB 固定生成")
 
 	// 既有 JSON 路由 1MB 文案不回归。
 	body2 := serveBindJSON(t, int(middleware.MaxBodyMB)<<20+1, "application/json")

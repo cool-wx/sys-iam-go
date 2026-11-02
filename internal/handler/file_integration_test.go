@@ -1,6 +1,6 @@
 //go:build integration
 
-// File 域集成测试（FILE-01..04，源 FileUploadHashDedupTest 蓝本直译）：判重五语义
+// File 域集成测试（源 FileUploadHashDedupTest 蓝本直译）：判重五语义
 // （同分类同内容 400 源消息 + 零副作用 / 异分类放行 / 未分类 IS NULL 分支 / 异内容
 // 放行 / 分类不存在 404 源消息）、下载流式（Content-Length + 逐字节一致）、删除
 // 宽容链、文件分类树（孤儿提升 + parent_name 冗余 + 上级分类不存在 404）。
@@ -159,7 +159,7 @@ func TestFileUploadDedupFiveSemantics(t *testing.T) {
 	assert.Equal(t, 4, storageObjectCount(t), "成功上传 4 次后存储应恰 4 个对象")
 }
 
-// TestFileDownloadStream 下载流式（FILE-02）：2MB 随机内容上传 → download 断言
+// TestFileDownloadStream 下载流式：2MB 随机内容上传 → download 断言
 // 200 + Content-Length == size + 响应体逐字节一致（不整载的契约面）。
 func TestFileDownloadStream(t *testing.T) {
 	ts, _, adminToken, _ := newTestApp(t)
@@ -188,12 +188,12 @@ func TestFileDownloadStream(t *testing.T) {
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	assert.Equal(t, int64(len(content)), resp.ContentLength, "Content-Length 必须等于真实字节数（FILE-02）")
+	assert.Equal(t, int64(len(content)), resp.ContentLength, "Content-Length 必须等于真实字节数")
 	got, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.True(t, bytes.Equal(content, got), "响应体必须与原内容逐字节一致")
 	assert.Equal(t, "attachment", resp.Header.Get("Content-Disposition")[:10],
-		"下载必须恒 attachment 头（T-4-05 缓解面）")
+		"下载必须恒 attachment 头（缓解面）")
 
 	// 下载不存在的 id：404 域消息
 	status, body = doAuthRequest(t, token, "GET", ts.URL+"/api/v1/files/download/99002", "")
@@ -229,7 +229,7 @@ func TestFileDownloadStream(t *testing.T) {
 	assert.Equal(t, 15, listEnv.Data.Size)
 }
 
-// TestFileDeleteTolerant 删除链（FILE-03）：上传 → 删除 → 200 且 DB 行消失 +
+// TestFileDeleteTolerant 删除链：上传 → 删除 → 200 且 DB 行消失 +
 // 存储对象移除；删除不存在的 id 404 域消息。
 func TestFileDeleteTolerant(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
@@ -274,7 +274,7 @@ type fileCategoryTreeNode struct {
 	Children     []fileCategoryTreeNode `json:"children"`
 }
 
-// TestFileCategoryTree 文件分类树（FILE-04）：两层级嵌套 + parent_name 冗余 +
+// TestFileCategoryTree 文件分类树：两层级嵌套 + parent_name 冗余 +
 // 孤儿提升为根 + 上级分类不存在 404 源消息 + 叶子 children 空数组非 null。
 // 孤儿经 SQL 直插（API create 会被父校验拦截——正确行为，菜单树测试同构先例）。
 func TestFileCategoryTree(t *testing.T) {
@@ -341,9 +341,9 @@ func TestFileCategoryTree(t *testing.T) {
 	assert.NotNil(t, child.Children, "叶子 children 必须是空数组 [] 而非 null")
 	assert.Empty(t, child.Children, "叶子 children 应为空数组")
 
-	// --- update 移动子分类到根：parent_id 显式 0 → WR-07 修复后落 NULL（根 =
+	// --- update 移动子分类到根：parent_id 显式 0 → 修复后落 NULL（根 =
 	// parent_id NULL 唯一形态，与 Create 根同形态），响应 parentId 恒 null。
-	// 断言经 {code,message,data} envelope 的 Data 层解包（WR-08 真化——原断言漏
+	// 断言经 {code,message,data} envelope 的 Data 层解包（真化——原断言漏
 	// Data 层永不失败；Data 为单对象，仿同文件 tree 断言 env 形态）---
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/file-categories/"+childID,
 		`{"parentId":0}`)
@@ -357,7 +357,7 @@ func TestFileCategoryTree(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(body, &clearedEnv), "body=%s", body)
 	require.Equal(t, 0, clearedEnv.Code, "body=%s", body)
-	assert.Nil(t, clearedEnv.Data.ParentID, "移根后 parentId 必须为 null（WR-07：根唯一形态）")
+	assert.Nil(t, clearedEnv.Data.ParentID, "移根后 parentId 必须为 null（根唯一形态）")
 	assert.Nil(t, clearedEnv.Data.ParentName, "显式移至根后 parent_name 必须清空")
 
 	// --- delete 根分类（先删孤儿恢复两节点态）：删除带子节点的分类仍成功（源缺口按源保留）---

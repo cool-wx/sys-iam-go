@@ -13,7 +13,7 @@ import (
 	"github.com/cool-wx/sys-iam-go/pkg/errcode"
 )
 
-// TestNormalizeContentType CR-02 直证：客户端 Content-Type 不可信，超 file_type
+// TestNormalizeContentType 直证：客户端 Content-Type 不可信，超 file_type
 // 列宽（varchar(50)）必须钳位——浏览器上传 Office 文档发送的标准 MIME 65 字符，
 // 直存 strict mode 1406 → 上传事务确定性回滚 500。
 func TestNormalizeContentType(t *testing.T) {
@@ -42,7 +42,7 @@ func TestNormalizeContentType(t *testing.T) {
 	assert.Equal(t, "application/octet-stream", normalizeContentType(fifty+"x"))
 }
 
-// TestUploadRejectsOverlongFilename WR-05 直证：file_name varchar(255) 字符
+// TestUploadRejectsOverlongFilename 直证：file_name varchar(255) 字符
 // 语义——超 255 rune 的文件名上传入口直接 400「文件名过长」，不走 strict mode
 // 1406 → 500；中文名按 rune 计数（256 个汉字 = 768 字节超限，而 300 字节
 // 100 汉字合法）。校验在所有依赖使用之前，nil 依赖构造即可直测入口钳位。

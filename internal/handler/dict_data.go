@@ -1,5 +1,5 @@
 // Package handler 字典数据域 HTTP handler（薄层三段式；list 支持 dict_type_id
-// 可选过滤——DICT-03 源 list?dictTypeId= 语义）。
+// 可选过滤——源 list?dictTypeId= 语义）。
 package handler
 
 import (
@@ -72,7 +72,7 @@ func (h *DictDataHandler) Get(c *gin.Context) {
 }
 
 // List 处理 GET /api/v1/dict-datas：分页列表；dict_type_id 查询参数非空时可选
-// 过滤（DICT-03），非法值 400/10400（query 参数形态的 parseID 变体）。
+// 过滤，非法值 400/10400（query 参数形态的 parseID 变体）。
 func (h *DictDataHandler) List(c *gin.Context) {
 	page, size := paging.Parse(c.Query("page"), c.Query("size"))
 	var dictTypeID int64

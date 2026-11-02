@@ -49,7 +49,7 @@ func mustCreate(t *testing.T, token, url, body string) string {
 	return env.Data.ID
 }
 
-// TestMenuCRUD 菜单 CRUD 全链（MENU-01）：create→get→patch→delete + 父校验 400
+// TestMenuCRUD 菜单 CRUD 全链：create→get→patch→delete + 父校验 400
 // 分支 + 不存在 id 404 + pri 组 401 保护 + MenuType 未知值兜底 + parent_name 服务端
 // 冗余（非请求体可伪造）+ 删除带子节点菜单仍成功（源缺口按源保留）。
 func TestMenuCRUD(t *testing.T) {
@@ -148,7 +148,7 @@ func TestMenuCRUD(t *testing.T) {
 	status, body = doAuthRequest(t, token, "DELETE", ts.URL+"/api/v1/menus/"+rootID, "")
 	require.Equal(t, http.StatusOK, status, "删除带子节点的菜单仍必须成功（源缺口按源保留）: body=%s", body)
 
-	// --- 删除后 get：404 + 域消息「菜单不存在: {id}」（源消息原文，code/HTTP 契约同 Phase 1）---
+	// --- 删除后 get：404 + 域消息「菜单不存在: {id}」（源消息原文，code/HTTP 契约同主链）---
 	status, body = doAuthRequest(t, token, "GET", ts.URL+"/api/v1/menus/"+rootID, "")
 	require.Equal(t, http.StatusNotFound, status, "删除后 get 应 404: body=%s", body)
 	var menuNfEnv struct {
@@ -164,7 +164,7 @@ func TestMenuCRUD(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, status, "body=%s", body)
 }
 
-// TestMenuTree 菜单树端点（MENU-02）：根→子→孙嵌套 + parentId=999 孤儿提升为根 +
+// TestMenuTree 菜单树端点：根→子→孙嵌套 + parentId=999 孤儿提升为根 +
 // parentId=NULL 根 + 叶子 children 空数组非 null。孤儿经 SQL 直插（API create 会
 // 被父校验拦截——正确行为）。
 func TestMenuTree(t *testing.T) {
@@ -190,7 +190,7 @@ func TestMenuTree(t *testing.T) {
 	// 根层：真根（sort 1）+ 孤儿（sort 99 提升为根）——排序 sort ASC, id ASC
 	require.Len(t, env.Data, 2, "真根 + 孤儿均应在根层: body=%s", body)
 	assert.Equal(t, rootID, env.Data[0].ID, "根层第一项应为真根（sort 1）")
-	assert.Equal(t, "孤儿菜单", env.Data[1].Name, "孤儿应提升为根（DEPT-02 同构语义）")
+	assert.Equal(t, "孤儿菜单", env.Data[1].Name, "孤儿应提升为根（部门域同构语义）")
 	require.NotNil(t, env.Data[1].ParentID, "孤儿的 parentId 键应保留原值 999")
 	assert.Equal(t, "999", *env.Data[1].ParentID)
 
@@ -205,7 +205,7 @@ func TestMenuTree(t *testing.T) {
 	assert.Empty(t, grandchild.Children, "叶子 children 应为空数组")
 }
 
-// TestDeptCRUD 部门 CRUD 全链（DEPT-01）：create→get→patch→delete + 父校验
+// TestDeptCRUD 部门 CRUD 全链：create→get→patch→delete + 父校验
 // 400「上级部门不存在」分支 + 不存在 id 404 + 删除带子节点部门仍成功（源缺口按源保留）。
 func TestDeptCRUD(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
@@ -286,7 +286,7 @@ func TestDeptCRUD(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, status, "body=%s", body)
 }
 
-// TestDeptTreeOrphanPromotion 部门树孤儿提升（DEPT-02 验收明文）：parentId 指向
+// TestDeptTreeOrphanPromotion 部门树孤儿提升（验收明文）：parentId 指向
 // 不存在节点的部门提升为根层——源服务层 buildTree 语义（非实体死代码的孤儿丢弃）。
 func TestDeptTreeOrphanPromotion(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
@@ -319,7 +319,7 @@ func TestDeptTreeOrphanPromotion(t *testing.T) {
 	assert.Empty(t, env.Data[0].Children[0].Children)
 }
 
-// TestMenuDeptUpdateParentCycleGuard Update parentId 自指/成环 400（WR-04 回归）：
+// TestMenuDeptUpdateParentCycleGuard Update parentId 自指/成环 400（回归）：
 // ①pid==id 自指 ②pid 为当前节点子节点 ③pid 为当前节点孙节点——均 400 且存量不动
 // （若落库成环，tree.Build 对环上节点互不归根、整条子树从树查询静默消失——持久
 // 脏数据，必须前置拦截）；合法移动（挂到无祖先关系的节点）仍 200。menu/dept 两域

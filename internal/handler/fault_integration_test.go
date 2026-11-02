@@ -1,7 +1,7 @@
 //go:build integration
 
-// Fault 域集成测试（FAUL-01/02）：CRUD 全链（服务端默认值 -1/3 直查 DB 断言 +
-// 零值保护 + perm 三断言）与 Excel 三键 upsert 导入（构造等价回测，D-14 裁决：
+// Fault 域集成测试：CRUD 全链（服务端默认值 -1/3 直查 DB 断言 +
+// 零值保护 + perm 三断言）与 Excel 三键 upsert 导入（构造等价回测，裁决：
 // 真导出文件不可得，按源 @ExcelProperty 列序构造——列序表 04-RESEARCH
 // Implementation Guidance「Excel 列序表」，照抄不重排）。
 package handler_test
@@ -45,7 +45,7 @@ type faultImportEnvelope struct {
 // 均照 04-RESEARCH Implementation Guidance 列序表逐字，不发明格式）。
 var faultImportHeaders = []string{"故障代码", "故障变量", "触发位", "报警类型", "故障描述", "故障原因", "故障位置", "解决方法"}
 
-// buildFaultXlsx 构造契约格式 xlsx 字节流（D-14 fallback 落地）：首行 8 列契约
+// buildFaultXlsx 构造契约格式 xlsx 字节流（fallback 落地）：首行 8 列契约
 // 表头（文案逐字）+ 数据行。数据行元素 nil = 不写该单元格（GetRows 行尾空单元
 // 格跳过——顺带覆盖解析侧 len(row)>idx 边界分支）。headers 可注入变体表头
 // （表头拒绝测试用），nil 时用契约表头。
@@ -85,7 +85,7 @@ func faultRows(t *testing.T, dsn string) int64 {
 	return cnt
 }
 
-// TestFaultImportUpsert 三键 upsert 主链（FAUL-02）：库预置行 A（name=V1/bit=5/
+// TestFaultImportUpsert 三键 upsert 主链：库预置行 A（name=V1/bit=5/
 // location=L1）；构造 xlsx 三行——行 1 与 A 三键全同（fix 改新值）/行 2 新三键/
 // 行 3 name 空 → 导入 200 断言 insertCount=1、updateCount=1；直查 DB：A 行 id
 // 不变且 fix 已更新（UPDATE 复用 id 直证）、新行存在、恰 2 行总计（空 name 行
@@ -167,7 +167,7 @@ func TestFaultImportLocationNullNoDedup(t *testing.T) {
 	assert.Equal(t, int64(2), nullLoc, "location 空单元格导入后该列必须为 NULL")
 }
 
-// TestFaultImportTxRollback 整批单事务回滚直证（FAUL-02/D-15）：合法 2 行 +
+// TestFaultImportTxRollback 整批单事务回滚直证：合法 2 行 +
 // 第 3 行触发位非数字 → 导入 400 → 直查 DB 行数与导入前一致（全批无痕回滚——
 // 前 2 行合法数据不得部分落库）。
 func TestFaultImportTxRollback(t *testing.T) {
@@ -190,7 +190,7 @@ func TestFaultImportTxRollback(t *testing.T) {
 	assert.Equal(t, int64(0), faultRows(t, dsn), "整批回滚：前 2 行合法数据不得部分落库（DB 行数与导入前一致）")
 }
 
-// TestFaultImportHeaderReject 表头严格匹配（D-15 防线）：表头第 2 列文案换错 /
+// TestFaultImportHeaderReject 表头严格匹配（防线）：表头第 2 列文案换错 /
 // 列序对调两种变体 → 均 400 且 DB 零行（不产生任何行）。
 func TestFaultImportHeaderReject(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
@@ -219,7 +219,7 @@ func TestFaultImportHeaderReject(t *testing.T) {
 	assert.Equal(t, int64(0), faultRows(t, dsn))
 }
 
-// TestFaultImportRowLimit 行数上限防线（D-15/T-4-11）：构造 5001 行（表头+5000
+// TestFaultImportRowLimit 行数上限防线：构造 5001 行（表头+5000
 // 数据）→ 400 整批拒绝（上限含表头计；超限文件不进逐行解析）。
 func TestFaultImportRowLimit(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
@@ -247,14 +247,14 @@ func TestFaultImportRowLimit(t *testing.T) {
 	assert.Equal(t, 4999, env.Data.InsertCount, "body=%s", body)
 }
 
-// TestFaultImportYf175aData yf175a 真实数据冒烟（D-14 增强项，非验收硬门槛）：
+// TestFaultImportYf175aData yf175a 真实数据冒烟（增强项，非验收硬门槛）：
 // 读 tims 项目 77 行真实 PLC 故障数据（人工原始资料，列序与契约不同），按列头
 // 名称映射转换为契约格式构造（真数据+构造格式）→ 导入断言 insertCount≥70。
 // 数据源文件不存在时 t.Skip（离线环境）。
 func TestFaultImportYf175aData(t *testing.T) {
 	const yfPath = "/home/wx/workspace/tims/backend/docs/yf175a故障信息表.xlsx"
 	if _, err := os.Stat(yfPath); err != nil {
-		t.Skip("yf175a 真实数据文件不可得，跳过真数据冒烟（D-14 fallback：构造数据回测已覆盖）")
+		t.Skip("yf175a 真实数据文件不可得，跳过真数据冒烟（构造数据回测已覆盖）")
 	}
 	ts, _, adminToken, _ := newTestApp(t)
 	token := adminToken()
@@ -294,10 +294,10 @@ func TestFaultImportYf175aData(t *testing.T) {
 	assert.GreaterOrEqual(t, env.Data.InsertCount, 70, "77 行真实数据（探针实测 name 无空/触发位全数字）应绝大多数入库: body=%s", body)
 }
 
-// TestFaultCRUD 故障 CRUD 全链（FAUL-01）：create（服务端默认 bitIndex=-1/
+// TestFaultCRUD 故障 CRUD 全链：create（服务端默认 bitIndex=-1/
 // type=3(UNKNOWN)——resp 与直查 DB 双断言，非 NULL）→ get → list 分页断言 →
 // update 零值保护（不传 fix 不清空）→ delete → get 404；perm 三断言
-// （无 token 401 / 无 perm 用户 403 / admin 200，D-04/D-16——fault 为发明串
+// （无 token 401 / 无 perm 用户 403 / admin 200——fault 为发明串
 // 仅 super_admin 可用边界同 shift 先例）。
 func TestFaultCRUD(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
@@ -336,7 +336,7 @@ func TestFaultCRUD(t *testing.T) {
 	assert.Equal(t, "UNKNOWN", *created.Data.Type, "type 未传必须服务端默认 3(UNKNOWN)")
 
 	// --- 直查 DB：bit_index/type 落库值 -1/3（非 NULL——GORM nil 指针写 NULL 会
-	// 绕过列默认，服务端默认值语义必须真实落库，FAUL-01 验收面）---
+	// 绕过列默认，服务端默认值语义必须真实落库，验收面）---
 	checkDB := openCheckDB(t, dsn)
 	var dbRow struct {
 		BitIndex *int `gorm:"column:bit_index"`
@@ -394,7 +394,7 @@ func TestFaultCRUD(t *testing.T) {
 		Data faultRespBody `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(body, &updated))
-	require.NotNil(t, updated.Data.Fix, "不传 fix 必须不清空（nil-skip 零值保护，ENG-05）")
+	require.NotNil(t, updated.Data.Fix, "不传 fix 必须不清空（nil-skip 零值保护）")
 	assert.Equal(t, "停机降温", *updated.Data.Fix)
 	require.NotNil(t, updated.Data.Code)
 	assert.Equal(t, "E1002", *updated.Data.Code, "显式传 code 必须更新")

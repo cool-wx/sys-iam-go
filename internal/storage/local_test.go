@@ -16,7 +16,7 @@ import (
 )
 
 func TestLocalStorageRoundtrip(t *testing.T) {
-	// 全语义往返（FILE-05 local 主链，免容器）：Put 字节 → GetStream 读出一致 +
+	// 全语义往返（local 主链，免容器）：Put 字节 → GetStream 读出一致 +
 	// size 正确 → Delete → 再 GetStream 报错。
 	ctx := context.Background()
 	s := storage.NewLocalStorage(t.TempDir())
@@ -27,7 +27,7 @@ func TestLocalStorageRoundtrip(t *testing.T) {
 
 	r, size, err := s.GetStream(ctx, key)
 	require.NoError(t, err)
-	assert.Equal(t, int64(len(content)), size, "GetStream 第二返回值必须为对象字节数（Content-Length 供源，FILE-02）")
+	assert.Equal(t, int64(len(content)), size, "GetStream 第二返回值必须为对象字节数（Content-Length 供源）")
 	got, err := io.ReadAll(r)
 	require.NoError(t, err)
 	require.NoError(t, r.Close())
@@ -39,7 +39,7 @@ func TestLocalStorageRoundtrip(t *testing.T) {
 }
 
 func TestLocalStorageDeleteMissingTolerant(t *testing.T) {
-	// Delete 不存在 key 返回 nil（FILE-03 宽容语义基座——对齐 S3 RemoveObject
+	// Delete 不存在 key 返回 nil（宽容语义基座——对齐 S3 RemoveObject
 	// 幂等语义，删除链存储侧"不存在"不算失败）。
 	ctx := context.Background()
 	s := storage.NewLocalStorage(t.TempDir())
@@ -48,7 +48,7 @@ func TestLocalStorageDeleteMissingTolerant(t *testing.T) {
 }
 
 func TestLocalStorageKeyEscapeDefense(t *testing.T) {
-	// T-4-02 防御纵深（prohibition：key 拼 path 不得直接拼接）：含路径穿越片段
+	// 路径防御纵深（key 拼 path 不得直接拼接）：含路径穿越片段
 	// 的 key 经 resolveKey 清洗+校验后，落点必须收敛在 root 子树内——逃逸直证：
 	// 自建 sandbox 完全独享（root = sandbox/root），Put 后 sandbox 顶层必须只有
 	// root 一个目录，穿越落点不可能出现在 root 之外。

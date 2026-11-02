@@ -124,7 +124,7 @@ func (h *RoleHandler) AssignMenus(c *gin.Context) {
 }
 
 // GetScopes 处理 GET /api/v1/roles/:id/scopes：返回角色已配置的数据权限范围
-// deptId 列表（PERM-03 档位 4 存储面，D-10）。
+// deptId 列表（档位 4 存储面）。
 func (h *RoleHandler) GetScopes(c *gin.Context) {
 	id, ok := parseID(c, "无效的角色 ID")
 	if !ok {
@@ -139,7 +139,7 @@ func (h *RoleHandler) GetScopes(c *gin.Context) {
 }
 
 // AssignScopes 处理 PUT /api/v1/roles/:id/scopes：全量替换语义（删旧插新同事务，
-// D-10 sys_role_menu 同构裁决）。
+// sys_role_menu 同构裁决）。
 func (h *RoleHandler) AssignScopes(c *gin.Context) {
 	id, ok := parseID(c, "无效的角色 ID")
 	if !ok {

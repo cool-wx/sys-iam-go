@@ -66,7 +66,7 @@ func (h *AuthHandler) ApikeyLogin(c *gin.Context) {
 }
 
 // Kickout 处理 POST /api/v1/auth/kickout（pri 组）：解析目标 userId → service →
-// envelope。管理面语义与源一致（Phase 3 requirePerm 收口，T-2-07 accept）。
+// envelope。管理面语义与源一致（requirePerm 收口，威胁评审接受）。
 func (h *AuthHandler) Kickout(c *gin.Context) {
 	var req dto.KickoutReq
 	if !bindJSON(c, &req) {

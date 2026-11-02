@@ -1,9 +1,9 @@
 //go:build integration
 
-// 认证链路集成测试（真实 MySQL + Redis 双容器，D-10/D-12）。
-// 覆盖：存量 Hutool BCrypt $2a$ 哈希零迁移登录（活体代证链 D-16）、登录→访问→
-// 登出→401 端到端、白名单四路径收紧（AUTH-06）、防枚举两路径逐字节相同、禁用
-// 10502、畸形 hash 401 非 500（T-2-08）。
+// 认证链路集成测试（真实 MySQL + Redis 双容器）。
+// 覆盖：存量 Hutool BCrypt $2a$ 哈希零迁移登录（兼容性活体直证）、登录→访问→
+// 登出→401 端到端、白名单四路径收紧、防枚举两路径逐字节相同、禁用
+// 10502、畸形 hash 401 非 500。
 package handler_test
 
 import (
@@ -28,7 +28,7 @@ const (
 	testAdminRealName = "管理员"
 )
 
-// seedUser 直插 sys_user 行（create 端点自 Phase 2 起要求认证，测试种子必须自举；
+// seedUser 直插 sys_user 行（create 端点要求认证，测试种子必须自举；
 // 密码哈希/status/builtin/realName 可配——畸形 hash fixture 由此注入）。
 // 返回雪花 id（审计断言需要）。
 func seedUser(t *testing.T, dsn, username, passwordHash, realName string, status int8, builtin bool) int64 {
@@ -63,8 +63,8 @@ func apikeyLogin(t *testing.T, ts *httptest.Server, apiKey string) (int, []byte)
 	return doRequest(t, "POST", ts.URL+"/api/v1/auth/apikey-login", `{"apiKey":"`+apiKey+`"}`)
 }
 
-// seedRole 直插 sys_role 行，返回 roleId（WR-05 kickout 授权测试种子：角色在
-// 登录时装入会话 roles 快照）。data_scope 不写（NULL 列）——03-02 起档位驱动的
+// seedRole 直插 sys_role 行，返回 roleId（kickout 授权测试种子：角色在
+// 登录时装入会话 roles 快照）。data_scope 不写（NULL 列）——档位驱动的
 // 行过滤测试用 seedRoleWithScope 变体。
 func seedRole(t *testing.T, dsn, roleName, roleCode string, builtin bool) int64 {
 	t.Helper()
@@ -78,7 +78,7 @@ func seedRole(t *testing.T, dsn, roleName, roleCode string, builtin bool) int64 
 	return id
 }
 
-// seedRoleWithScope seedRole 的档位变体（PERM-03：data_scope 直插——档位驱动的
+// seedRoleWithScope seedRole 的档位变体（data_scope 直插——档位驱动的
 // 行过滤断言需要非 NULL 档位行）。
 func seedRoleWithScope(t *testing.T, dsn, roleName, roleCode string, builtin bool, dataScope int8) int64 {
 	t.Helper()
@@ -92,7 +92,7 @@ func seedRoleWithScope(t *testing.T, dsn, roleName, roleCode string, builtin boo
 	return id
 }
 
-// seedUserWithDeptCreator seedUser 的数据面变体（PERM-03 五档行集断言）：dept_id
+// seedUserWithDeptCreator seedUser 的数据面变体（五档行集断言）：dept_id
 // 与 create_by_id 直插——档 2/3/4 按 dept_id 过滤、档 1 按 create_by_id 过滤的
 // 行集数据源。deptID/creatorID 可 nil（NULL 列）。
 func seedUserWithDeptCreator(t *testing.T, dsn, username, passwordHash, realName string, status int8, builtin bool, deptID *int64, creatorID *int64) int64 {
@@ -131,7 +131,7 @@ func extractToken(t *testing.T, body []byte) string {
 	return envelope.Data.Token
 }
 
-// TestApiKeyLoginFlow API Key 登录主链路（AUTH-02/D-03）：有效 key 登录拿 tokenA →
+// TestApiKeyLoginFlow API Key 登录主链路：有效 key 登录拿 tokenA →
 // 同 key 再登复用同一 token（tokenB==tokenA）；停用 key 10503；过期 key 10503；
 // 未关联用户 key 10504。
 func TestApiKeyLoginFlow(t *testing.T) {
@@ -149,9 +149,9 @@ func TestApiKeyLoginFlow(t *testing.T) {
 	status, body = apikeyLogin(t, ts, "ak-valid-key")
 	require.Equal(t, http.StatusOK, status, "body=%s", body)
 	tokenB := extractToken(t, body)
-	assert.Equal(t, tokenA, tokenB, "同一 API Key 二次登录必须复用同一 token（D-03）")
+	assert.Equal(t, tokenA, tokenB, "同一 API Key 二次登录必须复用同一 token")
 
-	// 停用 key → 10503（AKEY-02 停用立即生效）
+	// 停用 key → 10503（停用立即生效）
 	seedApiKey(t, dsn, "ak-disabled-key", testAdminName, &adminID, nil, 0)
 	status, body = apikeyLogin(t, ts, "ak-disabled-key")
 	require.Equal(t, http.StatusUnauthorized, status, "body=%s", body)
@@ -192,8 +192,8 @@ func TestApiKeyLoginFlow(t *testing.T) {
 	assert.Equal(t, 10504, orphanEnvelope.Code, "未关联用户 key 必须 10504: body=%s", body)
 }
 
-// TestApikeyLoginReuseRejectsDisabledUser 复用分支状态校验（WR-02 回归）：有效 key
-// 登录建立映射 → 库内直改禁用关联用户（绕过 UpdateStatus 的 kick——模拟 IN-06
+// TestApikeyLoginReuseRejectsDisabledUser 复用分支状态校验（回归）：有效 key
+// 登录建立映射 → 库内直改禁用关联用户（绕过 UpdateStatus 的 kick——模拟踢失败场景
 // "禁用已落库但 kick 未发生"窗口/外部禁用）→ 同 key 再 apikey-login 必须拒绝
 // 10506（不得复用确认）；随后库内恢复启用（token 仍存活）→ 再次登录必须发新
 // token——直证禁用拒绝时已清旧映射（若未清，此处会原样复用旧 token）。
@@ -234,14 +234,14 @@ func TestApikeyLoginReuseRejectsDisabledUser(t *testing.T) {
 	assert.NotEqual(t, tokenA, tokenB, "旧映射必须已被清——不得复用禁用期间确认过的 tokenA")
 }
 
-// TestKickoutFlow 踢下线端到端（AUTH-04/D-08）：目标用户双端登录两 token →
+// TestKickoutFlow 踢下线端到端：目标用户双端登录两 token →
 // kickout {userId} → 两 token 访问均 401 → 该用户可重新登录（踢下线非封禁）。
-// WR-05 起 kickout 仅 super_admin 可调——操作者 admin 须先挂该角色再登录
+// kickout 仅 super_admin 可调——操作者 admin 须先挂该角色再登录
 // （roles 是登录时快照）。
 func TestKickoutFlow(t *testing.T) {
 	ts, _, adminToken, adminID := newTestApp(t)
 
-	// 03-01 起 newTestApp 已内建 super_admin 角色并 attach 到 admin（boot 对账
+	// newTestApp 已内建 super_admin 角色并 attach 到 admin（boot 对账
 	// 种子三件套）——此处原 seedRole("super_admin") 会撞 uk_role_code 1062，删除
 
 	tokenA := adminToken()
@@ -254,7 +254,7 @@ func TestKickoutFlow(t *testing.T) {
 	status, body = doAuthRequest(t, tokenB, "GET", ts.URL+"/api/v1/users", "")
 	require.Equal(t, http.StatusOK, status, "body=%s", body)
 
-	// kickout：目标 = admin 自己（WR-05 起 kickout 仅 super_admin 可调——本测试
+	// kickout：目标 = admin 自己（kickout 仅 super_admin 可调——本测试
 	// 操作者已持该角色快照）
 	kickBody := `{"userId":"` + strconv.FormatInt(adminID, 10) + `"}`
 	status, body = doAuthRequest(t, tokenB, "POST", ts.URL+"/api/v1/auth/kickout", kickBody)
@@ -272,13 +272,13 @@ func TestKickoutFlow(t *testing.T) {
 	require.Equal(t, http.StatusOK, status, "被踢用户必须可重新登录: body=%s", body)
 }
 
-// TestKickoutRequiresSuperAdmin kickout 授权收紧（WR-05/T-2-07 过渡收口回归）：
+// TestKickoutRequiresSuperAdmin kickout 授权收紧（过渡收口回归）：
 // 无角色普通用户 token 调 kickout → 403/10200（不再"任何有效 token 可踢任意
 // 会话"——此前任意低权用户可踢掉 admin 全部会话）；super_admin token → 200。
 func TestKickoutRequiresSuperAdmin(t *testing.T) {
 	ts, dsn, adminToken, adminID := newTestApp(t)
 
-	// 03-01 起 newTestApp 已内建 super_admin 角色并 attach 到 admin——原
+	// newTestApp 已内建 super_admin 角色并 attach 到 admin——原
 	// seedRole("super_admin") 会撞 uk_role_code 1062，删除
 
 	// 低权用户（无任何角色）登录
@@ -306,7 +306,7 @@ func TestKickoutRequiresSuperAdmin(t *testing.T) {
 	require.Equal(t, http.StatusOK, status, "super_admin kickout 必须 200: body=%s", body)
 }
 
-// TestAuthFlow 登录→带 token 访问→登出→401 端到端（AUTH-01/03/06 主链路）。
+// TestAuthFlow 登录→带 token 访问→登出→401 端到端（认证主链路）。
 func TestAuthFlow(t *testing.T) {
 	ts, _, adminToken, _ := newTestApp(t)
 	token := adminToken()
@@ -319,7 +319,7 @@ func TestAuthFlow(t *testing.T) {
 	status, body = doAuthRequest(t, token, "POST", ts.URL+"/api/v1/auth/logout", "")
 	require.Equal(t, http.StatusOK, status, "登出应 200: body=%s", body)
 
-	// 同 token 再访问 → 401 + 10100（AUTH-03 即刻失效）
+	// 同 token 再访问 → 401 + 10100（登出即刻失效）
 	status, body = doAuthRequest(t, token, "GET", ts.URL+"/api/v1/users", "")
 	require.Equal(t, http.StatusUnauthorized, status, "登出后原 token 必须 401: body=%s", body)
 	var envelope struct {
@@ -329,7 +329,7 @@ func TestAuthFlow(t *testing.T) {
 	assert.Equal(t, 10100, envelope.Code)
 }
 
-// TestAuthWhitelist 白名单收紧（AUTH-06/D-15）：login、apikey-login、healthz、
+// TestAuthWhitelist 白名单收紧：login、apikey-login、healthz、
 // readyz 四路径免 token 可达；其余路由无 token 一律 401。
 func TestAuthWhitelist(t *testing.T) {
 	ts, dsn, _, adminID := newTestApp(t)
@@ -357,7 +357,7 @@ func TestAuthWhitelist(t *testing.T) {
 	assert.Equal(t, 10100, envelope.Code)
 }
 
-// TestAuthLoginFailures 登录失败面（T-2-01/T-2-08）：①用户不存在与密码错误两路径
+// TestAuthLoginFailures 登录失败面（防枚举/防 500）：①用户不存在与密码错误两路径
 // body 逐字节相同（防枚举）②禁用用户 10502 ③畸形 hash 401 非 500。
 func TestAuthLoginFailures(t *testing.T) {
 	ts, dsn, _, _ := newTestApp(t)
@@ -388,9 +388,9 @@ func TestAuthLoginFailures(t *testing.T) {
 	assert.Equal(t, 10502, disabledEnvelope.Code, "禁用用户必须 10502: body=%s", body)
 	assert.Equal(t, "用户已被禁用", disabledEnvelope.Message)
 
-	// ②'（WR-01 回归）禁用用户 + 错误密码 → 统一 10501（与"不存在/启用错密码"
+	// ②（回归防护）禁用用户 + 错误密码 → 统一 10501（与"不存在/启用错密码"
 	// 逐字节相同的语义）：状态校验在 bcrypt 成功之后——错密码不得提前返回 10502
-	// 泄漏"存在且禁用"名单（防枚举，T-2-01）
+	// 泄漏"存在且禁用"名单（防枚举）
 	status, body = doRequest(t, "POST", ts.URL+"/api/v1/auth/login", `{"username":"disabled-user","password":"wrong-password"}`)
 	require.Equal(t, http.StatusUnauthorized, status, "body=%s", body)
 	var disabledWrongPw struct {
@@ -403,7 +403,7 @@ func TestAuthLoginFailures(t *testing.T) {
 	assert.Equal(t, string(body1), string(body), "禁用错密码与不存在响应必须逐字节相同（防枚举）")
 
 	// ③ 畸形 hash（10 字符垃圾值，本库 arm64 行同型 fixture）→ 10501 且 HTTP 401
-	// 而非 500（T-2-08：任何 bcrypt error 一律译为登录失败）
+	// 而非 500（任何 bcrypt error 一律译为登录失败）
 	seedUser(t, dsn, "malformed-user", "Arm64@U", "畸形哈希者", 1, false)
 	status, body = doRequest(t, "POST", ts.URL+"/api/v1/auth/login", `{"username":"malformed-user","password":"any-pass"}`)
 	require.Equal(t, http.StatusUnauthorized, status, "畸形 hash 必须 401 而非 500: body=%s", body)

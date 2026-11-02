@@ -26,15 +26,15 @@ func NewUserHandler(svc *service.UserService) *UserHandler {
 	return &UserHandler{svc: svc}
 }
 
-// bindJSON 绑定 JSON 请求体。请求体超限（BodyLimit 中间件的 MaxBytesReader，
-// WR-02）时收敛为固定文案 10401 envelope——不回显底层错误原文（T-1-01 纪律）；
+// bindJSON 绑定 JSON 请求体。请求体超限（BodyLimit 中间件的 MaxBytesReader）
+// 时收敛为固定文案 10401 envelope——不回显底层错误原文（纪律）；
 // 其余校验失败维持既有文案。返回 false 表示响应已写出，调用方直接 return。
 func bindJSON(c *gin.Context, obj any) bool {
 	if err := c.ShouldBindJSON(obj); err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			// 文案由实际触发的截断层 limit 生成（MaxBytesError.Limit，IN-02）——
-			// multipart Content-Type 打 JSON 路由超全局 multipart 兜底（CR-01，
+			// 文案由实际触发的截断层 limit 生成（MaxBytesError.Limit）——
+			// multipart Content-Type 打 JSON 路由超全局 multipart 兜底（
 			// 20MB）时文案报 20 而非按 MaxBodyMB 固定生成的 1，与实际上限永不漂移；
 			// 各 BodyLimit 层上限均为整 MB（<<20 派生），右移整除安全。
 			resp.Fail(c, errcode.New(errcode.CodeValidation,
@@ -114,7 +114,7 @@ func parseUserID(c *gin.Context) (int64, bool) {
 	return id, true
 }
 
-// GetRoles 处理 GET /api/v1/users/:id/roles：返回用户当前角色列表（USER-04）。
+// GetRoles 处理 GET /api/v1/users/:id/roles：返回用户当前角色列表。
 func (h *UserHandler) GetRoles(c *gin.Context) {
 	id, ok := parseUserID(c)
 	if !ok {
@@ -128,7 +128,7 @@ func (h *UserHandler) GetRoles(c *gin.Context) {
 	resp.OK(c, data)
 }
 
-// AssignRoles 处理 PUT /api/v1/users/:id/roles：全量替换语义（USER-04/D-12，
+// AssignRoles 处理 PUT /api/v1/users/:id/roles：全量替换语义（
 // 空数组=全回收）。
 func (h *UserHandler) AssignRoles(c *gin.Context) {
 	id, ok := parseUserID(c)
@@ -147,7 +147,7 @@ func (h *UserHandler) AssignRoles(c *gin.Context) {
 }
 
 // UpdateStatus 处理 PUT /api/v1/users/:id/status：启/停用；停用即踢存量会话
-// （D-09 安全增强）。
+// （安全增强）。
 func (h *UserHandler) UpdateStatus(c *gin.Context) {
 	id, ok := parseUserID(c)
 	if !ok {
@@ -165,7 +165,7 @@ func (h *UserHandler) UpdateStatus(c *gin.Context) {
 }
 
 // ResetPassword 处理 PUT /api/v1/users/:id/reset-password：固定 123456 + 踢存量
-// 会话；无请求体（源 resetPwd 无旧密码校验，USER-03）。
+// 会话；无请求体（源 resetPwd 无旧密码校验）。
 func (h *UserHandler) ResetPassword(c *gin.Context) {
 	id, ok := parseUserID(c)
 	if !ok {
@@ -179,7 +179,7 @@ func (h *UserHandler) ResetPassword(c *gin.Context) {
 }
 
 // Delete 处理 DELETE /api/v1/users/:id：builtin 守卫（409/10601 零删除调用）+
-// 先删 sys_user_role 关联再删用户（事务，源 removeById 顺序，USER-07）。
+// 先删 sys_user_role 关联再删用户（事务，源 removeById 顺序）。
 func (h *UserHandler) Delete(c *gin.Context) {
 	id, ok := parseUserID(c)
 	if !ok {

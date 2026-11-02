@@ -1,17 +1,16 @@
 //go:build integration
 
-// Dict/Config/Shift 三域集成测试（真实 MySQL+Redis 双容器，复用 newTestApp 基建，
-// Phase 4 04-01）。覆盖：
+// Dict/Config/Shift 三域集成测试（真实 MySQL+Redis 双容器，复用 newTestApp 基建）。
+// 覆盖：
 //   - TestDictTypeCRUD：类型 CRUD 全链 + uk_dict_type 1062 翻译（400/10400
-//     「字典类型已存在」）+ update 零值保护（DICT-01）
+//     「字典类型已存在」）+ update 零值保护
 //   - TestDictDataWithTypeCheck：类型存在性前置校验（404/10300 源消息原文）+
-//     dict_type_name 服务端冗余写（DICT-02）
-//   - TestDictDataFilterByType：dict_type_id 可选过滤分支（DICT-03）
+//     dict_type_name 服务端冗余写
+//   - TestDictDataFilterByType：dict_type_id 可选过滤分支
 //   - TestConfigCRUDAndKey：config CRUD + key/{key} 字符串本体查询 + uk_config_key
-//     1062 翻译（CONF-01，Task 2）
-//   - TestShiftFullListNoPaging：全量数组直出无分页 envelope（SHFT-01 源行为直译，
-//     Task 2）+ CRUD（SHFT-02）
-//   - TestDictRoutePerm：无 token 401 / 无 perm 用户 403 / admin 200 三断言（D-04）
+//     1062 翻译
+//   - TestShiftFullListNoPaging：全量数组直出无分页 envelope（源行为直译）+ CRUD
+//   - TestDictRoutePerm：无 token 401 / 无 perm 用户 403 / admin 200 三断言
 package handler_test
 
 import (
@@ -58,7 +57,7 @@ type dictDataRespBody struct {
 	Value        *string `json:"value"`
 }
 
-// pageEnvelope 分页 envelope（items/total/page/size 齐——DICT-03 断言）。
+// pageEnvelope 分页 envelope（items/total/page/size 齐——分页断言用）。
 type pageEnvelope struct {
 	Items []json.RawMessage `json:"items"`
 	Total int64             `json:"total"`
@@ -79,11 +78,11 @@ func createDictType(t *testing.T, ts *httptest.Server, token, name, typ string) 
 	return int64(created.ID)
 }
 
-// TestDictTypeCRUD 字典类型 CRUD 全链（DICT-01）：
+// TestDictTypeCRUD 字典类型 CRUD 全链：
 // create→get→list→update 零值保护（不传字段不清空）→delete→get 404；
 // dict_type 重复 create → 400 code 10400 消息「字典类型已存在」（uk_dict_type
-// 1062 经 TranslateError 翻译，DICT-01 验收明文）；update 撞同 uk 同翻译
-// （WR-02：白名单含唯一键列，Update 与 Create 同冲突同译，不透传 500）。
+// 1062 经 TranslateError 翻译，验收明文）；update 撞同 uk 同翻译
+// （白名单含唯一键列，Update 与 Create 同冲突同译，不透传 500）。
 func TestDictTypeCRUD(t *testing.T) {
 	ts, _, adminToken, _ := newTestApp(t)
 	token := adminToken()
@@ -121,7 +120,7 @@ func TestDictTypeCRUD(t *testing.T) {
 	assert.Equal(t, 1, page.Page)
 	assert.Equal(t, 10, page.Size)
 
-	// update 零值保护（ENG-05）：只传 dictName，不传 remark——remark 不被清空
+	// update 零值保护：只传 dictName，不传 remark——remark 不被清空
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/dict-types/"+int64ToStr(int64(created.ID)),
 		`{"dictName":"用户状态改"}`)
 	require.Equal(t, http.StatusOK, status, "body=%s", body)
@@ -142,7 +141,7 @@ func TestDictTypeCRUD(t *testing.T) {
 	assert.Equal(t, 10400, dupEnv.Code, "body=%s", body)
 	assert.Equal(t, "字典类型已存在", dupEnv.Message, "body=%s", body)
 
-	// update 撞 uk_dict_type（WR-02）：rename 自己为已存在的 dictType → 与 Create
+	// update 撞 uk_dict_type：rename 自己为已存在的 dictType → 与 Create
 	// 同冲突同翻译 400/10400，不透传 500/10001
 	otherID := createDictType(t, ts, token, "其他状态", "other_status")
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/dict-types/"+int64ToStr(int64(created.ID)),
@@ -164,7 +163,7 @@ func TestDictTypeCRUD(t *testing.T) {
 	assert.Equal(t, 10300, nfEnv.Code)
 }
 
-// TestDictDataWithTypeCheck 字典数据类型校验与冗余写（DICT-02）：
+// TestDictDataWithTypeCheck 字典数据类型校验与冗余写：
 // 先建类型 → create data 断言 resp 与 DB 行的 dict_type_name 冗余值 →
 // 对不存在 typeId create data → 404 code 10300 消息「字典类型不存在: {id}」
 // （源消息原文 DictApplicationService:87）。
@@ -204,7 +203,7 @@ func TestDictDataWithTypeCheck(t *testing.T) {
 	assert.Equal(t, "字典类型不存在: "+int64ToStr(missingID), nfEnv.Message, "源消息原文: body=%s", body)
 }
 
-// TestDictDataFilterByType 按类型过滤（DICT-03）：两类型各 2 条 data →
+// TestDictDataFilterByType 按类型过滤：两类型各 2 条 data →
 // GET /api/v1/dict-datas?dict_type_id={A} 仅返回 A 的 2 条且 envelope
 // items/total/page/size 齐；不传 dict_type_id 返回全量分页。
 func TestDictDataFilterByType(t *testing.T) {
@@ -252,7 +251,7 @@ func TestDictDataFilterByType(t *testing.T) {
 	assert.Equal(t, int64(4), allPage.Total, "不过滤返回全量: body=%s", body)
 }
 
-// TestDictRoutePerm perm 三断言（D-04）：无 token 401 / 无 perm 用户 403 / admin 200。
+// TestDictRoutePerm perm 三断言：无 token 401 / 无 perm 用户 403 / admin 200。
 // super_admin 种子豁免照既有 perm_integration_test 模式（matcher g 层豁免）。
 func TestDictRoutePerm(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
@@ -282,7 +281,7 @@ type configRespBody struct {
 	ConfigValue *string `json:"configValue"`
 }
 
-// TestConfigCRUDAndKey 配置 CRUD 与 key 查询（CONF-01）：
+// TestConfigCRUDAndKey 配置 CRUD 与 key 查询：
 // create → GET /api/v1/configs/key/{key} 断言 data 为字符串值本体 →
 // 重复 create → 400/10400「配置键已存在」（uk_config_key 1062）→
 // key 查询不存在 → 404 → update 零值保护 → delete。
@@ -317,7 +316,7 @@ func TestConfigCRUDAndKey(t *testing.T) {
 	assert.Equal(t, 10400, dupEnv.Code, "body=%s", body)
 	assert.Equal(t, "配置键已存在", dupEnv.Message, "body=%s", body)
 
-	// update 撞 uk_config_key（WR-02）：rename 自己为已存在的 configKey → 与
+	// update 撞 uk_config_key：rename 自己为已存在的 configKey → 与
 	// Create 同冲突同翻译 400/10400，不透传 500/10001
 	dupStatus, dupBody := doAuthRequest(t, token, "POST", ts.URL+"/api/v1/configs",
 		`{"configKey":"other.key","configValue":"v","configType":"system"}`)
@@ -341,7 +340,7 @@ func TestConfigCRUDAndKey(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &nfEnv))
 	assert.Equal(t, 10300, nfEnv.Code)
 
-	// update 零值保护（ENG-05）：只传 configValue，configKey 不动
+	// update 零值保护：只传 configValue，configKey 不动
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/configs/"+int64ToStr(int64(created.ID)),
 		`{"configValue":"sys-iam-go-v2"}`)
 	require.Equal(t, http.StatusOK, status, "body=%s", body)
@@ -368,7 +367,7 @@ func TestConfigCRUDAndKey(t *testing.T) {
 }
 
 // shiftRespBody 排班响应体（集成断言所需子集；status 为 UsageStatus 枚举形态
-// 出网字符串，WR-04）。
+// 出网字符串）。
 type shiftRespBody struct {
 	ID        ids.ID  `json:"id"`
 	ShiftCode *string `json:"shiftCode"`
@@ -378,10 +377,10 @@ type shiftRespBody struct {
 	Status    *string `json:"status"`
 }
 
-// TestShiftFullListNoPaging 排班全量直出（SHFT-01 源行为直译）+ CRUD（SHFT-02）：
+// TestShiftFullListNoPaging 排班全量直出（源行为直译）+ CRUD：
 // create 3 条 → GET /api/v1/shifts 断言 data 为长度 3 数组且响应无 items/total
 // 包装 → PUT 改 start_time 后 Get 回读更新生效。status 经 UsageStatus 枚举
-// （WR-04）：create 恒服务端默认 "ENABLED"；update 未知枚举值 400/10401 不静默
+// 枚举纪律：create 恒服务端默认 "ENABLED"；update 未知枚举值 400/10401 不静默
 // 落库；update "DISABLED" 合法且回读一致。
 func TestShiftFullListNoPaging(t *testing.T) {
 	ts, _, adminToken, _ := newTestApp(t)
@@ -393,19 +392,19 @@ func TestShiftFullListNoPaging(t *testing.T) {
 		require.Equal(t, http.StatusOK, status, "create shift 失败: body=%s", body)
 	}
 
-	// list：data 直接是数组（无 items/total/page/size 包装——SHFT-01 直译）。
+	// list：data 直接是数组（无 items/total/page/size 包装——源直译）。
 	// data 反序列化为数组成功 + 无分页键字段，即证无 envelope（对象包装会在此失败）
 	status, body := doAuthRequest(t, token, "GET", ts.URL+"/api/v1/shifts", "")
 	require.Equal(t, http.StatusOK, status, "body=%s", body)
 	var env dictEnvelope
 	require.NoError(t, json.Unmarshal(body, &env))
-	assert.NotContains(t, string(env.Data), `"items"`, "SHFT-01：响应 data 不得出现 items 分页键")
-	assert.NotContains(t, string(env.Data), `"total"`, "SHFT-01：响应 data 不得出现 total 分页键")
+	assert.NotContains(t, string(env.Data), `"items"`, "全量直出：响应 data 不得出现 items 分页键")
+	assert.NotContains(t, string(env.Data), `"total"`, "全量直出：响应 data 不得出现 total 分页键")
 	var items []shiftRespBody
 	require.NoError(t, json.Unmarshal(env.Data, &items), "data 必须为数组非分页 envelope: body=%s", body)
 	assert.Len(t, items, 3, "全量直出 3 条")
 
-	// PUT 改 start_time → Get 回读更新生效（SHFT-02 CRUD）
+	// PUT 改 start_time → Get 回读更新生效（CRUD）
 	target := items[0].ID
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/shifts/"+int64ToStr(int64(target)),
 		`{"startTime":"09:00:00"}`)
@@ -426,7 +425,7 @@ func TestShiftFullListNoPaging(t *testing.T) {
 	require.NotNil(t, got.StartTime)
 	assert.Equal(t, "09:00:00", *got.StartTime)
 
-	// status 枚举纪律（WR-04）：create 恒服务端默认 1 → 出网 "ENABLED"
+	// status 枚举纪律：create 恒服务端默认 1 → 出网 "ENABLED"
 	//（create 请求体不收 status——与其他域对齐）
 	require.NotNil(t, got.Status)
 	assert.Equal(t, "ENABLED", *got.Status, "服务端默认 status=1 必须出网 ENABLED")
@@ -450,7 +449,7 @@ func TestShiftFullListNoPaging(t *testing.T) {
 	require.NotNil(t, updatedStatus.Status)
 	assert.Equal(t, "DISABLED", *updatedStatus.Status, "update DISABLED 必须落库并回读")
 
-	// update 合法枚举数字双形态 → 200 回读 "ENABLED"（双形态兼容，WR-03 先例）
+	// update 合法枚举数字双形态 → 200 回读 "ENABLED"（双形态兼容先例）
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/shifts/"+int64ToStr(int64(target)),
 		`{"status":1}`)
 	require.Equal(t, http.StatusOK, status, "数字双形态必须 200: body=%s", body)

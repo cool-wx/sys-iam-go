@@ -21,7 +21,7 @@ func NewApiKeyHandler(svc *service.ApiKeyService) *ApiKeyHandler {
 }
 
 // Create 处理 POST /api/v1/api-keys：绑定校验 → service → envelope。响应 data
-// 含**明文 apiKey**——一次性展示语义（T-2-15：源 addApiKey 返回完整实体含明文；
+// 含**明文 apiKey**——一次性展示语义（源 addApiKey 返回完整实体含明文；
 // 客户端须即时保存，此后管理面 list/get 虽可见但无再次"生成/重置"路径）。
 func (h *ApiKeyHandler) Create(c *gin.Context) {
 	var req dto.ApiKeyCreateReq
@@ -63,7 +63,7 @@ func (h *ApiKeyHandler) Get(c *gin.Context) {
 }
 
 // UpdateStatus 处理 PUT /api/v1/api-keys/:id/status：仅 status 单列语义（源
-// editApiKey——停用立即生效，AKEY-02）。
+// editApiKey——停用立即生效）。
 func (h *ApiKeyHandler) UpdateStatus(c *gin.Context) {
 	id, ok := parseID(c, "无效的 API Key ID")
 	if !ok {

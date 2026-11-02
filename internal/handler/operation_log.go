@@ -21,7 +21,7 @@ func NewOlogHandler(svc *service.OperationLogService) *OlogHandler {
 }
 
 // List 处理 GET /api/v1/logs：page/size 经 ParseWithDefaults 特例钳位（缺省 1/10
-// ——源 LogQuery DTO 字段默认值，D-09 拍板；OLOG-03 验收明文「特例，非全局 1/15」，
+// ——源 LogQuery DTO 字段默认值拍板；验收明文「特例，非全局 1/15」，
 // 畸形输入统一归缺省 10）；module/operation/real_name 三 like 模糊（空串=不过滤）
 // → service → envelope（items 按 create_time 倒序，空结果 [] 非 null）。
 func (h *OlogHandler) List(c *gin.Context) {

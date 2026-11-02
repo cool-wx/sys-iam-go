@@ -1,6 +1,5 @@
 // Package handler 故障域 HTTP handler（薄层三段式；List 走 paging.Parse 1/15
-// 全局默认——源 fault list 走 PageHelper 同 1/15；Import 为 multipart 上传
-// FAUL-02）。
+// 全局默认——源 fault list 走 PageHelper 同 1/15；Import 为 multipart 上传）。
 package handler
 
 import (
@@ -94,7 +93,7 @@ func (h *FaultHandler) Delete(c *gin.Context) {
 	resp.OK(c, nil)
 }
 
-// Import 处理 POST /api/v1/faults/import（FAUL-02 multipart；路由层
+// Import 处理 POST /api/v1/faults/import（multipart；路由层
 // BodyLimitWithMB(20) 独立上限 + RequirePerm(PermFaultImport) + Oplog 三中间件
 // 齐挂）：FormFile("file") 取上传流 → service 导入链（8 列契约 + 行数/表头双
 // 前置防线 + 三键 upsert 整批事务）→ ImportResult envelope。

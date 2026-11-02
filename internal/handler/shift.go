@@ -1,4 +1,4 @@
-// Package handler 排班域 HTTP handler（薄层三段式；List 全量数组直出——SHFT-01
+// Package handler 排班域 HTTP handler（薄层三段式；List 全量数组直出——
 // 源 list 无分页，直译，勿统一为分页）。
 package handler
 
@@ -66,7 +66,7 @@ func (h *ShiftHandler) Get(c *gin.Context) {
 	resp.OK(c, data)
 }
 
-// List 处理 GET /api/v1/shifts：全量数组直出——源 list 无分页，SHFT-01 直译，
+// List 处理 GET /api/v1/shifts：全量数组直出——源 list 无分页直译，
 // 勿统一为分页（data 直接是数组，无 items/total/page/size envelope）。
 func (h *ShiftHandler) List(c *gin.Context) {
 	data, err := h.svc.List(c.Request.Context())

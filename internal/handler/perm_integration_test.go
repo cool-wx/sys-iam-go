@@ -2,8 +2,8 @@
 
 // Casbin enforcer 装配与 requirePerm 即时生效集成测试（真实 MySQL+Redis 双容器，
 // 复用 newTestApp 基建）。覆盖：boot 对账 g 行导入 + matcher 豁免独立于 p 行、
-// 无角色 403/10200（PERM-06）、无 token 401、分配/回收同 token 下一请求生效
-// （PERM-02，Plan Task 2 扩展）、双轨落库（PERM-04）、级联清理。
+// 无角色 403/10200、无 token 401、分配/回收同 token 下一请求生效
+// （即时生效）、双轨落库、级联清理。
 package handler_test
 
 import (
@@ -30,7 +30,7 @@ import (
 func TestPermEnforcerBootSmoke(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
 
-	// ① admin（super_admin 豁免走 enforcer g 层，D-07）→ 200
+	// ① admin（super_admin 豁免走 enforcer g 层）→ 200
 	status, body := doAuthRequest(t, adminToken(), "GET", ts.URL+"/api/v1/users", "")
 	require.Equal(t, http.StatusOK, status, "admin(super_admin) 必须放行: body=%s", body)
 
@@ -85,7 +85,7 @@ func permFixture(t *testing.T, dsn string, roleCode, username string) (menuID, r
 	return menuID, roleID, userID
 }
 
-// TestPermHotReload 即时生效四步链（PERM-02/PERM-04/PERM-05 验收核心）：
+// TestPermHotReload 即时生效四步链（验收核心）：
 // (a) admin 分配角色 → g 行已在 AssignRoles 同步写入 → U 登录拿 token → 403
 // （R 无 p 策略）；(b) admin PUT /roles/{R}/menus [M] → **同一 U token 不重登录**
 // 再 GET → 200；(c) 置空 menuIds（全回收）→ 同一 token 再请求 → 403；
@@ -114,7 +114,7 @@ func TestPermHotReload(t *testing.T) {
 		`{"menuIds":["`+menuIDStr+`"]}`)
 	require.Equal(t, http.StatusOK, status, "分配菜单必须成功: body=%s", body)
 	status, body = doAuthRequest(t, uToken, "GET", ts.URL+"/api/v1/users", "")
-	require.Equal(t, http.StatusOK, status, "分配后同一 token 下一请求必须 200（PERM-02 即时生效直证）: body=%s", body)
+	require.Equal(t, http.StatusOK, status, "分配后同一 token 下一请求必须 200（即时生效直证）: body=%s", body)
 
 	// (d1) 双轨落库：casbin_rule p 行 + sys_role_menu 行同写
 	var count struct {
@@ -126,8 +126,8 @@ func TestPermHotReload(t *testing.T) {
 			"(SELECT COUNT(*) FROM sys_role_menu WHERE role_id=? AND menu_id=?) AS rm_rows",
 		roleCode, roleID, menuID,
 	).Scan(&count).Error)
-	assert.Equal(t, int64(1), count.PRows, "casbin_rule 必须存在 (p, role_code, perm) 行（PERM-04）")
-	assert.Equal(t, int64(1), count.RMRows, "sys_role_menu 原样双轨行必须存在（PERM-04）")
+	assert.Equal(t, int64(1), count.PRows, "casbin_rule 必须存在 (p, role_code, perm) 行")
+	assert.Equal(t, int64(1), count.RMRows, "sys_role_menu 原样双轨行必须存在")
 
 	// (c) 置空 menuIds（全回收）→ 同一 token 再请求 403
 	status, body = doAuthRequest(t, adminToken(), "PUT", ts.URL+"/api/v1/roles/"+roleIDStr+"/menus", `{"menuIds":[]}`)
@@ -145,7 +145,7 @@ func TestPermHotReload(t *testing.T) {
 	assert.Equal(t, int64(0), count.RMRows, "全回收后 sys_role_menu 行必须同步消失（两轨同写同删）")
 }
 
-// TestPermRevokeRoleImmediate 角色回收即时生效（PERM-02 用户轴）：分配角色+菜单
+// TestPermRevokeRoleImmediate 角色回收即时生效（用户轴）：分配角色+菜单
 // 得 200 后，admin PUT /users/{U}/roles []（清空=清 g 行）→ 同一 U token 下一
 // 请求 403——g 行回收不重登录即时生效。
 func TestPermRevokeRoleImmediate(t *testing.T) {
@@ -175,7 +175,7 @@ func TestPermRevokeRoleImmediate(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, status, "角色回收后同一 token 下一请求必须 403（g 层即时生效）: body=%s", body)
 }
 
-// TestPermDeleteCascades 角色删除级联清策（T-3-01；CR-02 预清模式回归——清理
+// TestPermDeleteCascades 角色删除级联清策（预清模式回归——清理
 // 前置于四连删事务，删除成功即策略已撤、无 post-commit 步骤）：分配菜单产生 p 行后
 // 删除角色 R → casbin_rule 无 R 的任何 p 行（v0）与 g 行（v1）——ClearRole 双清。
 func TestPermDeleteCascades(t *testing.T) {
@@ -210,15 +210,15 @@ func TestPermDeleteCascades(t *testing.T) {
 	assert.Equal(t, int64(0), before.Cnt, "删除角色后 casbin_rule 必须无该角色任何 p/g 行（ClearRole 双清）")
 }
 
-// TestPermRouteLockdown 全量收口横向越权采样（PERM-06/WR-05 清偿直证，D-15）：
+// TestPermRouteLockdown 全量收口横向越权采样（清偿直证）：
 // 角色 R + 用户 U 经 API 授权链装配后逐域采样六端点——
 //
 //	(a) R 无任何 p 策略：U 同一 token 每域采样一条（users/menus/depts.tree/roles/
-//	    api-keys/kickout）全部 403/10200（漏挂即在此暴露——T-3-10 缓解断言）；
+//	    api-keys/kickout）全部 403/10200（漏挂即在此暴露——缓解断言）；
 //	(b) admin 给 R 分配【仅含 system:menu:list】菜单（PUT /roles/:id/menus）→
 //	    **同一 U token 不重登录**：GET /menus 200 且 GET /users 仍 403——授权
 //	    最小化与横向隔离直证（同 token 授权域 200 与未授权域 403 并存）；
-//	(c) kickout 叠加语义（D-15 纵深防御直证）：R 追加 system:auth:kickout 菜单
+//	(c) kickout 叠加语义（纵深防御直证）：R 追加 system:auth:kickout 菜单
 //	    （sys_menu 无 auth 域行，发明串直插菜单——Q2 已知边界）→ GET /menus 仍
 //	    200（p 行同步链正常）→ U 调 kickout 仍 403：RequirePerm 层已放行，403
 //	    必来自 RequireRoles(super_admin) 第二层拦截；
@@ -280,7 +280,7 @@ func TestPermRouteLockdown(t *testing.T) {
 	menuMenuStr := strconv.FormatInt(menuMenu, 10)
 	assignR(`"` + menuMenuStr + `"`)
 	status, body = doAuthRequest(t, uToken, "GET", ts.URL+"/api/v1/menus", "")
-	require.Equal(t, http.StatusOK, status, "授权域 menus 必须同 token 即时 200（PERM-02）: body=%s", body)
+	require.Equal(t, http.StatusOK, status, "授权域 menus 必须同 token 即时 200: body=%s", body)
 	status, body = doAuthRequest(t, uToken, "GET", ts.URL+"/api/v1/users", "")
 	require.Equal(t, http.StatusForbidden, status, "未授权域 users 同一 token 必须仍 403（横向隔离直证）: body=%s", body)
 	var stillDenied struct {
@@ -290,7 +290,7 @@ func TestPermRouteLockdown(t *testing.T) {
 	assert.Equal(t, 10200, stillDenied.Code, "body=%s", body)
 
 	// (c) R 追加 kickout 菜单（全量替换语义）→ p 行同步正常（menus 仍 200）→
-	// U 调 kickout 仍 403——RequireRoles 第二层拦截直证（D-15 纵深防御）
+	// U 调 kickout 仍 403——RequireRoles 第二层拦截直证（纵深防御）
 	menuKickStr := strconv.FormatInt(menuKick, 10)
 	assignR(`"` + menuMenuStr + `", "` + menuKickStr + `"`)
 	status, body = doAuthRequest(t, uToken, "GET", ts.URL+"/api/v1/menus", "")
@@ -305,7 +305,7 @@ func TestPermRouteLockdown(t *testing.T) {
 	).Scan(&policyRow).Error)
 	require.Equal(t, int64(2), policyRow.Cnt, "p(kickout)+g 行必须均已同步（403 必来自第二层）")
 	status, body = doAuthRequest(t, uToken, "POST", ts.URL+"/api/v1/auth/kickout", kickBody)
-	require.Equal(t, http.StatusForbidden, status, "持 kickout p 策略的非 super_admin 调 kickout 必须仍 403（RequireRoles 第二层，D-15）: body=%s", body)
+	require.Equal(t, http.StatusForbidden, status, "持 kickout p 策略的非 super_admin 调 kickout 必须仍 403（RequireRoles 第二层）: body=%s", body)
 
 	// (d) super_admin 调 kickout → 200（matcher 豁免过 RequirePerm + RequireRoles
 	// 命中；目标孤儿用户无会话，KickoutUser 幂等 no-op）
@@ -313,7 +313,7 @@ func TestPermRouteLockdown(t *testing.T) {
 	require.Equal(t, http.StatusOK, status, "super_admin kickout 必须 200（叠加双层全放行）: body=%s", body)
 }
 
-// TestUserDataScope dataScope 五档行差异（PERM-03 验收核心，03-RESEARCH 四步断言
+// TestUserDataScope dataScope 五档行差异（验收核心，四步断言
 // 法第 4 步）。种子数据集：dept 三层树 D1(根)←D1a←D1a1 + 独立 D2；用户 C 挂 D1、
 // A 挂 D1a1、B 挂 D2（create_by_id=admin），另有 create_by_id=C 的自建行落 D2
 // （档 1 只认 create_by_id 不认 dept——落 D2 以与档 2/4 行集区分）。对 C 依次配
@@ -324,7 +324,7 @@ func TestPermRouteLockdown(t *testing.T) {
 //	不可见验收明文）；档 3 → 恰 {D1,D1a,D1a1} 用户（含 A）；档 4 → PUT
 //	/roles/:id/scopes [D2] 后恰 D2 用户（含 B）；档 5 → 全量。
 //
-// 补充断言：多角色取宽（档 2+档 5 并存 → 全量，D-11 max）；无有效档位 fail-closed
+// 补充断言：多角色取宽（档 2+档 5 并存 → 全量，max 聚合）；无有效档位 fail-closed
 // （仅 NULL 档角色持 list perm → 本人档——纯无角色被 RequirePerm 403 挡在授权层，
 // 本断言是其经授权面的可观察形态）；total 与 items 行数一致（P15 同过滤闭包）；
 // 档位变更即时（PUT /roles/:id 改 dataScope 2→5 后同一 token 下一请求即全量，
@@ -368,7 +368,7 @@ func TestUserDataScope(t *testing.T) {
 		require.Equal(t, http.StatusOK, status, "授菜单必须成功: body=%s", body)
 	}
 
-	// --- helper：C 登录一次（五档逐档验证同一 token 不重登录——PERM-02 同轴）---
+	// --- helper：C 登录一次（五档逐档验证同一 token 不重登录——同轴）---
 	cToken := loginAs(t, ts, "ds-user-c", testAdminPass)
 
 	assignRoles := func(roleIDs ...int64) {
@@ -435,7 +435,7 @@ func TestUserDataScope(t *testing.T) {
 	assert.Equal(t, int64(5), total, "档 5 必须全量 5 行: set=%v", set)
 	assert.True(t, set["ds-user-a"] && set["ds-user-b"] && set["ds-user-c"] && set["ds-self-row"], "档 5 必须含全部测试用户: %v", set)
 
-	// --- 多角色取宽（D-11）：档 2 + 档 5 并存 → max=5 全量 ---
+	// --- 多角色取宽：档 2 + 档 5 并存 → max=5 全量 ---
 	assignRoles(role2, role5)
 	set, total = listAs()
 	assert.Equal(t, int64(5), total, "多角色必须取最宽档 max(dataScope)=5 → 全量: set=%v", set)
@@ -456,7 +456,7 @@ func TestUserDataScope(t *testing.T) {
 	assert.Equal(t, int64(5), total, "档位变更后同一 token 下一请求必须按新档全量（无缓存直证）: set=%v", set)
 }
 
-// TestRoleDisableRevokeImmediate 角色停用对授权即刻生效（WR-04 回归，D-09 家族
+// TestRoleDisableRevokeImmediate 角色停用对授权即刻生效（回归，停用家族
 // 语义在角色轴的对应物）：分配角色+菜单 → U 同一 token 200 → PUT status=DISABLED →
 // 同一 token 下一请求 403 且 casbin p/g 行双清（停用=授权即刻撤销）→ 恢复 ENABLED
 // → 同一 token 200 且 p/g 行按业务表重建（恢复即刻复原，不等重启对账）。boot 对账
@@ -498,7 +498,7 @@ func TestRoleDisableRevokeImmediate(t *testing.T) {
 	status, body = doAuthRequest(t, adminToken(), "PUT", ts.URL+"/api/v1/roles/"+roleIDStr, `{"status":"DISABLED"}`)
 	require.Equal(t, http.StatusOK, status, "停用角色必须成功: body=%s", body)
 	status, body = doAuthRequest(t, uToken, "GET", ts.URL+"/api/v1/users", "")
-	require.Equal(t, http.StatusForbidden, status, "停用角色后同一 token 下一请求必须 403（WR-04 即刻生效）: body=%s", body)
+	require.Equal(t, http.StatusForbidden, status, "停用角色后同一 token 下一请求必须 403（即刻生效）: body=%s", body)
 	var forbidden struct {
 		Code int `json:"code"`
 	}
@@ -532,12 +532,12 @@ func TestRoleDisableRevokeImmediate(t *testing.T) {
 	userRules, err := repo.FindUserRoleCodes(ctx)
 	require.NoError(t, err)
 	for _, ur := range userRules {
-		assert.NotEqual(t, offCode, ur.RoleCode, "boot 对账 g 行数据源不得含停用角色（WR-04 同口径）")
+		assert.NotEqual(t, offCode, ur.RoleCode, "boot 对账 g 行数据源不得含停用角色（同口径）")
 	}
 	rolePerms, err := repo.FindRolePerms(ctx)
 	require.NoError(t, err)
 	for _, rp := range rolePerms {
-		assert.NotEqual(t, offCode, rp.RoleCode, "boot 对账 p 行数据源不得含停用角色（WR-04 同口径）")
+		assert.NotEqual(t, offCode, rp.RoleCode, "boot 对账 p 行数据源不得含停用角色（同口径）")
 	}
 	// 启用角色 perm_disable_revoke 的行必须仍在（过滤只打停用行，不误伤）
 	foundEnabled := false

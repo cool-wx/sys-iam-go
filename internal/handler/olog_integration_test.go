@@ -1,11 +1,11 @@
 //go:build integration
 
-// 操作日志域集成测试（OLOG-01/02/03，真实 MySQL+Redis 双容器，复用 newTestApp
+// 操作日志域集成测试（真实 MySQL+Redis 双容器，复用 newTestApp
 // 基建）。覆盖：
 //   - TestOpLogWriteRecorded：写路由落库行七要素（module/operation/method/
 //     params/user_id/status/error_msg）+ body 回放不破坏业务接口（200 双断言）
 //   - TestOpLogMaskedParams：8 敏感字段字符串值落库前掩码 ******、普通字段原样
-//     （OLOG-02 集成直证，D-09 逐字段保真）
+//     （集成直证，逐字段保真）
 //   - TestOpLogFailedRequestRecorded：失败请求 status=0 + error_msg 非空截 500
 //   - TestOpLogLoginNullIdentity：login 401 也落库且 user_id NULL（未登录分支）
 //   - TestOpLogListPagination：GET /api/v1/logs 缺省 1/10 特例（非全局 1/15）、
@@ -67,7 +67,7 @@ type ologRespBody struct {
 	CreateTime *types.LocalDateTime `json:"createTime"`
 }
 
-// flushOpLogs 同步排空操作日志 chan（D-08 Flush 语义——免 sleep 轮询）。
+// flushOpLogs 同步排空操作日志 chan（Flush 语义——免 sleep 轮询）。
 func flushOpLogs(t *testing.T) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -105,7 +105,7 @@ func createNDictTypes(t *testing.T, tsURL, token string, n int) {
 	}
 }
 
-// TestOpLogWriteRecorded 写操作落库行七要素 + body 回放不破坏业务接口（OLOG-01
+// TestOpLogWriteRecorded 写操作落库行七要素 + body 回放不破坏业务接口（
 // 双断言：接口 200 + 日志行 params 含原 body JSON）。
 func TestOpLogWriteRecorded(t *testing.T) {
 	ts, dsn, adminToken, adminID := newTestApp(t)
@@ -140,7 +140,7 @@ func TestOpLogWriteRecorded(t *testing.T) {
 	assert.GreaterOrEqual(t, *row.Duration, 0)
 }
 
-// TestOpLogMaskedParams 8 敏感字段字符串值落库前掩码（OLOG-02 集成直证）：
+// TestOpLogMaskedParams 8 敏感字段字符串值落库前掩码（集成直证）：
 // params 无任何明文敏感值、8 处 ******、普通字段原样保留。
 func TestOpLogMaskedParams(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
@@ -171,7 +171,7 @@ func TestOpLogMaskedParams(t *testing.T) {
 	assert.Contains(t, params, `"dictName":"掩码测试"`)
 }
 
-// TestOpLogFailedRequestRecorded 失败请求同样落库（OLOG-02）：status=0 且
+// TestOpLogFailedRequestRecorded 失败请求同样落库：status=0 且
 // error_msg 非空且 ≤500 字符（rune 语义）。
 func TestOpLogFailedRequestRecorded(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
@@ -198,7 +198,7 @@ func TestOpLogFailedRequestRecorded(t *testing.T) {
 }
 
 // TestOpLogLoginNullIdentity 未登录路由（login 自身）落库且 user_id NULL
-// （OLOG-02 identity 缺失分支；错误密码 401 也记录——源语义）。
+// （identity 缺失分支；错误密码 401 也记录——源语义）。
 func TestOpLogLoginNullIdentity(t *testing.T) {
 	ts, dsn, _, _ := newTestApp(t)
 
@@ -222,7 +222,7 @@ func TestOpLogLoginNullIdentity(t *testing.T) {
 	assert.NotEmpty(t, *row.ErrorMsg)
 }
 
-// TestOpLogListPagination 日志分页查询（OLOG-03）：无参缺省 1/10 特例（非全局
+// TestOpLogListPagination 日志分页查询：无参缺省 1/10 特例（非全局
 // 1/15）、module like 模糊命中、real_name 无命中空 []、第二页 create_time 倒序。
 func TestOpLogListPagination(t *testing.T) {
 	ts, _, adminToken, _ := newTestApp(t)
@@ -234,7 +234,7 @@ func TestOpLogListPagination(t *testing.T) {
 
 	// 无参缺省：items 长度 10、page=1、size=10（1/10 特例直证）。容器内共 14 条
 	// 日志：13 条 dict 写操作 + 1 条 adminToken() 的 login（AuthController——login
-	// 路由同样被记录，OLOG-01 保真）；翻页排序断言用 ?module=DictType 纯 dict 子集
+	// 路由同样被记录，源保真）；翻页排序断言用 ?module=DictType 纯 dict 子集
 	status, body := doAuthRequest(t, token, "GET", ts.URL+"/api/v1/logs", "")
 	require.Equal(t, http.StatusOK, status, "body=%s", body)
 	var env ologEnvelope
@@ -302,11 +302,11 @@ func TestOpLogListPagination(t *testing.T) {
 		"第二页首条必须旧于第一页末条（create_time 倒序翻页不漂移）")
 }
 
-// TestOlogSurvivesStop 清单第 8 项『SIGTERM 后日志完整落库』一体化直证（05-03
+// TestOlogSurvivesStop 『SIGTERM 后日志完整落库』一体化直证（
 // Task 2）：写操作入队后【不手动调 FlushOpLogs】直接调真实 App.Stop()——Stop 即
 // SIGTERM 处理路径的进程内等价（沿 TestGracefulShutdownDrains 先例），其内部
-// srv.Shutdown 之后含 FlushOpLogs 排空（app.go Stop 次序契约 D-08），随后断言
-// 日志行已完整落库。IN-04 disposition（Stop 对 oplog 连续 Flush 两次）同面直证：
+// srv.Shutdown 之后含 FlushOpLogs 排空（app.go Stop 次序契约），随后断言
+// 日志行已完整落库。Stop 对 oplog 连续 Flush 两次的幂等面同证：
 // 落库由 Stop 内 Flush 完成、行为正确，双 Flush 属幂等冗余，无需另改。
 // 断言时序：API 调用全部先于 Stop（Stop 关闭 DB/Redis 连接池）；checkDB 断言
 // 全部放在 Stop 之后——latestOlogByModule 以 DSN 新开独立连接，不依赖 server
@@ -315,7 +315,7 @@ func TestOlogSurvivesStop(t *testing.T) {
 	ts, dsn, adminToken, adminID := newTestApp(t)
 	token := adminToken()
 
-	// 预置部门 → PUT 改名（复用 05-02 已通链路；PUT /api/v1/depts/:id 挂
+	// 预置部门 → PUT 改名（PUT /api/v1/depts/:id 挂
 	// Oplog 声明 module=DeptController operation=update——router.go:102）
 	deptID := mustCreate(t, token, ts.URL+"/api/v1/depts", `{"deptName":"研发部","sort":1}`)
 	status, respBody := doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/depts/"+deptID,

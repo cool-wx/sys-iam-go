@@ -75,7 +75,7 @@ func (h *DeptHandler) List(c *gin.Context) {
 	resp.OK(c, data)
 }
 
-// Tree 处理 GET /api/v1/depts/tree：父子层级树（孤儿提升为根，DEPT-02）→ envelope。
+// Tree 处理 GET /api/v1/depts/tree：父子层级树（孤儿提升为根）→ envelope。
 func (h *DeptHandler) Tree(c *gin.Context) {
 	data, err := h.svc.Tree(c.Request.Context())
 	if err != nil {
