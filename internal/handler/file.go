@@ -44,9 +44,11 @@ func (h *FileHandler) Upload(c *gin.Context) {
 
 // Download 处理 GET /api/v1/files/download/:id（FILE-02 流式，全链不整载）：
 // Content-Length 由 DataFromReader 按真实字节数写出；Content-Disposition 手写
-// attachment; filename*=UTF-8'' + url.PathEscape——RFC 5987 形态承载中文与特殊
-// 字符，PathEscape 对 CR/LF 与控制字符百分号编码，头注入面天然消除（T-4-03），
-// 恒 attachment 不以同源 inline 渲染（T-4-05 缓解面）。
+//
+//	attachment; filename*=UTF-8'' + url.PathEscape
+//
+// ——RFC 5987 形态承载中文与特殊字符，PathEscape 对 CR/LF 与控制字符百分号编码，
+// 头注入面天然消除（T-4-03），恒 attachment 不以同源 inline 渲染（T-4-05 缓解面）。
 func (h *FileHandler) Download(c *gin.Context) {
 	id, ok := parseID(c, "无效的文件 ID")
 	if !ok {

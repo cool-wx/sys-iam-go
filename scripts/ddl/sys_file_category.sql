@@ -1,7 +1,7 @@
--- sys_file_category 建表 DDL（Phase 4 文件分类域）
+-- sys_file_category 建表 DDL（文件分类域）
 -- 来源：本机容器实测真实 DDL（SHOW CREATE TABLE sys_iam.sys_file_category，2026-11-01）
--- 列集 15 列；幂等（DROP TABLE IF EXISTS + CREATE TABLE）；不含外键（T-1-07）。
--- 树形结构（parent_id/parent_name 冗余列，FILE-05）；scripts/ddl/*.sql 由
+-- 列集 15 列；幂等（DROP TABLE IF EXISTS + CREATE TABLE）；不含外键。
+-- 树形结构（parent_id/parent_name 冗余列）；scripts/ddl/*.sql 由
 -- testutil.execDDLDir 按文件名序自动加载，落目录即生效。
 
 DROP TABLE IF EXISTS `sys_file_category`;

@@ -1,7 +1,7 @@
--- sys_user 建表 DDL（Phase 1 验证载体表）
+-- sys_user 建表 DDL（验证载体表）
 -- 来源：实测真实 DDL（SHOW CREATE TABLE sys_iam.sys_user，2026-10-31）+ builtin 补列
 --   （源 PO User.java:62-64 证实 builtin 列存在，导入 DDL 缺失；本地空表补列零风险）
--- 列集 22 列；对空库幂等（IF NOT EXISTS）；不含 DROP、不含外键（T-1-07）。
+-- 列集 22 列；对空库幂等（IF NOT EXISTS）；不含 DROP、不含外键。
 
 CREATE TABLE IF NOT EXISTS `sys_user` (
   `id` bigint NOT NULL,

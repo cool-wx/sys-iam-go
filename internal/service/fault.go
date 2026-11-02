@@ -37,13 +37,13 @@ func NewFaultService(db *gorm.DB, repo *repository.FaultInfoRepo) *FaultService 
 // 绕过列默认，故服务端承担，FAUL-01）。审计字段由 PO 钩子填充（ENG-02）。
 func (s *FaultService) Create(ctx context.Context, req *dto.FaultCreateReq) (*dto.FaultResp, error) {
 	m := &po.FaultInfoPO{
-		Code:       req.Code,
-		Name:       req.Name,
-		Detail:     req.Detail,
-		Reason:     req.Reason,
-		Location:   req.Location,
-		Fix:        req.Fix,
-		Remark:     req.Remark,
+		Code:     req.Code,
+		Name:     req.Name,
+		Detail:   req.Detail,
+		Reason:   req.Reason,
+		Location: req.Location,
+		Fix:      req.Fix,
+		Remark:   req.Remark,
 	}
 	if req.BitIndex != nil {
 		m.BitIndex = req.BitIndex

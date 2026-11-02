@@ -50,7 +50,7 @@ func (s *ConfigService) Create(ctx context.Context, req *dto.ConfigCreateReq) (*
 // Update 更新配置（部分更新，ENG-05）：白名单 config_key/config_value/
 // config_type/remark（nil=不写库；空串=显式清空照写）。落库后回读返回最新契约。
 // 白名单含唯一键列 config_key，撞 uk_config_key 与 Create 同冲突同翻译
-//（WR-02：400/10400「配置键已存在」，不透传 500）。
+// （WR-02：400/10400「配置键已存在」，不透传 500）。
 func (s *ConfigService) Update(ctx context.Context, id int64, req *dto.ConfigUpdateReq) (*dto.ConfigResp, error) {
 	cols := map[string]any{}
 	if req.ConfigKey != nil {

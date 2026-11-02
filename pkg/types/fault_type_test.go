@@ -12,7 +12,7 @@ import (
 
 // FaultType 契约测试（照 Gender/MenuType 既有契约形态）：
 // 读侧 name|int 双形态 + 未知值兜底 UNKNOWN（源 FaultTypeEnum.fromValue/fromInfo
-// 逐字语义）；ParseFaultType 中文/int 串双形态（FAUL-02 Excel 报警类型列解析依赖）。
+// 逐字语义）；ParseFaultType 中文/int 串双形态（Excel 报警类型列解析依赖）。
 
 func TestFaultTypeUnmarshalThreeForms(t *testing.T) {
 	cases := []struct {
@@ -80,8 +80,8 @@ func TestParseFaultTypeDualForms(t *testing.T) {
 		{"故障", 2},
 		{"未知", 3},
 		{"随便什么文案", 3}, // 未知文案兜底
-		{"", 3},          // 空串兜底（Excel 空单元格越界取空串）
-		{"99", 3},        // 未知 int 串兜底
+		{"", 3},       // 空串兜底（Excel 空单元格越界取空串）
+		{"99", 3},     // 未知 int 串兜底
 	}
 	for _, tc := range cases {
 		got, err := types.ParseFaultType(tc.in)

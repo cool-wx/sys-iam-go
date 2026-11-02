@@ -80,7 +80,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		return nil, fmt.Errorf("ping redis: %w", err)
 	}
 
-	// Casbin enforcer 装配（D-01/D-02/D-04）：复用既有 GORM 连接；初始化与
+	// Casbin enforcer 装配：复用既有 GORM 连接；初始化与
 	// LoadPolicy 失败 fail-fast return nil, error——授权基建不可用时服务绝不能
 	// 以"全量 403"状态静默启动（对齐上方 Redis Ping 先例）。enforcer 是
 	// requirePerm 中间件与 roleSvc/userSvc 的依赖，必须在 service 构造之前建好。
@@ -89,7 +89,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		return nil, fmt.Errorf("init casbin enforcer: %w", err)
 	}
 
-	// boot 对账（T-3-05/PERM-01 落地前提）：casbin_rule 新表初始为空而存量
+	// boot 对账（授权落地前提）：casbin_rule 新表初始为空而存量
 	// sys_user_role/sys_role_menu 已有数据——启动全量导入 g/p 策略（ReplaceAll
 	// 幂等可重入），存量 admin 冷启动即可用；同时修复运行期同步失败残留（重启
 	// 自愈）。对账失败 fail-fast 拒绝启动（绝不全量 403 状态静默启动）。
@@ -131,7 +131,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 
 	sessionMgr := auth.NewSessionManager(rdb, cfg.Auth.SessionTimeout)
 
-	// FileStorage 构造（FILE-05，D-10）：插在 service 构造之前（照 enforcer/
+	// FileStorage 构造：插在 service 构造之前（照 enforcer/
 	// Redis Ping fail-fast 先例，存储基建不可用拒绝启动）；driver=local 时构造链
 	// 不触碰 minio（延迟形态），driver=s3 时构造内 EnsureBucket fail-fast。
 	storageCtx, storageCancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -154,11 +154,11 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	fileCategoryRepo := repository.NewFileCategoryRepo(db)
 	ologRepo := repository.NewOperationLogRepo(db)
 	faultInfoRepo := repository.NewFaultInfoRepo(db)
-	// OpLogWriter 构造 + worker 启动（D-07 异步落库；D-05 声明制挂载的 sink 载体）。
+	// OpLogWriter 构造 + worker 启动（异步落库；声明制挂载的 sink 载体）。
 	// sink 注入 repo.InsertBatch——批量写收口数据访问层；chan 满丢弃不阻塞业务。
 	ologW := middleware.NewOpLogWriterWithSink(ologRepo.InsertBatch, logger)
 	ologW.Start()
-	// 名称同步事件装配（Phase 5 SYNC-01/02，D-01/D-02）：基建先于消费者（照 ologW
+	// 名称同步事件装配：基建先于消费者（照 ologW
 	// 先例）——dispatcher 构造 + 全部 6 个同步 handler 注册；5 个名称域 service 经
 	// Publisher 接口注入（Dispatcher 实现该接口），发布时序契约见 internal/event。
 	dispatcher := event.NewDispatcher()
@@ -219,7 +219,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		srv: &http.Server{
 			Addr:    fmt.Sprintf(":%d", cfg.Server.Port),
 			Handler: engine,
-			// 传输层超时（WR-02/WR-05/T-1-04）：三个超时各封一段——
+			// 传输层超时：三个超时各封一段——
 			//   - ReadHeaderTimeout=10s 首道闸：封 slowloris 慢头（工控机 fd 有限，
 			//     头迟迟不完整即断）；
 			//   - ReadTimeout=30s 封整个请求（头+体）的读取总时长——体积上限
@@ -255,7 +255,7 @@ func (a *App) Stop() {
 	if err := a.srv.Shutdown(ctx); err != nil {
 		a.logger.Error("http shutdown", "error", err.Error())
 	}
-	// Oplog flush（D-08 次序契约）：必须在 srv.Shutdown 之后（流量已停，无并发
+	// Oplog flush（次序契约）：必须在 srv.Shutdown 之后（流量已停，无并发
 	// Enqueue，drain 语义严格成立）、sqlDB.Close 之前（chan 残留日志才能落库）——
 	// 先排空在途 HTTP 再 drain 日志，最后才关 DB。
 	flushCtx, flushCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -278,7 +278,7 @@ func (a *App) Engine() *gin.Engine {
 	return a.engine
 }
 
-// FlushOpLogs 同步排空操作日志 chan 并等待落库完成（D-08 flush 语义）。生产路径
+// FlushOpLogs 同步排空操作日志 chan 并等待落库完成（flush 语义）。生产路径
 // 由 Stop 在 srv.Shutdown 之后调用；导出仅供集成测试做同步断言（免 sleep 轮询）。
 func (a *App) FlushOpLogs(ctx context.Context) error {
 	return a.ologW.Flush(ctx)

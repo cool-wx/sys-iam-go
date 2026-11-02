@@ -1,7 +1,7 @@
 // Package config 定义服务配置结构与加载链：YAML 文件 + IAM_ 前缀环境变量覆盖
-// （koanf，D-06/D-07）。单词叶键走三步链：TrimPrefix IAM_ → ToLower → 下划线转点
+// （koanf）。单词叶键走三步链：TrimPrefix IAM_ → ToLower → 下划线转点
 // （IAM_SERVER_PORT → server.port）；多段 snake_case 叶键（max_open_conns 等）
-// 三步链会把下划线全部转点导致键永不匹配（WR-01），经 envKeyAliases 显式映射。
+// 三步链会把下划线全部转点导致键永不匹配，经 envKeyAliases 显式映射。
 package config
 
 import (
@@ -29,14 +29,14 @@ const (
 	// DefaultRedisAddr 本机 Redis 默认端点（工控机单机部署：MySQL/Redis 同机）。
 	DefaultRedisAddr = "127.0.0.1:6379"
 	// DefaultSessionTimeout 会话 TTL 默认 720h = Sa-Token 官方默认 30d 代理值。
-	// 源 Nacos craft-satoken.yaml 实际值不可得（rnacos 空实例实证，02-RESEARCH
-	// 研究重点 2），现场可经 IAM_AUTH_SESSION_TIMEOUT env 校正（D-06 Nacos 缺口文档化）。
+	// 源 Nacos craft-satoken.yaml 实际值不可得（rnacos 空实例实证），
+	// 现场可经 IAM_AUTH_SESSION_TIMEOUT env 校正（Nacos 缺口已文档化）。
 	DefaultSessionTimeout = 720 * time.Hour
 
-	// StorageDriverLocal / StorageDriverS3 storage.driver 合法值域（D-10）。
+	// StorageDriverLocal / StorageDriverS3 storage.driver 合法值域。
 	StorageDriverLocal = "local"
 	StorageDriverS3    = "s3"
-	// DefaultStorageLocalRoot 本地存储根目录默认值（D-11）：相对工作目录，
+	// DefaultStorageLocalRoot 本地存储根目录默认值：相对工作目录，
 	// systemd WorkingDirectory 联动；绝对路径可配。
 	DefaultStorageLocalRoot = "./data/files"
 	// DefaultStorageS3* S3 段默认值（照源 RustfsProperties.java:14-33 默认形态：
@@ -95,7 +95,7 @@ type LogConfig struct {
 	Level string `json:"level"`
 }
 
-// StorageConfig 文件存储配置（FILE-05，D-10/D-11）：driver 切换 local|s3，
+// StorageConfig 文件存储配置：driver 切换 local|s3，
 // 两段互斥生效——local 模式 S3 段仅占位（构造链不触碰 minio），s3 模式
 // Local 段仅占位。YAML 叶键 snake_case（storage.local_root 多段、storage.s3_*）。
 type StorageConfig struct {
@@ -110,7 +110,7 @@ type LocalStorageConfig struct {
 }
 
 // S3Config S3 兼容对象存储段（工控机现场为 RustFS）。SecretKey 全程不进日志/
-// 错误消息（T-4-04）。
+// 错误消息。
 type S3Config struct {
 	Endpoint  string `json:"endpoint"`
 	AccessKey string `json:"accessKey"`
@@ -119,7 +119,7 @@ type S3Config struct {
 	Secure    bool   `json:"secure"`
 }
 
-// envKeyAliases 多段 snake_case 叶键的显式映射表（WR-01）：默认三步链把变量名内
+// envKeyAliases 多段 snake_case 叶键的显式映射表：默认三步链把变量名内
 // 全部下划线转为点（IAM_MYSQL_MAX_OPEN_CONNS → mysql.max.open.conns），与 YAML 键
 // mysql.max_open_conns 永不匹配，覆盖静默丢失（无任何报错）。koanf env/v2 的
 // TransformFunc 收到含前缀的完整变量名，故按变量全名精确映射回真实键。
@@ -128,12 +128,12 @@ var envKeyAliases = map[string]string{
 	"IAM_MYSQL_MAX_OPEN_CONNS":    "mysql.max_open_conns",
 	"IAM_MYSQL_MAX_IDLE_CONNS":    "mysql.max_idle_conns",
 	"IAM_MYSQL_CONN_MAX_LIFETIME": "mysql.conn_max_lifetime",
-	// Phase 2：auth.session_timeout 多段 snake_case 叶键（不登记则覆盖静默丢失，WR-01）。
+	// auth.session_timeout 多段 snake_case 叶键（不登记则覆盖静默丢失）。
 	// redis.addr/redis.password/redis.db 为单词叶键，三步链直映（IAM_REDIS_ADDR→redis.addr）无需别名。
 	"IAM_AUTH_SESSION_TIMEOUT": "auth.session_timeout",
-	// Phase 4：storage 段（FILE-05，D-10/D-11）。三段嵌套键内带下划线的叶键
+	// storage 段。三段嵌套键内带下划线的叶键
 	// （s3.access_key/s3.secret_key）三步链必然错映（→storage.s3.access.key 永不
-	// 匹配），必须显式别名（WR-01）；其余键（driver/local.root/s3.endpoint/
+	// 匹配），必须显式别名；其余键（driver/local.root/s3.endpoint/
 	// s3.bucket/s3.secure）三步链可直映，但按"三段以上全部显式登记最稳"一并
 	// 登记，消除键名演化时的静默丢失面。
 	"IAM_STORAGE_DRIVER":        "storage.driver",
@@ -162,7 +162,7 @@ func Load(path string, explicit bool) (*Config, error) {
 	if err := k.Load(env.Provider(".", env.Opt{
 		Prefix: "IAM_",
 		TransformFunc: func(s, v string) (string, any) {
-			// 多段 snake_case 叶键经显式别名表映射（WR-01，见 envKeyAliases）
+			// 多段 snake_case 叶键经显式别名表映射（见 envKeyAliases）
 			if mapped, ok := envKeyAliases[s]; ok {
 				return mapped, v
 			}
@@ -243,7 +243,7 @@ func Load(path string, explicit bool) (*Config, error) {
 	if cfg.MySQL.DSN == "" {
 		return nil, fmt.Errorf("mysql.dsn must not be empty")
 	}
-	// 连接池参数校验（WR-04/T-1-04）：database/sql 对 n<=0 的语义是"无限制连接数 /
+	// 连接池参数校验：database/sql 对 n<=0 的语义是"无限制连接数 /
 	// 不保留空闲连接 / 永不回收"，配置写 0、键拼错致 koanf Int() 得 0、或经失效
 	// 覆盖链传入 0，都会静默解除分页钳位注释（paging.go）声明的连接池 DoS 兜底
 	// ——启动即 fail fast。MaxIdleConns=0 合法（仅表示不缓存空闲连接）。
@@ -261,12 +261,12 @@ func Load(path string, explicit bool) (*Config, error) {
 	if cfg.Auth.SessionTimeout <= 0 {
 		return nil, fmt.Errorf("invalid auth.session_timeout %s (must be > 0)", cfg.Auth.SessionTimeout)
 	}
-	// Storage 段 fail-fast（FILE-05，D-10/D-11）：非法 driver / s3 模式缺参启动
+	// Storage 段 fail-fast：非法 driver / s3 模式缺参启动
 	// 即拦截——拼错键会静默落默认值（现场表现为"配了 s3 却 local 落盘"的静默
-	// 错配，远比启动失败难排查）。错误消息不含任何凭证值（T-4-04）。
+	// 错配，远比启动失败难排查）。错误消息不含任何凭证值。
 	switch cfg.Storage.Driver {
 	case StorageDriverLocal:
-		// D-11：local.root 空取默认值不报错（相对工作目录，systemd
+		// local.root 空取默认值不报错（相对工作目录，systemd
 		// WorkingDirectory 联动；env/文件覆盖空串与缺省同义）。
 		if cfg.Storage.Local.Root == "" {
 			cfg.Storage.Local.Root = DefaultStorageLocalRoot

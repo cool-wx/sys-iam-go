@@ -226,6 +226,7 @@ func TestDictTypeNameSync(t *testing.T) {
 	putViaAPI(t, ts, token, "/api/v1/dict-types/"+strconv.FormatInt(typeID, 10), `{"dictName":"故障类别"}`)
 	requireSynced(t, stringColOf(t, checkDB, "SELECT dict_type_name AS col FROM sys_dict_data WHERE dict_type_id = ?", typeID), "故障类别", "改名后 sys_dict_data.dict_type_name 同步（dictType 事件表 1）")
 }
+
 // ==== Task 2 RED:追加到 internal/handler/name_sync_integration_test.go 的内容 ====
 
 // assertCol 断言任意单行单列查询值精确相等(14 表循环断言出口)。

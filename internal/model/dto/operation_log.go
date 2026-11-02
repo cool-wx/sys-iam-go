@@ -7,7 +7,7 @@ import (
 )
 
 // OlogResp 操作日志响应契约（OLOG-03 查询域只读）。全部键无 omitempty
-//（源 JacksonConfig 契约）；UserID 为 *ids.ID（NULL 语义保留——未登录路由
+// （源 JacksonConfig 契约）；UserID 为 *ids.ID（NULL 语义保留——未登录路由
 // 如 login 自身落 NULL）。
 type OlogResp struct {
 	ID         *ids.ID              `json:"id"`

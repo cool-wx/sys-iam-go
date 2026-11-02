@@ -12,7 +12,7 @@ import (
 )
 
 // sizedReader 定长假请求体：按需生成 N 字节流，不在内存构造真实大字符串
-//（CR-01 测试需 20MB+ 量级，真实字符串会白白占用堆）。
+// （测试需 20MB+ 量级，真实字符串会白白占用堆）。
 type sizedReader struct{ remaining int }
 
 func (r *sizedReader) Read(p []byte) (int, error) {
@@ -49,14 +49,14 @@ func serveWithBody(t *testing.T, bodyBytes int, contentType string, handlers ...
 	return gotN, gotErr
 }
 
-// TestBodyLimitMultipartBoundedOnNonUploadRoutes CR-01 直证：multipart
+// TestBodyLimitMultipartBoundedOnNonUploadRoutes multipart 无界读入修复直证：
 // Content-Type 打无路由级上限的普通路由（免认证 login 形态），全局 BodyLimit
 // 必须以 MaxMultipartMB 兜底封顶——下游读到 MaxBytesError，body 不被无界读入
 // （修复前：multipart 分支直接 c.Next() 放行，任意大 body 被 ShouldBindJSON
 // 全量读入内存）。
 func TestBodyLimitMultipartBoundedOnNonUploadRoutes(t *testing.T) {
 	_, err := serveWithBody(t, 21<<20+1, "multipart/form-data; boundary=x", BodyLimit())
-	require.Error(t, err, "21MB multipart body 不得被完整读入（CR-01 无界面）")
+	require.Error(t, err, "21MB multipart body 不得被完整读入")
 	var mbe *http.MaxBytesError
 	assert.ErrorAs(t, err, &mbe, "超限必须是 MaxBytesError（bindJSON 10401 文案路径）")
 }
@@ -79,7 +79,7 @@ func TestBodyLimitMultipartUploadRouteDoubleCap(t *testing.T) {
 	assert.ErrorAs(t, err, &mbe)
 }
 
-// TestBodyLimitJSONRoutesUnchanged 非 multipart 路由 1MB 上限不回归（CR-01 修复
+// TestBodyLimitJSONRoutesUnchanged 非 multipart 路由 1MB 上限不回归（修复
 // 不得改动既有 JSON 防护面）：恰好 1MB 完整可读，1MB+1 触发 MaxBytesError。
 func TestBodyLimitJSONRoutesUnchanged(t *testing.T) {
 	n, err := serveWithBody(t, int(maxBodyBytes), "application/json", BodyLimit())

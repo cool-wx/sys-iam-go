@@ -323,8 +323,8 @@ func TestFaultCRUD(t *testing.T) {
 		`{"code":"E1001","name":"电机过温","detail":"电机温度超过阈值","fix":"停机降温"}`)
 	require.Equal(t, http.StatusOK, status, "create 失败: body=%s", body)
 	var created struct {
-		Code int            `json:"code"`
-		Data faultRespBody  `json:"data"`
+		Code int           `json:"code"`
+		Data faultRespBody `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(body, &created), "body=%s", body)
 	require.Equal(t, 0, created.Code, "body=%s", body)

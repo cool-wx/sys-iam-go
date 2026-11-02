@@ -39,7 +39,7 @@ func TestEnvOverrideDSNPath(t *testing.T) {
 }
 
 func TestEnvOverrideSnakeCaseKeys(t *testing.T) {
-	// WR-01 回归：多段 snake_case 键必须可被 IAM_ 环境变量覆盖——默认三步链会把
+	// 回归防护：多段 snake_case 键必须可被 IAM_ 环境变量覆盖——默认三步链会把
 	// 变量名内全部下划线转点（IAM_MYSQL_MAX_OPEN_CONNS → mysql.max.open.conns），
 	// 与 YAML 键 mysql.max_open_conns 永不匹配，覆盖静默丢失。经别名表映射后必须真实生效。
 	path := writeConfig(t, "server:\n  port: 8080\n")
@@ -100,8 +100,8 @@ log:
 }
 
 func TestEnvOverrideRedisAndSessionTimeout(t *testing.T) {
-	// Phase 2：redis 段三步链直映（单词叶键 addr/password/db）+ auth.session_timeout
-	// 经别名表映射（多段 snake_case 键，WR-01 同型）必须真实生效。
+	// redis 段三步链直映（单词叶键 addr/password/db）+ auth.session_timeout
+	// 经别名表映射（多段 snake_case 键同型）必须真实生效。
 	path := writeConfig(t, "server:\n  port: 8080\n")
 	t.Setenv("IAM_REDIS_ADDR", "10.0.0.9:6380")
 	t.Setenv("IAM_REDIS_PASSWORD", "secret")
@@ -117,7 +117,7 @@ func TestEnvOverrideRedisAndSessionTimeout(t *testing.T) {
 }
 
 func TestDefaultsRedisAndSessionTimeout(t *testing.T) {
-	// 默认值：redis.addr=127.0.0.1:6379、timeout=720h（Sa-Token 30d 代理值，D-06）
+	// 默认值：redis.addr=127.0.0.1:6379、timeout=720h（Sa-Token 30d 代理值）
 	cfg, err := config.Load(filepath.Join(t.TempDir(), "absent.yaml"), false)
 	require.NoError(t, err)
 	assert.Equal(t, "127.0.0.1:6379", cfg.Redis.Addr)
@@ -127,7 +127,7 @@ func TestDefaultsRedisAndSessionTimeout(t *testing.T) {
 }
 
 func TestInvalidRedisSessionConfigRejected(t *testing.T) {
-	// Phase 2 fail-fast 回归：redis.addr 空 / timeout 非法值必须启动即失败——
+	// fail-fast 回归：redis.addr 空 / timeout 非法值必须启动即失败——
 	// 空 addr 拼错键会在启动期以连接失败暴露；timeout<=0 让登录会话写入即过期
 	// （EXPIRE 0/负值），auth 中间件全量 401。
 	cases := []struct {
@@ -156,8 +156,8 @@ func TestInvalidPortRejected(t *testing.T) {
 }
 
 func TestInvalidPoolConfigRejected(t *testing.T) {
-	// WR-04 回归：连接池参数非法必须启动即失败——database/sql 对 n<=0 的语义是
-	// "无限制/不保留/永不回收"，0 值会静默解除 T-1-04 声明的连接池 DoS 兜底。
+	// 回归防护：连接池参数非法必须启动即失败——database/sql 对 n<=0 的语义是
+	// "无限制/不保留/永不回收"，0 值会静默解除连接池 DoS 兜底。
 	cases := []struct {
 		name string
 		env  string
@@ -180,7 +180,7 @@ func TestInvalidPoolConfigRejected(t *testing.T) {
 }
 
 func TestDefaultsStorage(t *testing.T) {
-	// storage 段默认值（FILE-05，D-10/D-11）：driver=local、local.root=./data/files
+	// storage 段默认值：driver=local、local.root=./data/files
 	// （相对工作目录，systemd WorkingDirectory 联动）、s3 四参数照源默认形态
 	// （endpoint 带 scheme http://localhost:9000、bucket tims——现场可配）。
 	cfg, err := config.Load(filepath.Join(t.TempDir(), "absent.yaml"), false)
@@ -193,7 +193,7 @@ func TestDefaultsStorage(t *testing.T) {
 }
 
 func TestEnvOverrideStorage(t *testing.T) {
-	// WR-01 回归（storage 段）：三段嵌套键必须经别名表真实生效——s3.access_key/
+	// 回归防护（storage 段）：三段嵌套键必须经别名表真实生效——s3.access_key/
 	// secret_key 带下划线叶键三步链必然错映（→storage.s3.access.key 永不匹配），
 	// 显式别名是唯一覆盖通道；driver/local.root/s3 三键一并登记（三段以上全部
 	// 显式登记最稳）。
@@ -218,9 +218,9 @@ func TestEnvOverrideStorage(t *testing.T) {
 }
 
 func TestStorageFailFast(t *testing.T) {
-	// fail-fast 三分支（FILE-05）：非法 driver / s3 模式缺参启动即拦截——拼错
+	// fail-fast 三分支：非法 driver / s3 模式缺参启动即拦截——拼错
 	// 键静默落默认值会表现为"配了 s3 却 local 落盘"的静默错配；local 模式
-	// Root 空取默认值不报错（D-11）。错误消息不含凭证值（T-4-04）。
+	// Root 空取默认值不报错。错误消息不含凭证值。
 	t.Run("非法 driver 拒绝", func(t *testing.T) {
 		t.Setenv("IAM_STORAGE_DRIVER", "minio")
 		_, err := config.Load(filepath.Join(t.TempDir(), "absent.yaml"), false)
@@ -246,7 +246,7 @@ func TestStorageFailFast(t *testing.T) {
 `)
 		_, err := config.Load(path, true)
 		require.Error(t, err, "driver=s3 且 secret_key 空必须启动即失败")
-		assert.NotContains(t, err.Error(), "real-ak", "错误消息绝不能回显凭证值（T-4-04）")
+		assert.NotContains(t, err.Error(), "real-ak", "错误消息绝不能回显凭证值")
 	})
 
 	t.Run("local Root 空取默认值不报错", func(t *testing.T) {
@@ -256,7 +256,7 @@ func TestStorageFailFast(t *testing.T) {
     root: ""
 `)
 		cfg, err := config.Load(path, true)
-		require.NoError(t, err, "driver=local 且 root 空（D-11）必须取默认值而非报错")
+		require.NoError(t, err, "driver=local 且 root 空必须取默认值而非报错")
 		assert.Equal(t, "./data/files", cfg.Storage.Local.Root)
 	})
 

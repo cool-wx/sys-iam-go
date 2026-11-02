@@ -37,8 +37,8 @@ func newTestWriter(t *testing.T, capacity int, sink Sink) *OpLogWriter {
 	return w
 }
 
-// TestMaskSensitiveEightFields 8 敏感字段逐字段掩码（D-09 源正则逐字保真——
-// REQUIREMENTS「7 字段」为计数笔误，裁定记录以源 8 字段为准）+ 混合体普通字段原样。
+// TestMaskSensitiveEightFields 8 敏感字段逐字段掩码（源正则逐字保真——
+// 源需求清单「7 字段」为计数笔误，以源 8 字段为准）+ 混合体普通字段原样。
 func TestMaskSensitiveEightFields(t *testing.T) {
 	// 逐字段：{"<field>":"x"} → {"<field>":"******"}（键名保留）
 	fields := []string{
@@ -97,7 +97,7 @@ func TestMaskSensitiveOrderWithTruncation(t *testing.T) {
 	assert.NotContains(t, truncated, "secret123", "明文敏感值泄漏进截断结果")
 }
 
-// TestTruncateBytesUTF8Safe WR-01 直证：切点落在多字节字符中间时回退至完整
+// TestTruncateBytesUTF8Safe 直证：切点落在多字节字符中间时回退至完整
 // rune 边界——utf8mb4 params 列 INSERT 不再报 1366（strict mode 整批日志丢失，
 // 同批无关日志一并受损）。既有测试只覆盖 ASCII 切点（TestMaskSensitiveOrder
 // WithTruncation 用 "A" 重复），此处补多字节切点面。
@@ -121,10 +121,10 @@ func TestTruncateBytesUTF8Safe(t *testing.T) {
 	assert.Equal(t, "参数校验失败", truncateBytes("参数校验失败", paramsMaxBytes))
 }
 
-// TestTruncateBytesInvalidInputLinear WR-06 直证：输入本身含非法字节时，截断
+// TestTruncateBytesInvalidInputLinear 直证：输入本身含非法字节时，截断
 // 一次 O(n) 扫描定位首个非法序列起点（不逐字节回退全量重扫）。恶意构造 >60KB
 // 非法 body 在请求 goroutine 的 defer 中同步执行，O(n²) 实现实测 ~18.8ms/请求
-//（iter-2 基准，正常请求 <10µs，放大 ~2000 倍）；O(n) 实现同场景 µs 级。时间
+// （iter-2 基准，正常请求 <10µs，放大 ~2000 倍）；O(n) 实现同场景 µs 级。时间
 // 上界取 5ms 宽松阈值：与 O(n²) 相差近两个数量级，机器抖动不致误报。
 func TestTruncateBytesInvalidInputLinear(t *testing.T) {
 	// 前置 0xFF（iter-2 实测 18.8ms 的构造）：30000A + \xff + 30000B——切点
@@ -139,7 +139,7 @@ func TestTruncateBytesInvalidInputLinear(t *testing.T) {
 	assert.LessOrEqual(t, len(out), paramsMaxBytes)
 	assert.True(t, utf8.ValidString(out), "截断结果恒为合法 UTF-8（utf8mb4 列 1366）")
 	assert.Less(t, elapsed, 5*time.Millisecond,
-		"非法输入截断必须 O(n)（WR-06：O(n²) 同构造实测 18.8ms）: %s", elapsed)
+		"非法输入截断必须 O(n)（O(n²) 同构造实测 18.8ms）: %s", elapsed)
 
 	// 非法字节落在切点尾部：碎片回退后仍非法 → 同样一次 range 定位。
 	in2 := strings.Repeat("A", 59999) + "\xff" + "B"
@@ -188,7 +188,7 @@ func TestEnqueueNeverBlocks(t *testing.T) {
 	assert.Equal(t, 0, sinkCalls, "无 worker 消费时不落库")
 }
 
-// TestFlushDrains Flush 同步排空语义直测（D-08，集成测试免 sleep 轮询的基础）：
+// TestFlushDrains Flush 同步排空语义直测（集成测试免 sleep 轮询的基础）：
 // Enqueue 数条 → Flush(ctx) 返回后 fake sink 已收到全部 entry 且 chan 排空。
 func TestFlushDrains(t *testing.T) {
 	var got []po.OperationLogPO
@@ -263,15 +263,15 @@ func runOplog(t *testing.T, w *OpLogWriter, method, path, contentType, body stri
 	return runOplogChain(t, w, "TestController", "create", method, path, contentType, body, downstream)
 }
 
-// TestOplogEntryAssembly 七要素组装直测（OLOG-01）：module/operation 路由声明值、
+// TestOplogEntryAssembly 七要素组装直测：module/operation 路由声明值、
 // method 拼接形态、params 为掩码后 body JSON 回放、ip 取 host、status=1；且
-// handler 可重读 body（D-06 回放直证）；未注入 identity 时 UserID/RealName 为 nil。
+// handler 可重读 body（回放直证）；未注入 identity 时 UserID/RealName 为 nil。
 func TestOplogEntryAssembly(t *testing.T) {
 	var downstreamBody string
 	got := runOplog(t, newTestWriter(t, opLogChanSize, nil), http.MethodPost,
 		"/api/v1/dict-types", "application/json", `{"dictName":"状态","password":"p1"}`,
 		func(c *gin.Context) {
-			// handler 重读 body（回放直证——OLOG-01「body 回放不破坏 handler」）
+			// handler 重读 body（回放直证——「body 回放不破坏 handler」）
 			raw, err := io.ReadAll(c.Request.Body)
 			require.NoError(t, err)
 			downstreamBody = string(raw)
@@ -303,7 +303,7 @@ func TestOplogEntryAssembly(t *testing.T) {
 }
 
 // TestOplogIdentityFromContext identity 注入时 UserID/RealName 取会话值
-//（等价认证中间件 WithIdentity 前置注入形态）。
+// （等价认证中间件 WithIdentity 前置注入形态）。
 func TestOplogIdentityFromContext(t *testing.T) {
 	var got []po.OperationLogPO
 	w := newTestWriter(t, opLogChanSize, func(ctx context.Context, entries []po.OperationLogPO) error {
@@ -326,7 +326,7 @@ func TestOplogIdentityFromContext(t *testing.T) {
 }
 
 // TestOplogFailedRequestStatusZero 失败请求（400 + resp.Fail c.Error 透出）：
-// status=0 且 error_msg 为错误消息（OLOG-02 失败也落库）。
+// status=0 且 error_msg 为错误消息（失败也落库）。
 func TestOplogFailedRequestStatusZero(t *testing.T) {
 	got := runOplog(t, newTestWriter(t, opLogChanSize, nil), http.MethodPost,
 		"/api/v1/dict-types", "application/json", `{}`,

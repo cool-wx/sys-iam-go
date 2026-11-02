@@ -1,6 +1,6 @@
--- sys_operation_log 建表 DDL（Phase 4 操作日志域）
+-- sys_operation_log 建表 DDL（操作日志域）
 -- 来源：本机容器实测真实 DDL（SHOW CREATE TABLE sys_iam.sys_operation_log，2026-11-01）
--- 列集 14 列；幂等（DROP TABLE IF EXISTS + CREATE TABLE）；不含外键（T-1-07）。
+-- 列集 14 列；幂等（DROP TABLE IF EXISTS + CREATE TABLE）；不含外键。
 -- 注意：无 create_by_id/create_by_name/update_by_id/update_by_name 四审计列
 -- （实体 extends BaseAggregate 非 BaseUserEntity）——PO 不内嵌 BaseWithOperator；
 -- params/error_msg 为 TEXT 列；scripts/ddl/*.sql 由 testutil.execDDLDir 按文件名序

@@ -52,12 +52,12 @@ func (d *DictTypePO) BeforeCreate(tx *gorm.DB) error {
 type DictDataPO struct {
 	BaseWithOperator
 
-	ID           int64  `gorm:"column:id;primaryKey"`
-	DictTypeID   int64  `gorm:"column:dict_type_id"`
+	ID           int64   `gorm:"column:id;primaryKey"`
+	DictTypeID   int64   `gorm:"column:dict_type_id"`
 	DictTypeName *string `gorm:"column:dict_type_name"`
 	Label        *string `gorm:"column:label"`
 	Value        *string `gorm:"column:value"`
-	Sort         *int   `gorm:"column:sort"`
+	Sort         *int    `gorm:"column:sort"`
 }
 
 // TableName 显式表名（Tabler 接口）。

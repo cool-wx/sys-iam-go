@@ -36,7 +36,7 @@ func TestMenuTypeUnmarshalThreeForms(t *testing.T) {
 }
 
 func TestMenuTypeUnmarshalUnknownFallsBackToMenu(t *testing.T) {
-	// 未知值兜底 MENU 且永不返回 error（含 null）——MENU-01 验收：
+	// 未知值兜底 MENU 且永不返回 error（含 null）——验收点：
 	// 未知 int 值 JSON 反序列化兜底为 MENU 不 500
 	for _, raw := range []string{`"99"`, `99`, `"WEIRD"`, `null`} {
 		var m types.MenuType

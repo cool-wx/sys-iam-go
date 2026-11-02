@@ -267,11 +267,11 @@ func TestFileDeleteTolerant(t *testing.T) {
 
 // fileCategoryTreeNode 文件分类树响应解包结构（categoryName 键；children 递归嵌套）。
 type fileCategoryTreeNode struct {
-	ID           string                  `json:"id"`
-	CategoryName string                  `json:"categoryName"`
-	ParentID     *string                 `json:"parentId"`
-	ParentName   *string                 `json:"parentName"`
-	Children     []fileCategoryTreeNode  `json:"children"`
+	ID           string                 `json:"id"`
+	CategoryName string                 `json:"categoryName"`
+	ParentID     *string                `json:"parentId"`
+	ParentName   *string                `json:"parentName"`
+	Children     []fileCategoryTreeNode `json:"children"`
 }
 
 // TestFileCategoryTree 文件分类树（FILE-04）：两层级嵌套 + parent_name 冗余 +

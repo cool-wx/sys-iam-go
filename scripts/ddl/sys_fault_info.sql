@@ -1,9 +1,9 @@
--- sys_fault_info 建表 DDL（Phase 4 故障域）
+-- sys_fault_info 建表 DDL（故障域）
 -- 来源：本机容器实测真实 DDL（SHOW CREATE TABLE sys_iam.sys_fault_info，2026-11-01）
--- 列集 17 列；幂等（DROP TABLE IF EXISTS + CREATE TABLE）；不含外键（T-1-07）。
+-- 列集 17 列；幂等（DROP TABLE IF EXISTS + CREATE TABLE）；不含外键。
 -- bit_index int DEFAULT -1、type tinyint DEFAULT 3(UNKNOWN)；name+bit_index+location
--- 三键**无唯一索引**——FAUL-02 upsert 判重由应用层查询承担（照源 eq 语义，location
--- 为 NULL 时判重失效是源已接受行为，04-04 锁定）；scripts/ddl/*.sql 由
+-- 三键**无唯一索引**——upsert 判重由应用层查询承担（照源 eq 语义，location
+-- 为 NULL 时判重失效是源已接受行为）；scripts/ddl/*.sql 由
 -- testutil.execDDLDir 按文件名序自动加载，落目录即生效。
 
 DROP TABLE IF EXISTS `sys_fault_info`;

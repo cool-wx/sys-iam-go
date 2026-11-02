@@ -9,17 +9,17 @@ import (
 )
 
 // SyncHandlers 名称同步 handler 集：每个 handler 在独立事务内执行确定性 UPDATE
-// （D-02——handler 独立事务，物理上与发布者已提交的主事务先后分离，源 REQUIRES_NEW
+// （handler 独立事务，物理上与发布者已提交的主事务先后分离，源 REQUIRES_NEW
 // 行锁死锁面不存在）。持 *gorm.DB 直写不扩 repository：冗余同步非实体仓储语义，
-// 列名为代码内字符串常量、值全占位符（T-1-03/T-1-08 纪律延伸，禁 fmt.Sprintf 拼 SQL）。
+// 列名为代码内字符串常量、值全占位符（防注入纪律延伸，禁 fmt.Sprintf 拼 SQL）。
 //
 // 全部 UPDATE 恒为三段式 `SET 冗余列 = newName WHERE 关联列 = 事件ID AND 冗余列 <> newName`：
 // 同一事件重放安全（已同步行不中、陈旧行被拉齐）；**恒不追加『空值列亦命中』放行
 // 分支**（SQL `<>` 三值逻辑下 NULL 冗余行恒不中是源语义锁定——NULL 代表"从未冗余
-// 过"，放行空值会让从未冗余过的行突然带值；SYNC-02 prohibition 明文禁该形态，
+// 过"，放行空值会让从未冗余过的行突然带值；设计禁令明文禁该形态，
 // 验收 grep 断言零命中）。
 //
-// 35 条 UPDATE 逐条落齐（照 RESEARCH 重点 1 源监听器逐表映射，不做 helper 收敛——
+// 35 条 UPDATE 逐条落齐（照源监听器逐表映射，不做 helper 收敛——
 // 逐条显式形态即审计面，与源监听器逐行一一对应）。
 type SyncHandlers struct {
 	db *gorm.DB
@@ -78,9 +78,9 @@ func (h *SyncHandlers) OnMenuNameChanged(ctx context.Context, evt NameChangedEve
 
 // OnRoleNameChanged 角色改名同步（源 RoleNameSyncListener 2 条 + Go 扩展 1 条）：
 // sys_role_menu.role_name + sys_user_role.role_name（源原样），另加
-// sys_role_dept.role_name——该表是 Go 增量扩展（源不存在，Phase 3 D-10
-// AssignScopes 写入 role_name 冗余），不同步则改名后该表冗余列陈旧；**Go 扩展
-// 非源行为**（Q2 裁决在案）。
+// sys_role_dept.role_name——该表是 Go 增量扩展（源不存在，AssignScopes
+// 写入 role_name 冗余），不同步则改名后该表冗余列陈旧；**Go 扩展
+// 非源行为**（裁决在案）。
 func (h *SyncHandlers) OnRoleNameChanged(ctx context.Context, evt NameChangedEvent) error {
 	return h.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// 1. sys_role_menu.role_name WHERE role_id={ID}
@@ -92,8 +92,8 @@ func (h *SyncHandlers) OnRoleNameChanged(ctx context.Context, evt NameChangedEve
 			return err
 		}
 		// 3. sys_role_dept.role_name WHERE role_id={ID}——Go 扩展非源行为：
-		// sys_role_dept 为 D-10 档位 4 存储表（源无此表），role_name 冗余随角色
-		// 改名同步，Go 内一致性优先于字面对齐（RESEARCH Q2）。
+		// sys_role_dept 为档位 4 存储表（源无此表），role_name 冗余随角色
+		// 改名同步，Go 内一致性优先于字面对齐（研究期裁决）。
 		return tx.Model(&po.RoleDeptPO{}).Where("role_id = ? AND role_name <> ?", evt.ID, evt.NewName).Update("role_name", evt.NewName).Error
 	})
 }

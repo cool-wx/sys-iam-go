@@ -1,6 +1,6 @@
 // RequirePerm 中间件单元测试（fake Authorizer + httptest，无 build tag 免容器）。
 // 表格驱动四分支：identity 缺失 401、未授权 403/10200「无权限」、enforcer 故障
-// 500 fail-closed、命中放行 200（03-PATTERNS 第 10 节，照 auth_test.go 风格）。
+// 500 fail-closed、命中放行 200（照 auth_test.go 风格）。
 package middleware
 
 import (
@@ -128,8 +128,8 @@ func TestRequirePermMiddleware(t *testing.T) {
 	}
 }
 
-// TestRequirePermEnforcerErrorLogs enforcer 故障分支必须 slog.Error 留痕（WR-03
-// 回归）：授权链故障是 IAM P0 事件，全站无差别 500 时日志必须含根因可归因三键——
+// TestRequirePermEnforcerErrorLogs enforcer 故障分支必须 slog.Error 留痕（回归）：
+// 授权链故障是 IAM P0 事件，全站无差别 500 时日志必须含根因可归因三键——
 // 消息、sub（userID 十进制串）、perm 串、error 原文；不得含敏感值（token/请求体）。
 func TestRequirePermEnforcerErrorLogs(t *testing.T) {
 	var buf bytes.Buffer

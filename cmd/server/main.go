@@ -22,7 +22,7 @@ func main() {
 	configPath := flag.String("config", "./config.yaml", "配置文件路径（默认工作目录 ./config.yaml）")
 	flag.Parse()
 
-	// 判定 -config 是否显式指定（决定文件缺失时是 warn+默认值还是致命退出，D-07）
+	// 判定 -config 是否显式指定（决定文件缺失时是 warn+默认值还是致命退出）
 	explicit := false
 	flag.Visit(func(f *flag.Flag) {
 		if f.Name == "config" {
@@ -30,7 +30,7 @@ func main() {
 		}
 	})
 
-	// slog JSON handler → stdout（journald 接管，D-08）
+	// slog JSON handler → stdout（journald 接管）
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: parseLevel(config.DefaultLogLevel)}))
 	slog.SetDefault(logger)
 

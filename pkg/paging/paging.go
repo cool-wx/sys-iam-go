@@ -9,9 +9,9 @@ import (
 )
 
 // 钳位常量：缺省页码 1 / 页大小 15（源 PageHelper 缺省值）；页大小上限 100
-// （T-1-04 DoS 防护，配合连接池 MaxOpenConns 兜底）；页码上限 maxPage——极端大
+// （DoS 防护，配合连接池 MaxOpenConns 兜底）；页码上限 maxPage——极端大
 // 页码使 (page-1)*size 有符号溢出为负，GORM 对非正 Offset 静默省略 OFFSET 子句，
-// 会静默返回第 1 页数据（WR-03），故钳位到固定上限（其上自然空页）。
+// 会静默返回第 1 页数据，故钳位到固定上限（其上自然空页）。
 const (
 	defaultPage = 1
 	defaultSize = 15
@@ -20,14 +20,14 @@ const (
 )
 
 // Parse 钳位分页参数：缺省/空串/解析失败/<1 → 页码 1、页大小 15；页大小 >100 →
-// 100；页码 >maxPage → maxPage（防 (page-1)*size 溢出静默回退第 1 页，WR-03）。
+// 100；页码 >maxPage → maxPage（防 (page-1)*size 溢出静默回退第 1 页）。
 func Parse(page, size string) (pageOut, sizeOut int) {
 	return ParseWithDefaults(page, size, defaultPage, defaultSize)
 }
 
 // ParseWithDefaults 特例分页钳位：钳位逻辑与 Parse 完全一致，仅缺省值参数化——
 // 供源 DTO 字段默认值 ≠ 1/15 全局值的域使用（唯一调用方 Olog：源 LogQuery 默认
-// 1/10，D-09 特例）。既有 Parse 全局 1/15 行为零变化（prohibition：不得改缺省）。
+// 1/10 特例）。既有 Parse 全局 1/15 行为零变化（不得改缺省）。
 func ParseWithDefaults(page, size string, defPage, defSize int) (pageOut, sizeOut int) {
 	pageOut = clamp(page, defPage)
 	sizeOut = clamp(size, defSize)
@@ -60,7 +60,7 @@ type PageData[T any] struct {
 	Size  int   `json:"size"`
 }
 
-// MarshalJSON Items 为 nil 时输出空数组 [] 而非 null（ENG-01 空输入边界定案：
+// MarshalJSON Items 为 nil 时输出空数组 [] 而非 null（空输入边界定案：
 // 空列表恒输出 []，客户端不会拿到 items:null）。在类型序列化出口统一保证，
 // 使用方无需各自判空。
 func (p PageData[T]) MarshalJSON() ([]byte, error) {

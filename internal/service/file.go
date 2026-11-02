@@ -163,7 +163,7 @@ const maxFileTypeLen = 50
 const maxFileNameLen = 255
 
 // normalizeContentType 规范化并钳位客户端 Content-Type 至 file_type 列宽
-//（CR-02）：先取分号前 media type 本体（去可能跟的参数段），仍超 50 字符则兜底
+// （CR-02）：先取分号前 media type 本体（去可能跟的参数段），仍超 50 字符则兜底
 // "application/octet-stream"——上传链落库的该字段永不触发 strict mode 1406。
 // 空 Content-Type（curl 等不带 part 头的客户端）原样返回空串（既有落库行为不变）。
 func normalizeContentType(raw string) string {

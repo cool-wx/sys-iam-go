@@ -1,6 +1,6 @@
--- sys_user_role 建表 DDL（Phase 2 RBAC 主链路）
+-- sys_user_role 建表 DDL（RBAC 主链路）
 -- 来源：本机容器实测真实 DDL（SHOW CREATE TABLE sys_iam.sys_user_role，2026-10-31）
--- 列集 8 列；幂等（DROP TABLE IF EXISTS + CREATE TABLE）；不含外键（T-1-07）。
+-- 列集 8 列；幂等（DROP TABLE IF EXISTS + CREATE TABLE）；不含外键。
 -- 关联表无审计人四列（DDL 实证）：Go PO 不内嵌 BaseWithOperator（02-RESEARCH 研究重点 2）。
 
 DROP TABLE IF EXISTS `sys_user_role`;

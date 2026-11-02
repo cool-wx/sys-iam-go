@@ -1,7 +1,7 @@
--- sys_dict_data 建表 DDL（Phase 4 字典域）
+-- sys_dict_data 建表 DDL（字典域）
 -- 来源：本机容器实测真实 DDL（SHOW CREATE TABLE sys_iam.sys_dict_data，2026-11-01）
--- 列集 13 列；幂等（DROP TABLE IF EXISTS + CREATE TABLE）；不含外键（T-1-07）。
--- dict_type_name 为服务端冗余列（add/edit 校验类型存在后写入，DICT-02）；
+-- 列集 13 列；幂等（DROP TABLE IF EXISTS + CREATE TABLE）；不含外键。
+-- dict_type_name 为服务端冗余列（add/edit 校验类型存在后写入）；
 -- 无唯一索引——dict_data 重复插入不触发 1062；scripts/ddl/*.sql 由
 -- testutil.execDDLDir 按文件名序自动加载，落目录即生效。
 

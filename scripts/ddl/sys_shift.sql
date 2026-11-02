@@ -1,7 +1,7 @@
--- sys_shift 建表 DDL（Phase 4 排班域）
+-- sys_shift 建表 DDL（排班域）
 -- 来源：本机容器实测真实 DDL（SHOW CREATE TABLE sys_iam.sys_shift，2026-11-01）
--- 列集 13 列；幂等（DROP TABLE IF EXISTS + CREATE TABLE）；不含外键（T-1-07）。
--- start_time/end_time 为 MySQL TIME 列——Go 版以 HH:MM:SS 字符串直传（SHFT-02，
+-- 列集 13 列；幂等（DROP TABLE IF EXISTS + CREATE TABLE）；不含外键。
+-- start_time/end_time 为 MySQL TIME 列——Go 版以 HH:MM:SS 字符串直传（
 -- 不加格式解析层）；无唯一索引；scripts/ddl/*.sql 由 testutil.execDDLDir 按文件名序
 -- 自动加载，落目录即生效。
 

@@ -18,9 +18,9 @@ import (
 // int8Ptr 表格驱动便捷构造。
 func int8Ptr(v int8) *int8 { return &v }
 
-// TestWidest 档位聚合表格驱动（D-11 多角色取宽 + fail-closed 兜底）：全 nil →
-// ModeSelf；nil 混有效档取有效档；[2,5] → 5（**非 min**——03-PATTERNS 第 8 节
-// 「min 即最宽」笔误的方向回归锁）；空切片 → ModeSelf。
+// TestWidest 档位聚合表格驱动（多角色取宽 + fail-closed 兜底）：全 nil →
+// ModeSelf；nil 混有效档取有效档；[2,5] → 5（**非 min**——「min 即最宽」笔误
+// 的方向回归锁）；空切片 → ModeSelf。
 func TestWidest(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -29,7 +29,7 @@ func TestWidest(t *testing.T) {
 	}{
 		{"全 nil（存量 NULL 行）→ 最窄档 fail-closed", []*int8{nil, nil}, ModeSelf},
 		{"nil 混档位 3 → 取有效档 3", []*int8{nil, int8Ptr(3)}, ModeDeptSubtree},
-		{"档位 2 与 5 → 取 max=5（数字越大越宽，D-10/D-11）", []*int8{int8Ptr(2), int8Ptr(5)}, ModeAll},
+		{"档位 2 与 5 → 取 max=5（数字越大越宽）", []*int8{int8Ptr(2), int8Ptr(5)}, ModeAll},
 		{"空切片（无角色）→ ModeSelf fail-closed", []*int8{}, ModeSelf},
 		{"单档位 4 原样", []*int8{int8Ptr(4)}, ModeCustomDepts},
 		{"nil 单独 → ModeSelf", []*int8{nil}, ModeSelf},
@@ -77,7 +77,7 @@ func TestCollectSubtreeIDsOrphanAbsent(t *testing.T) {
 }
 
 // TestCollectSubtreeIDsCycleFinite 父子环（A.parent=B、B.parent=A）不死循环且
-// 输出有限集：visited 集防环直证（2s 超时纪律照 tree_test，T-2-09）。
+// 输出有限集：visited 集防环直证（2s 超时纪律照 tree_test）。
 func TestCollectSubtreeIDsCycleFinite(t *testing.T) {
 	depts := []po.DeptPO{
 		deptNode(10, pidOf(11)), // 环 A
@@ -90,7 +90,7 @@ func TestCollectSubtreeIDsCycleFinite(t *testing.T) {
 	select {
 	case got = <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("CollectSubtreeIDs 在环引用 fixture 上未于 2s 内返回——死循环回归（T-2-09）")
+		t.Fatal("CollectSubtreeIDs 在环引用 fixture 上未于 2s 内返回——死循环回归")
 	}
 	assert.ElementsMatch(t, []int64{10, 11}, got, "环双方均属同一闭包，输出有限集")
 }
@@ -123,7 +123,7 @@ func buildSQL(t *testing.T, db *gorm.DB, f Filter, table string) string {
 	return stmt.Statement.SQL.String()
 }
 
-// TestFilterApplyClauses 五档 SQL 子句断言（T-3-06/T-1-03/T-3-07）：
+// TestFilterApplyClauses 五档 SQL 子句断言：
 //   - 档 1 占位符形态（table 限定列 create_by_id = ?）；
 //   - 档 2 单元素占位符、档 3/4 IN 子句且占位符数与部门集一致；
 //   - 档 5 无 WHERE（原样返回，零条件）；
@@ -171,7 +171,7 @@ func TestFilterApplyClauses(t *testing.T) {
 		assert.True(t, strings.Contains(sql, "1 = 0"), "档 "+strconv.Itoa(int(mode))+" 空 DeptIDs 必须落空结果: %s", sql)
 	}
 
-	// table 参数化：换表名时列限定跟随（Phase 4 各域复用契约直证）
+	// table 参数化：换表名时列限定跟随（各域复用契约直证）
 	sql = buildSQL(t, db, Filter{Mode: ModeSelf, UserID: 1}, "sys_order")
 	assert.Contains(t, sql, "sys_order.create_by_id = ?", "table 参数必须进入列限定: %s", sql)
 }

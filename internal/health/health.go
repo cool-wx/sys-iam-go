@@ -1,5 +1,5 @@
 // Package health 提供 liveness/readiness 端点与关停摘流开关。
-// body 恒为 {"status":"ok"|"fail"}——不含 DSN/主机/版本等内部细节（T-1-06）。
+// body 恒为 {"status":"ok"|"fail"}——不含 DSN/主机/版本等内部细节。
 package health
 
 import (

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 真实二进制 SIGTERM 排空验证（ENG-06 双重证明之二：真实进程证明）
+# 真实二进制 SIGTERM 排空验证（双重证明之二：真实进程证明）
 # 入口：make verify-shutdown
 #
 # 流程：独立 mysql 容器（随机端口）→ DDL 引导 → 临时 config.yaml → make build →
@@ -144,7 +144,7 @@ if [ "$ELAPSED" -ge 20 ]; then
 fi
 echo "[OK] SIGTERM graceful exit code 0 (elapsed ${ELAPSED}s)"
 
-# ---- Step 7: stdout 日志含 shutdown 完成记录行（D-08：stdout→journald 同源）----
+# ---- Step 7: stdout 日志含 shutdown 完成记录行（stdout→journald 同源）----
 if ! grep -q "shutdown complete" "$TMP_DIR/stdout.log"; then
   echo "--- stdout.log ---" >&2
   cat "$TMP_DIR/stdout.log" >&2

@@ -11,7 +11,7 @@ import (
 	"github.com/cool-wx/sys-iam-go/pkg/resp"
 )
 
-// bearerPrefix Authorization 头的标准前缀（D-04：token 仅经 Bearer 传递，
+// bearerPrefix Authorization 头的标准前缀（token 仅经 Bearer 传递，
 // X-API-Key 等 header 方式不实现）。
 const bearerPrefix = "Bearer "
 
@@ -32,8 +32,8 @@ func BearerToken(header string) (string, bool) {
 // Identity 注入请求 ctx（repo 审计钩子经 auth.FromContext 读取）。中间件不判路径
 // ——白名单在 router 分组解决（pub 组不挂本中间件）。
 //
-// 错误三分支（T-2-04 fail-closed）：
-//   - 无 token/前缀不符/会话不存在 → 401（ErrUnauthenticated，AUTH-06）
+// 错误三分支（fail-closed）：
+//   - 无 token/前缀不符/会话不存在 → 401（ErrUnauthenticated）
 //   - Redis 故障等其他错误 → 500 Abort，绝不静默 c.Next() 放行
 func Auth(sm *auth.SessionManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -50,7 +50,7 @@ func Auth(sm *auth.SessionManager) gin.HandlerFunc {
 			return
 		}
 		if err != nil {
-			// fail-closed：Redis 故障时认证中间件不得放行请求（T-2-04 高危缓解），
+			// fail-closed：Redis 故障时认证中间件不得放行请求（高危缓解），
 			// 500 由全局错误语义收敛为 ErrInternal 固定文案，不回显底层错误。
 			resp.Fail(c, errcode.ErrInternal)
 			c.Abort()
@@ -61,7 +61,7 @@ func Auth(sm *auth.SessionManager) gin.HandlerFunc {
 	}
 }
 
-// RequireRoles 授权 gate（WR-05：Phase 3 Casbin requirePerm 落地前的过渡收口）：
+// RequireRoles 授权 gate（会话快照层授权收口）：
 // 依据会话内登录时 roles 快照（auth.Identity.Roles，Auth 中间件已注入）判定——
 // 命中任一允许角色即放行，否则 403/10200 ErrForbidden Abort。必须挂在 Auth 之后
 // （依赖 identity 注入）；identity 缺失按未登录 401 收敛（防御性分支，正常装配

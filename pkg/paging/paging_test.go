@@ -23,7 +23,7 @@ func TestParseClamp(t *testing.T) {
 		{"size超上限", "2", "200", 2, 100},
 		{"非法输入", "abc", "x", 1, 15},
 		{"合法原样", "3", "20", 3, 20},
-		// WR-03 回归：int64 极值/超上限页码必须钳位 maxPage——否则 (page-1)*size
+		// 回归防护：int64 极值/超上限页码必须钳位 maxPage——否则 (page-1)*size
 		// 有符号溢出为负，GORM 静默省略 OFFSET 子句，静默回退第 1 页数据
 		{"int64极值页码", "9223372036854775807", "20", maxPage, 20},
 		{"页码刚超上限", "1000001", "15", maxPage, 15},
@@ -37,7 +37,7 @@ func TestParseClamp(t *testing.T) {
 	}
 }
 
-// TestParseWithDefaults 特例分页钳位（D-09 Olog 1/10 例外）：缺省值参数化生效、
+// TestParseWithDefaults 特例分页钳位（Olog 1/10 例外）：缺省值参数化生效、
 // 上限钳位语义与 Parse 一致、既有 Parse 全局 1/15 行为零变化。
 func TestParseWithDefaults(t *testing.T) {
 	cases := []struct {
@@ -72,7 +72,7 @@ func TestParseWithDefaults(t *testing.T) {
 }
 
 // TestPageDataEmptyItemsMarshal Items 为 nil 时序列化必须输出 [] 而非 null
-// （ENG-01 空输入边界定案：空列表输出空数组）。
+// （空输入边界定案：空列表输出空数组）。
 func TestPageDataEmptyItemsMarshal(t *testing.T) {
 	p := PageData[string]{Items: nil, Total: 0, Page: 99, Size: 15}
 	bs, err := json.Marshal(p)

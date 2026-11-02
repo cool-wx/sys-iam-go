@@ -1,16 +1,16 @@
-// Package middleware 操作日志中间件（Phase 4 OLOG-01/02，等价源 OperationLogAspect）：
-// 声明制挂载（D-05：路由注册处显式声明 module/operation，等价源 @OperationLog
-// 注解心智模型）+ body 缓存回放（D-06）+ chan 异步落库（D-07）+ 优雅关停 drain
-// （D-08）+ 8 敏感字段掩码（D-09）。
+// Package middleware 操作日志中间件（等价源 OperationLogAspect）：
+// 声明制挂载（路由注册处显式声明 module/operation，等价源 @OperationLog
+// 注解心智模型）+ body 缓存回放 + chan 异步落库 + 优雅关停 drain
+// + 8 敏感字段掩码。
 //
-// 有意偏离源两处（04-CONTEXT.md D-07/D-09 留档）：
+// 有意偏离源两处（留档）：
 //   - 源为同步落库（finally 中 save）→ 本版 chan 异步：chan 满丢弃优于请求阻塞
-//     （丢弃是设计而非缺陷——prohibition：Enqueue 绝不阻塞业务请求）；
-//   - 源 AOP 切点含读操作 → 本版仅显式声明的写操作路由记录（D-05 收紧）。
+//     （丢弃是设计而非缺陷——纪律：Enqueue 绝不阻塞业务请求）；
+//   - 源 AOP 切点含读操作 → 本版仅显式声明的写操作路由记录（收紧）。
 //
-// 威胁缓解面：T-4-07 掩码先于截断（截断不切出掩码边界新明文）；T-4-08 chan 满
+// 威胁缓解面：掩码先于截断（截断不切出掩码边界新明文）；chan 满
 // select-default 丢弃 + worker 落库错误仅 Warn 不反压 + 容量 512 × params 截断
-// 60KB 联合封顶内存 ≈30MB（工控机可接受）；T-4-09 Go regexp 为 RE2 线性时间
+// 60KB 联合封顶内存 ≈30MB（工控机可接受）；Go regexp 为 RE2 线性时间
 // 引擎（无回溯指数路径），掩码模式结构性免疫 ReDoS。
 package middleware
 
@@ -36,13 +36,13 @@ import (
 	"github.com/cool-wx/sys-iam-go/internal/model/po"
 )
 
-// 异步链参数（D-07/T-4-08）：容量 512 × entry params 截断后 ≤60KB ≈ 30MB 内存
+// 异步链参数：容量 512 × entry params 截断后 ≤60KB ≈ 30MB 内存
 // 上界（工控机可接受）；批满 64 条或 500ms 到期即批量落库。
 const (
 	opLogChanSize      = 512
 	opLogBatchSize     = 64
 	opLogFlushInterval = 500 * time.Millisecond
-	// Stop/Flush 落库排空预算：app.Stop 在 15s 关停预算内独立计时（D-08 次序
+	// Stop/Flush 落库排空预算：app.Stop 在 15s 关停预算内独立计时（次序
 	// 中的 drain 段），通常毫秒级完成。
 	opLogFlushTimeout = 5 * time.Second
 	// params 按字节截断上限：MySQL TEXT 64KB 边界内（严格模式超长 INSERT 直接
@@ -54,16 +54,16 @@ const (
 
 // sensitiveRe 掩码正则——**逐字照源 OperationLogAspect.java:27-28**：捕获组为
 // password/oldPassword/newPassword/secretKey/apiKey/token/accessToken/refreshToken
-// 八字段名（D-09 研究修正：REQUIREMENTS「7 字段」为计数笔误，裁定记录以源正则
+// 八字段名（核对修正：源需求清单「7 字段」为计数笔误，以源正则
 // 8 字段为准），只匹配带双引号的字符串值形态（数字/布尔/null 值不匹配——源语义）。
-// RE2 线性引擎无回溯 ReDoS 面（T-4-09 disposition 依据）。
+// RE2 线性引擎无回溯 ReDoS 面（结构性免疫依据）。
 var sensitiveRe = regexp.MustCompile(`"(password|oldPassword|newPassword|secretKey|apiKey|token|accessToken|refreshToken)"\s*:\s*"[^"]*"`)
 
 // maskReplacement 替换值：键名保留（$1）、值统一 ******（源 ReplaceAllString 语义）。
 const maskReplacement = `"${1}":"******"`
 
 // MaskSensitive 掩码 JSON 文本中 8 个敏感字段的字符串值为 ******。非 JSON 输入
-//（如空串/multipart 空参数）原样返回。掩码必须先于任何截断调用（prohibition：
+// （如空串/multipart 空参数）原样返回。掩码必须先于任何截断调用（prohibition：
 // 截断会把文本切出新边界，若先截后掩码则切点处可能出现未掩码明文残余）。
 func MaskSensitive(jsonStr string) string {
 	return sensitiveRe.ReplaceAllString(jsonStr, maskReplacement)
@@ -73,14 +73,14 @@ func MaskSensitive(jsonStr string) string {
 // fake 计数器（Flush drain 语义免容器直测）。
 type Sink func(ctx context.Context, entries []po.OperationLogPO) error
 
-// OpLogWriter 操作日志异步写通道（D-07）：buffered chan + 单 worker 批量落库。
+// OpLogWriter 操作日志异步写通道：buffered chan + 单 worker 批量落库。
 type OpLogWriter struct {
 	ch       chan *po.OperationLogPO
 	flushCh  chan chan struct{}
 	quit     chan struct{}
 	wg       sync.WaitGroup
 	stopOnce sync.Once
-	started  atomic.Bool  // worker 启动标志——Stop 在未 Start 时免 Flush（无消费者会超时空等）
+	started  atomic.Bool // worker 启动标志——Stop 在未 Start 时免 Flush（无消费者会超时空等）
 	sink     Sink
 	logger   *slog.Logger
 	dropped  atomic.Int64 // chan 满丢弃累计计数（可观测性；丢弃不反压——prohibition）
@@ -116,8 +116,8 @@ func (w *OpLogWriter) Start() {
 	go w.worker()
 }
 
-// Enqueue 非阻塞入队：chan 满即丢弃并 Warn 计数（prohibition：绝不阻塞业务请求
-// ——丢弃是 D-07 设计而非缺陷；worker 落库错误同样仅 Warn 不反压）。
+// Enqueue 非阻塞入队：chan 满即丢弃并 Warn 计数（纪律：绝不阻塞业务请求
+// ——丢弃是设计而非缺陷；worker 落库错误同样仅 Warn 不反压）。
 func (w *OpLogWriter) Enqueue(entry *po.OperationLogPO) {
 	select {
 	case w.ch <- entry:
@@ -126,10 +126,10 @@ func (w *OpLogWriter) Enqueue(entry *po.OperationLogPO) {
 	}
 }
 
-// Flush 同步排空（D-08 flush 语义，供 app.Stop 与集成测试两用）：请求 worker
+// Flush 同步排空（flush 语义，供 app.Stop 与集成测试两用）：请求 worker
 // 「drain chan 残留 + 落当前批 + 等待落库完成」后返回——测试无需 sleep 轮询。
 // 保证：调用时**已入 chan** 的 entry 全部落库；Flush 期间并发 Enqueue 的新 entry
-// 属竞态窗口（Stop 场景流量已停于 srv.Shutdown 之后，语义严格成立——D-08 次序
+// 属竞态窗口（Stop 场景流量已停于 srv.Shutdown 之后，语义严格成立——次序
 // 正是为此）。
 func (w *OpLogWriter) Flush(ctx context.Context) error {
 	done := make(chan struct{})
@@ -147,7 +147,7 @@ func (w *OpLogWriter) Flush(ctx context.Context) error {
 }
 
 // Stop = Flush（预算内排空）+ 终止 worker（终局再 drain 一遍兜底）。幂等
-//（stopOnce），可安全接入 app.Stop 与测试 Cleanup。worker 未启动（如仅入队
+// （stopOnce），可安全接入 app.Stop 与测试 Cleanup。worker 未启动（如仅入队
 // 丢弃路径的单元测试）时跳过 Flush——flushCh 无消费者，同步请求只会空等超时。
 func (w *OpLogWriter) Stop() {
 	w.stopOnce.Do(func() {
@@ -162,7 +162,7 @@ func (w *OpLogWriter) Stop() {
 }
 
 // worker 单消费循环：攒批 64 条或 500ms ticker 到期即批量落库；flush 请求分支
-// 先 drain chan 残留再落批（D-08 flush 语义的实现点）；quit 分支终局 drain 后退出。
+// 先 drain chan 残留再落批（flush 语义的实现点）；quit 分支终局 drain 后退出。
 func (w *OpLogWriter) worker() {
 	defer w.wg.Done()
 	ticker := time.NewTicker(opLogFlushInterval)
@@ -223,13 +223,13 @@ type errReader struct{ err error }
 
 func (r errReader) Read([]byte) (int, error) { return 0, r.err }
 
-// Oplog 操作日志中间件（D-05 声明制挂载）：module/operation 由路由注册处显式
+// Oplog 操作日志中间件（声明制挂载）：module/operation 由路由注册处显式
 // 声明（等价源 @OperationLog 注解元数据）；挂载次序固定在 RequirePerm 之后
 // handler 之前（鉴权失败不产生日志——与源 AOP 在授权后切入语义一致）。
 //
-// body 处理（D-06）：仅非 multipart Content-Type 缓存 body 并 NopCloser 回放
+// body 处理：仅非 multipart Content-Type 缓存 body 并 NopCloser 回放
 // （handler 可重读）；multipart 跳过缓存、params 记空串——对齐源 params 过滤
-// 跳过 MultipartFile，且避免 20MB 上传全量缓存造成内存放大（prohibition）。
+// 跳过 MultipartFile，且避免 20MB 上传全量缓存造成内存放大（纪律要求）。
 func Oplog(w *OpLogWriter, module, operation string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -313,19 +313,19 @@ func assembleEntry(c *gin.Context, start time.Time, module, operation string, ca
 }
 
 // truncateBytes 按字节截断（params 上限 60000——TEXT 64KB 边界内），切点回退至
-// 最近完整 rune 边界（WR-01）：params 列为 utf8mb4，硬切多字节字符中间会产生
+// 最近完整 rune 边界：params 列为 utf8mb4，硬切多字节字符中间会产生
 // 无效 UTF-8 尾串，go-sql-driver 绑定后 MySQL strict mode 报 1366 Incorrect
 // string value → CreateInBatches 整批 INSERT 失败、同批（最多 64 条）无关日志
 // 一并丢弃——回退后恒为合法 UTF-8，落库不再被确定性打爆。调用方必须保证已先
-// 掩码（截断先于掩码会切出掩码边界新明文——prohibition 顺序锁定）。
+// 掩码（截断先于掩码会切出掩码边界新明文——顺序锁定）。
 //
-// 复杂度纪律（WR-06）：回退判定用 DecodeLastRuneInString 尾部解码（O(UTFMax)
+// 复杂度纪律：回退判定用 DecodeLastRuneInString 尾部解码（O(UTFMax)
 // 常数窗口），绝不做「剥 1 字节重扫全串」——那对输入本身含非法字节的 body 是
 // O(n²)（授权用户恶意构造 >60KB 非法 body 在请求 goroutine defer 中同步执行，
 // iter-2 实测 ~18.8ms/请求）。全路径至多 2 次 O(n) 扫描（ValidString + 首个
 // 非法点定位）：合法输入的切点碎片至多 3 字节，尾部解码不完整即逐字节回退，
 // ≤3 次迭代达边界；输入本身非法时一次 range 定位首个非法序列起点直接截断
-//（其后的合法内容一并丢弃——params 是请求原文日志，非法字节来自畸形请求，
+// （其后的合法内容一并丢弃——params 是请求原文日志，非法字节来自畸形请求，
 // 截至首个非法点语义无损）。尾部解码须用「RuneError 且 size==1」判定不完整：
 // 合法编码的 U+FFFD（�）解码结果同为 RuneError 但 size==3，不得误剥。
 // 注：iter-2 REVIEW 建议的 RuneStart 逐字节回退会把「恰在 rune 边界」的
@@ -347,7 +347,7 @@ func truncateBytes(s string, n int) string {
 		return s
 	}
 	// 输入本身非法（非切点问题）：一次扫描定位首个非法序列起点，O(n) 截断，
-	// 不再逐字节回退全量重扫（WR-06 CPU 放大面）。
+	// 不再逐字节回退全量重扫（CPU 放大面）。
 	for i, r := range s {
 		if r == utf8.RuneError {
 			if _, size := utf8.DecodeRuneInString(s[i:]); size == 1 {

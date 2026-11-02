@@ -1,6 +1,6 @@
--- sys_role 建表 DDL（Phase 2 RBAC 主链路）
+-- sys_role 建表 DDL（RBAC 主链路）
 -- 来源：本机容器实测真实 DDL（SHOW CREATE TABLE sys_iam.sys_role，2026-10-31）
--- 列集 13 列；幂等（DROP TABLE IF EXISTS + CREATE TABLE）；不含外键（T-1-07）。
+-- 列集 13 列；幂等（DROP TABLE IF EXISTS + CREATE TABLE）；不含外键。
 -- utf8mb4_general_ci：role_code 唯一索引大小写不敏感（DB 决定，Go 侧不处理）。
 
 DROP TABLE IF EXISTS `sys_role`;

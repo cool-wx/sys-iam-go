@@ -22,7 +22,7 @@ func newTestManager(t *testing.T) (*SessionManager, *miniredis.Miniredis, *redis
 	return NewSessionManager(rdb, 30*time.Minute), mr, rdb
 }
 
-// TestSessionLoginResolve 登录→校验往返：token 为 64 hex 字符（256-bit 熵，T-2-02）；
+// TestSessionLoginResolve 登录→校验往返：token 为 64 hex 字符（256-bit 熵）；
 // Resolve 返回正确 Identity——含 roles JSON 往返与 realName 非空白优先/空白回退
 // userName（等价源 SaTokenConfig.java:120-137 语义）。
 func TestSessionLoginResolve(t *testing.T) {
@@ -42,9 +42,9 @@ func TestSessionLoginResolve(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(42), id.UserID)
 	assert.Equal(t, "管理员", id.Name, "realName 非空白优先")
-	assert.Equal(t, []string{"super_admin", "ops"}, id.Roles, "roles 快照必须经 Resolve 往返（WR-05 RequireRoles 授权判定依据）")
+	assert.Equal(t, []string{"super_admin", "ops"}, id.Roles, "roles 快照必须经 Resolve 往返（RequireRoles 授权判定依据）")
 
-	// 会话 Hash 载荷四键齐备（D-10：userId/userName/realName/roles）+ roles JSON 往返
+	// 会话 Hash 载荷四键齐备（userId/userName/realName/roles）+ roles JSON 往返
 	vals := mr.HGet(keySessionPrefix+token, "roles")
 	assert.JSONEq(t, `["super_admin","ops"]`, vals)
 
@@ -61,7 +61,7 @@ func TestSessionLoginResolve(t *testing.T) {
 	require.ErrorIs(t, err, ErrSessionNotFound)
 }
 
-// TestLogoutInvalidatesSession 登出即刻失效（AUTH-03）：Resolve → Logout → Resolve
+// TestLogoutInvalidatesSession 登出即刻失效：Resolve → Logout → Resolve
 // ErrSessionNotFound；索引 SRem；重复登出幂等返回 nil。
 func TestLogoutInvalidatesSession(t *testing.T) {
 	sm, mr, _ := newTestManager(t)
@@ -82,7 +82,7 @@ func TestLogoutInvalidatesSession(t *testing.T) {
 	require.NoError(t, sm.Logout(ctx, token), "重复登出必须幂等")
 }
 
-// TestSessionTTLRenewReset 活跃续期重置证明（AUTH-05）：Login(timeout=T) →
+// TestSessionTTLRenewReset 活跃续期重置证明：Login(timeout=T) →
 // FastForward(T-1min) → Resolve（命中并续期）→ 再 FastForward(T-1min) → Resolve 仍命中
 // ——若 Resolve 未把 TTL 重置为完整 T，第二次推进后必过期。未续期对照：Login 后
 // FastForward(T+1s) → Resolve 返回 ErrSessionNotFound（证明 FastForward 真的会使
@@ -104,7 +104,7 @@ func TestSessionTTLRenewReset(t *testing.T) {
 	// 若未重置（剩余仅 1min 被推过）此刻必 ErrSessionNotFound
 	mr.FastForward(ttl - time.Minute)
 	_, err = sm.Resolve(ctx, token)
-	require.NoError(t, err, "Resolve 必须把 TTL 重置为完整 timeout（活跃续期，AUTH-05）")
+	require.NoError(t, err, "Resolve 必须把 TTL 重置为完整 timeout（活跃续期）")
 
 	// 未续期对照：新会话直接推过 TTL → 过期（证明 FastForward 机制真实生效）
 	token2, err := sm.Login(ctx, SessionPayload{UserID: 2, UserName: "ttl-expired"})
@@ -114,7 +114,7 @@ func TestSessionTTLRenewReset(t *testing.T) {
 	require.ErrorIs(t, err, ErrSessionNotFound, "推过 TTL 后会话必须过期（对照组）")
 }
 
-// TestKickoutCleansIndexAndDeadTokens 踢下线（AUTH-04）：索引含 1 live + 1 手工死
+// TestKickoutCleansIndexAndDeadTokens 踢下线：索引含 1 live + 1 手工死
 // token 时 KickoutUser——live 会话 DEL、死 token 也被 SRem（惰性清理）、SMembers 终态空。
 func TestKickoutCleansIndexAndDeadTokens(t *testing.T) {
 	sm, mr, rdb := newTestManager(t)
@@ -142,7 +142,7 @@ func TestKickoutCleansIndexAndDeadTokens(t *testing.T) {
 	require.NoError(t, sm.KickoutUser(ctx, 99), "无会话用户踢下线必须幂等")
 }
 
-// TestConcurrentApiKeyFullLogin 并发竞态显式处置（AUTH-02 边缘，D-03）：两个
+// TestConcurrentApiKeyFullLogin 并发竞态显式处置（apikey 登录边缘场景）：两个
 // goroutine 并发走"完整登录+BindAPIKey"——各自发新 token、两个 token 各自 Resolve
 // 均有效（互不污染）、索引含两 token、映射 SET 最后写者赢（指向其一且仍有效）。
 // 无 panic、无 error、无死键残留。
@@ -177,7 +177,7 @@ func TestConcurrentApiKeyFullLogin(t *testing.T) {
 		}
 	}
 	require.Len(t, got, 2, "两并发登录都必须成功")
-	require.NotEqual(t, got[0], got[1], "登录必发新 token（不复用旧值，T-2-03）")
+	require.NotEqual(t, got[0], got[1], "登录必发新 token（不复用旧值）")
 
 	// 两个 token 各自有效、互不污染
 	for _, tk := range got {
@@ -196,7 +196,7 @@ func TestConcurrentApiKeyFullLogin(t *testing.T) {
 	assert.Contains(t, got, final)
 }
 
-// TestKickoutAPIKeyRevokesSessionAndMapping WR-06：KickoutAPIKey 撤销指定 key 已
+// TestKickoutAPIKeyRevokesSessionAndMapping KickoutAPIKey 撤销指定 key 已
 // 签发会话——会话 DEL（Resolve 失效）、user-tokens 索引 SRem、映射 DEL（单原子块）；
 // 未签发过会话的 key 幂等 nil；映射指向死 token 的残留场景仅剩映射清理。
 func TestKickoutAPIKeyRevokesSessionAndMapping(t *testing.T) {
@@ -238,7 +238,7 @@ func TestKickoutAPIKeyRevokesSessionAndMapping(t *testing.T) {
 	assert.False(t, ok, "死 token 残留场景映射必须被清理")
 }
 
-// TestBindAPIKeyDualKeys IN-14/D-16 双键契约直证：BindAPIKey 后 apikey-token 键
+// TestBindAPIKeyDualKeys 双键契约直证：BindAPIKey 后 apikey-token 键
 // （TTL=timeout）与 apikey-user 反查键（无 TTL——键寿命与 sys_api_key 行同寿命）
 // 同时存在且载荷正确；LookupAPIKeyUser 命中/miss/损坏键三分支（损坏视同无键）。
 func TestBindAPIKeyDualKeys(t *testing.T) {
@@ -279,16 +279,16 @@ func TestBindAPIKeyDualKeys(t *testing.T) {
 	assert.False(t, ok, "损坏反查键必须视同无键 ok=false")
 
 	// 无 TTL 契约对照：FastForward 推过 timeout 后映射键过期消失、反查键仍在
-	//（IN-14 缺口的正解——过期窗口内恒可反查）
+	//（缺口正解——过期窗口内恒可反查）
 	mr.FastForward(ttl + time.Second)
 	_, err = rdb.Get(ctx, keyAPIKeyPrefix+"ak-dual").Result()
 	require.Error(t, err, "推过 timeout 后映射键必须过期")
 	uid, ok = sm.LookupAPIKeyUser(ctx, "ak-dual")
-	require.True(t, ok, "反查键无 TTL——映射过期后仍可反查（IN-14 存在理由直证）")
+	require.True(t, ok, "反查键无 TTL——映射过期后仍可反查")
 	assert.Equal(t, int64(55), uid)
 }
 
-// TestKickoutAPIKeyCleansDualKeys IN-14 清理路径一：KickoutAPIKey（管理面停用/
+// TestKickoutAPIKeyCleansDualKeys 清理路径一：KickoutAPIKey（管理面停用/
 // 删除的撤销链）后双键均消失——键寿命与 key 行同寿命（UpdateStatus/Delete 两调用
 // 点零改动即得清理）。
 func TestKickoutAPIKeyCleansDualKeys(t *testing.T) {
@@ -306,7 +306,7 @@ func TestKickoutAPIKeyCleansDualKeys(t *testing.T) {
 	assert.Error(t, err, "撤销后 apikey-user 反查键必须消失（同寿命双删）")
 }
 
-// TestUnbindAPIKeyCleansDualKeys IN-14 清理路径二：UnbindAPIKey（复用分支发现
+// TestUnbindAPIKeyCleansDualKeys 清理路径二：UnbindAPIKey（复用分支发现
 // 关联用户禁用/已删）后双键均消失——复用分支清理路径同寿命语义；幂等 DEL no-op。
 func TestUnbindAPIKeyCleansDualKeys(t *testing.T) {
 	sm, _, rdb := newTestManager(t)

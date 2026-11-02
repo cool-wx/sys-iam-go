@@ -1,7 +1,7 @@
 // enforcer 纯内存单元测试（model.NewModelFromString + 无 adapter，免容器毫秒级
-// ——03-RESEARCH 研究重点 4 测试策略；gorm-adapter 路径由集成测试覆盖）。
+// ——单测策略，gorm-adapter 路径由集成测试覆盖）。
 // 锁定 matcher 三坑：token 名一致性、super_admin 豁免首位短路（零 p 行直证）、
-// 撤销 g 行豁免即时失效（D-07），以及 SyncRolePerms 幂等全量替换语义。
+// 撤销 g 行豁免即时失效，以及 SyncRolePerms 幂等全量替换语义。
 package authz
 
 import (
@@ -54,7 +54,7 @@ func TestMatcherTokenNames(t *testing.T) {
 }
 
 // TestSuperAdminExemptWithoutPolicies super_admin 豁免独立于 p 行（坑 2 回归锁，
-// T-3-03 critical 缓解直证）：仅 g 行、零 p 行时任意 perm 均 true——豁免必须是
+// critical 缓解直证）：仅 g 行、零 p 行时任意 perm 均 true——豁免必须是
 // matcher 首个 || 短路分支，请求不匹配任何 p 行时 matcher 也必须被求值。
 func TestSuperAdminExemptWithoutPolicies(t *testing.T) {
 	e := newMemEnforcer(t)
@@ -73,7 +73,7 @@ func TestSuperAdminExemptWithoutPolicies(t *testing.T) {
 	assert.False(t, allowed, "无 g 行用户零 p 行必须拒绝")
 }
 
-// TestRevokeSuperAdminImmediate 撤销即时性（D-07 唯一判据直证）：删除 super_admin
+// TestRevokeSuperAdminImmediate 撤销即时性（唯一判据直证）：删除 super_admin
 // g 行后同 sub 的 Enforce 下一调用即 false——豁免判据完全走 g 层，非会话快照。
 func TestRevokeSuperAdminImmediate(t *testing.T) {
 	e := newMemEnforcer(t)
@@ -92,9 +92,9 @@ func TestRevokeSuperAdminImmediate(t *testing.T) {
 	assert.False(t, allowed, "撤销 super_admin g 行后豁免必须下一调用即失效")
 }
 
-// TestHasRoleGLayer HasRole g 层读原语直证（CR-04）：g 行存在 → true；删 g 行后
-// 下一调用即 false——判据源是 enforcer 实时策略而非任何快照（回收即刻生效，D-07
-// 同轴）；未持有角色 / 无 g 行用户 → false 且无 error。
+// TestHasRoleGLayer HasRole g 层读原语直证：g 行存在 → true；删 g 行后
+// 下一调用即 false——判据源是 enforcer 实时策略而非任何快照（回收即刻生效）；
+// 未持有角色 / 无 g 行用户 → false 且无 error。
 func TestHasRoleGLayer(t *testing.T) {
 	e := newMemSynced(t)
 	_, err := e.inner.AddGroupingPolicy("9001", "super_admin")
@@ -110,7 +110,7 @@ func TestHasRoleGLayer(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, has, "g 行存在但角色未持有必须 false")
 
-	// 回收（删 g 行）后下一调用即 false——CR-04 判据实时性直证
+	// 回收（删 g 行）后下一调用即 false——判据实时性直证
 	_, err = e.inner.RemoveFilteredGroupingPolicy(0, "9001")
 	require.NoError(t, err)
 	has, err = e.HasRole(9001, "super_admin")

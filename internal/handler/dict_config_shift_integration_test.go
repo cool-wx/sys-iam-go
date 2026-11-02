@@ -83,7 +83,7 @@ func createDictType(t *testing.T, ts *httptest.Server, token, name, typ string) 
 // create→get→list→update 零值保护（不传字段不清空）→delete→get 404；
 // dict_type 重复 create → 400 code 10400 消息「字典类型已存在」（uk_dict_type
 // 1062 经 TranslateError 翻译，DICT-01 验收明文）；update 撞同 uk 同翻译
-//（WR-02：白名单含唯一键列，Update 与 Create 同冲突同译，不透传 500）。
+// （WR-02：白名单含唯一键列，Update 与 Create 同冲突同译，不透传 500）。
 func TestDictTypeCRUD(t *testing.T) {
 	ts, _, adminToken, _ := newTestApp(t)
 	token := adminToken()
@@ -381,7 +381,7 @@ type shiftRespBody struct {
 // TestShiftFullListNoPaging 排班全量直出（SHFT-01 源行为直译）+ CRUD（SHFT-02）：
 // create 3 条 → GET /api/v1/shifts 断言 data 为长度 3 数组且响应无 items/total
 // 包装 → PUT 改 start_time 后 Get 回读更新生效。status 经 UsageStatus 枚举
-//（WR-04）：create 恒服务端默认 "ENABLED"；update 未知枚举值 400/10401 不静默
+// （WR-04）：create 恒服务端默认 "ENABLED"；update 未知枚举值 400/10401 不静默
 // 落库；update "DISABLED" 合法且回读一致。
 func TestShiftFullListNoPaging(t *testing.T) {
 	ts, _, adminToken, _ := newTestApp(t)

@@ -103,7 +103,7 @@ func TestAuthMiddlewarePassesIdentity(t *testing.T) {
 	assert.Equal(t, int64(66), got.UserID)
 	assert.Equal(t, "中间件用户", got.Name)
 
-	// roles 快照随 Identity 注入（WR-05 RequireRoles 判定依据）
+	// roles 快照随 Identity 注入（RequireRoles 判定依据）
 	var withRoles struct {
 		Roles []string `json:"roles"`
 	}
@@ -111,7 +111,7 @@ func TestAuthMiddlewarePassesIdentity(t *testing.T) {
 	assert.Equal(t, []string{"ops"}, withRoles.Roles, "会话 roles 快照必须注入 Identity")
 }
 
-// TestRequireRolesMiddleware 角色 gate（WR-05 kickout 收紧直证）：命中允许角色
+// TestRequireRolesMiddleware 角色 gate（kickout 收紧直证）：命中允许角色
 // 放行；角色不符 403/10200 Abort；无 token 401（Auth 先拦）。
 func TestRequireRolesMiddleware(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -160,7 +160,7 @@ func TestRequireRolesMiddleware(t *testing.T) {
 }
 
 // TestAuthMiddlewareFailsClosedOnRedisError miniredis Close 后请求得 500
-// （T-2-04 fail-closed 直证：Redis 故障绝不静默放行）。
+// （fail-closed 直证：Redis 故障绝不静默放行）。
 func TestAuthMiddlewareFailsClosedOnRedisError(t *testing.T) {
 	engine, sm, mr := newAuthTestEnv(t)
 	token, err := sm.Login(t.Context(), auth.SessionPayload{UserID: 1, UserName: "fc-user"})

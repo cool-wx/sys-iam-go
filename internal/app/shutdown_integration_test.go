@@ -1,7 +1,7 @@
 //go:build integration
 
-// app 优雅关停集成测试（ENG-06 双重证明之一：进程内证明）。
-// 两个测试合计覆盖计划断言 (a)-(d)：
+// app 优雅关停集成测试（双重证明之一：进程内证明）。
+// 两个测试合计覆盖验收断言 (a)-(d)：
 //   - TestReadinessFlipBeforeDrain：摘流可观察性——真实 handler + 真实 MySQL ping 上
 //     SetNotReady()（App.Stop 摘流步骤）后 readyz 立即 503（确定性单步直证）；
 //   - TestGracefulShutdownDrains：App.Stop() 全路径——慢请求完整返回、15s 预算内、
@@ -45,7 +45,7 @@ const slowSleep = 1200 * time.Millisecond
 // inFlightPause 发起慢请求后到 Stop 之前的等待：确保请求已进入 handler sleep（在途）。
 const inFlightPause = 300 * time.Millisecond
 
-// newShutdownApp 起独立 MySQL+Redis 双容器（Phase 2 起装配链含 Redis Ping fail-fast）
+// newShutdownApp 起独立 MySQL+Redis 双容器（装配链含 Redis Ping fail-fast）
 // + 完整真 App 装配 + 真实端口监听（本组测试不经 httptest 驱动 App 生命周期——断言
 // 的是 http.Server.Shutdown 真实行为）。注册测试专用慢路由（仅测试进程内注册，
 // 生产路由零污染；engine 直挂不经 pri 组，不受 Auth 中间件约束）。
@@ -71,7 +71,7 @@ func newShutdownApp(t *testing.T) (string, *app.App) {
 		Auth:      config.AuthConfig{SessionTimeout: time.Hour},
 		Snowflake: config.SnowflakeConfig{Node: 1},
 		Log:       config.LogConfig{Level: "error"},
-		// File 域（04-02）：app.New 无条件构造 FileStorage——测试 cfg 需 local driver
+		// File 域：app.New 无条件构造 FileStorage——测试 cfg 需 local driver
 		// + 独立临时根目录（与 handler 包 newTestApp 同构最小装配）
 		Storage: config.StorageConfig{
 			Driver: "local",
@@ -119,7 +119,7 @@ func drainBody(resp *http.Response) {
 	resp.Body.Close()
 }
 
-// TestReadinessFlipBeforeDrain 摘流可观察性直证（ENG-06 禁令："收到 SIGTERM 后
+// TestReadinessFlipBeforeDrain 摘流可观察性直证（探针禁令："收到 SIGTERM 后
 // /readyz MUST NOT 继续报告 ready"）：真实 health.Readiness handler + 真实 MySQL ping
 // 上，SetNotReady()（App.Stop 摘流步骤）之前 200、之后立即 503——摘流翻面的
 // 探针效果 100% 确定性证明（"先摘流再排空"的"摘流"一侧）。
@@ -159,7 +159,7 @@ func TestReadinessFlipBeforeDrain(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode, "摘流后 readyz 必须 503")
-	assert.JSONEq(t, `{"status":"fail"}`, string(body), "503 body 仅含 status 键（T-1-06）")
+	assert.JSONEq(t, `{"status":"fail"}`, string(body), "503 body 仅含 status 键")
 }
 
 // TestGracefulShutdownDrains App.Stop() 全路径排空证明：慢请求在途时调用 Stop()——
@@ -252,7 +252,7 @@ func TestGracefulShutdownDrains(t *testing.T) {
 	}
 	mu.Unlock()
 	require.Greater(t, afterStart, 0, "观察洪流必须覆盖 Stop 之后的时间窗")
-	assert.Zero(t, postStart200, "排空开始后 readyz 不得再返回 200（摘流先于排空，ENG-06 禁令）")
+	assert.Zero(t, postStart200, "排空开始后 readyz 不得再返回 200（摘流先于排空）")
 	if saw503 {
 		t.Log("增强证据：排空窗口内直接观察到 readyz 503")
 	}

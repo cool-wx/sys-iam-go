@@ -42,7 +42,7 @@ func TestIDUnmarshalJSONInvalid(t *testing.T) {
 }
 
 func TestSnowflakeConcurrentUniqueness(t *testing.T) {
-	// ENG-03 并发唯一性：8 goroutine × 2000 次 = 16000 全部唯一且 > 2^53
+	// 并发唯一性：8 goroutine × 2000 次 = 16000 全部唯一且 > 2^53
 	node, err := ids.NewNode(1)
 	require.NoError(t, err)
 

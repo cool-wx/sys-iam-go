@@ -41,7 +41,7 @@ func TestOKWithData(t *testing.T) {
 }
 
 func TestFailUnknownErrorMasksOriginal(t *testing.T) {
-	// T-1-01 防泄漏：未知错误收敛 10001 固定文案，原文绝不出网
+	// 防泄漏：未知错误收敛 10001 固定文案，原文绝不出网
 	c, w := newTestCtx(t)
 	resp.Fail(c, errors.New("sql: boom"))
 	require.Equal(t, http.StatusInternalServerError, w.Code)
@@ -72,7 +72,7 @@ func TestFailWrappedErrcode(t *testing.T) {
 }
 
 // TestFailExposesErrorToGinErrors Fail 经 c.Error 把原错误对象透出到 gin 私有
-// errors（OLOG-02 error_msg 消费链路）：len(c.Errors)==1、类型私有（不出响应体）、
+// errors（error_msg 消费链路）：len(c.Errors)==1、类型私有（不出响应体）、
 // 消息为原 err 文案；响应体与透出前逐字节一致（既有 envelope 断言不回归）。
 func TestFailExposesErrorToGinErrors(t *testing.T) {
 	c, w := newTestCtx(t)

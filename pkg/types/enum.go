@@ -1,7 +1,7 @@
 // Package types 枚举契约类型：MarshalJSON 输出 name 字符串；UnmarshalJSON
-// 接受 name 与数字双形态。UsageStatus 反序列化已收紧（WR-03）：非空未知值报错
+// 接受 name 与数字双形态。UsageStatus 反序列化已收紧：非空未知值报错
 // ——状态变更写路径静默兜底会把"停用"拼写错误反转成"启用"；null/空串兜底保留。
-// Gender 未知值仍兜底 GenderUnknown（源 fromValue 逐字语义，P7——无状态反转风险）。
+// Gender 未知值仍兜底 GenderUnknown（源 fromValue 逐字语义——无状态反转风险）。
 package types
 
 import (
@@ -26,9 +26,9 @@ func (s UsageStatus) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON 接受 "ENABLED"/"1"/1 与 "DISABLED"/"0"/0；null/空串兜底 UsageEnabled
-// （源 fromValue 读路径语义保留）；其余未知值返回 error（WR-03 收紧：反序列化
+// （源 fromValue 读路径语义保留）；其余未知值返回 error（收紧原因：反序列化
 // 消费方为全部状态变更写 DTO——UpdateStatusReq/ApiKeyUpdateStatusReq/MenuUpdateReq/
-// DeptUpdateReq/RoleUpdateReq 五者（IN-10 补记后三者，行为上同为本收紧的期望语义）
+// DeptUpdateReq/RoleUpdateReq 五者（行为上同为本收紧的期望语义）
 // ——拼写错误如 "DISABLE" 静默兜底会执行启用、被停用用户被静默恢复且旧会话不踢；
 // API 契约允许重新设计（CLAUDE.md），无源契约约束。出网契约不受影响：MarshalJSON
 // 恒输出合法 name，无读路径反序列化消费方）。

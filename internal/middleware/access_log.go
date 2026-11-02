@@ -1,6 +1,5 @@
 // Package middleware 访问日志中间件：slog JSON 结构化输出。
-// 字段白名单 method/path/status/duration_ms/request_id——绝不记录请求体与查询串
-// （威胁 T-1-02）。
+// 字段白名单 method/path/status/duration_ms/request_id——绝不记录请求体与查询串。
 package middleware
 
 import (

@@ -76,7 +76,7 @@ func flushOpLogs(t *testing.T) {
 }
 
 // latestOlogByModule 直查 sys_operation_log 最新一条指定 module 的日志行
-//（绕过 API，验证真实落库内容；checkDB 形态照 user_integration_test 先例）。
+// （绕过 API，验证真实落库内容；checkDB 形态照 user_integration_test 先例）。
 func latestOlogByModule(t *testing.T, dsn, module string) *po.OperationLogPO {
 	t.Helper()
 	checkDB, err := gorm.Open(gormmysql.Open(dsn), &gorm.Config{
@@ -198,7 +198,7 @@ func TestOpLogFailedRequestRecorded(t *testing.T) {
 }
 
 // TestOpLogLoginNullIdentity 未登录路由（login 自身）落库且 user_id NULL
-//（OLOG-02 identity 缺失分支；错误密码 401 也记录——源语义）。
+// （OLOG-02 identity 缺失分支；错误密码 401 也记录——源语义）。
 func TestOpLogLoginNullIdentity(t *testing.T) {
 	ts, dsn, _, _ := newTestApp(t)
 

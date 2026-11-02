@@ -4,7 +4,7 @@ import "strings"
 
 // FaultType 故障报警类型（源 FaultTypeEnum.java：INFO(0,消息)/WARNING(1,警告)/
 // FAULT(2,故障)/UNKNOWN(3,未知)）。fromValue/fromInfo 双入口兜底均为 UNKNOWN——
-// 读侧兼容既有先例（ENG-04，同 Gender 兜底形态：无状态反转风险，静默兜底安全）。
+// 读侧兼容既有先例（同 Gender 兜底形态：无状态反转风险，静默兜底安全）。
 type FaultType int8
 
 const (
@@ -58,7 +58,7 @@ func (t *FaultType) UnmarshalJSON(b []byte) error {
 
 // ParseFaultType Excel 报警类型列解析（源 fromValue/fromInfo 双形态）：int 串
 // （"0".."3"）与中文文案（消息/警告/故障/未知）均解析；未知值兜底 UNKNOWN(3)
-// 不报错（源兜底语义，FAUL-02 导入依赖——脏文案导入不得炸批）。
+// 不报错（源兜底语义，Excel 导入依赖——脏文案导入不得炸批）。
 func ParseFaultType(s string) (int8, error) {
 	switch strings.TrimSpace(s) {
 	case "0", "消息":

@@ -31,7 +31,7 @@ func TestUsageStatusUnmarshalDisabled(t *testing.T) {
 }
 
 func TestUsageStatusUnmarshalUnknownRejects(t *testing.T) {
-	// 非法枚举值必须报错（WR-03 收紧）：状态变更写路径静默兜底会把"停用"拼写
+	// 非法枚举值必须报错（反序列化收紧）：状态变更写路径静默兜底会把"停用"拼写
 	// 错误反转成"启用"——越界数字/未知名/大小写不符/带空白均不再静默 ENABLED
 	for _, raw := range []string{`"99"`, `99`, `"WEIRD"`, `"DISABLE"`, `"DISABLED "`, `"ENABLE "`, `"enabled"`} {
 		var s types.UsageStatus

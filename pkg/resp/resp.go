@@ -25,9 +25,9 @@ func OK(c *gin.Context, data any) {
 }
 
 // Fail 写出失败 envelope：errcode.Error 按 Code/HTTPStatus 写出；
-// 非业务错误收敛为 10001 固定文案，原始错误仅 slog Error 记录（防泄漏，T-1-01）。
+// 非业务错误收敛为 10001 固定文案，原始错误仅 slog Error 记录（防泄漏）。
 // 另经 c.Error(err) 把错误对象透出到 gin 私有 errors（ErrorTypePrivate 不出响应体
-// ——响应字节与透出前一致），供 Oplog 中间件 c.Next() 后取 error_msg 落库（OLOG-02）。
+// ——响应字节与透出前一致），供 Oplog 中间件 c.Next() 后取 error_msg 落库。
 // err 为 nil（调用方编程错误）防御：不 panic，收敛为 ErrInternal envelope。
 func Fail(c *gin.Context, err error) {
 	var ec *errcode.Error

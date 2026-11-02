@@ -15,7 +15,7 @@ import (
 // jsonBodyReader 流式生成「{"a":"AAAA...」形态的超长 JSON body：头部分 literal
 // + 余量以 'A' 填充（不在内存构造真实大字符串）。字符串值不闭合，json.Decoder
 // 解析时持续读流直至 MaxBytesReader 超限——bindJSON 才能收到 *http.MaxBytesError
-//（全零字节等非法 JSON 会在第一块就 SyntaxError，读不到超限点）。
+// （全零字节等非法 JSON 会在第一块就 SyntaxError，读不到超限点）。
 type jsonBodyReader struct {
 	head      string
 	headPos   int
@@ -66,9 +66,9 @@ func serveBindJSON(t *testing.T, bodyBytes int, contentType string) string {
 }
 
 // TestBindJSONMaxBytesMessageFromLimit IN-02 直证：超限文案由 MaxBytesError.Limit
-//（实际触发的截断层上限）生成，不再按 middleware.MaxBodyMB 固定取值——
+// （实际触发的截断层上限）生成，不再按 middleware.MaxBodyMB 固定取值——
 // multipart Content-Type 打 JSON 契约路由超全局 20MB 兜底（CR-01）时文案报
-//「20MB」，修复前固定报「1MB」与实际上限漂移（CR-01 已知残留归零）。
+// 「20MB」，修复前固定报「1MB」与实际上限漂移（CR-01 已知残留归零）。
 // JSON 路由 1MB 既有文案不回归。
 func TestBindJSONMaxBytesMessageFromLimit(t *testing.T) {
 	// multipart 打 JSON 路由：全局 BodyLimit 对 multipart 套 MaxMultipartMB

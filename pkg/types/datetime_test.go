@@ -42,7 +42,7 @@ func TestCSTLocation(t *testing.T) {
 	assert.Equal(t, 8*60*60, offset, "UTC+8 偏移")
 }
 
-// TestLocalDateTimeUnmarshalJSON 请求侧反序列化（02-03 补全，与 MarshalJSON 对称）：
+// TestLocalDateTimeUnmarshalJSON 请求侧反序列化（与 MarshalJSON 对称）：
 // 主格式 yyyy-MM-dd HH:mm:ss（源 DATE_TIME_FORMAT）；RFC3339 兜底；空串置零值；
 // 非法格式报错不静默。
 func TestLocalDateTimeUnmarshalJSON(t *testing.T) {

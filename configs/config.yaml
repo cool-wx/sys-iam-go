@@ -1,4 +1,4 @@
-# sys-iam-go 默认配置（部署时旁路放置于工作目录，D-07）
+# sys-iam-go 默认配置（部署时旁路放置于工作目录）
 # 全部键可被 IAM_ 前缀环境变量覆盖：单词叶键自动映射（如 IAM_SERVER_PORT=18080、
 # IAM_MYSQL_DSN=...）；多段 snake_case 键经显式别名表映射（internal/config/config.go），
 # 如 IAM_MYSQL_MAX_OPEN_CONNS=50、IAM_MYSQL_MAX_IDLE_CONNS=10、IAM_MYSQL_CONN_MAX_LIFETIME=1h
@@ -19,23 +19,23 @@ redis:
   db: 0
 
 # auth 会话参数。session_timeout 缺省 720h = Sa-Token 官方默认 30d 代理值——源 Nacos
-# craft-satoken.yaml 实际值不可得（rnacos 空实例实证，D-06 Nacos 缺口文档化），
+# craft-satoken.yaml 实际值不可得（rnacos 空实例实证，Nacos 缺口已文档化），
 # 现场拿到真实值后经 IAM_AUTH_SESSION_TIMEOUT=720h env 校正即可，无需改文件。
-# 每次认证中间件命中后 EXPIRE 重置为完整 timeout（活跃续期，D-07）。
+# 每次认证中间件命中后 EXPIRE 重置为完整 timeout（活跃续期）。
 auth:
   session_timeout: 720h
 
 snowflake:
   node: 1
 
-# 文件存储（FILE-05，D-10/D-11）：driver 切换 local|s3，同一套上传/下载/删除代码
+# 文件存储：driver 切换 local|s3，同一套上传/下载/删除代码
 # 对两种后端无差别。
 # - local：磁盘存储，root 缺省 ./data/files（相对工作目录——systemd WorkingDirectory
 #   联动，绝对路径可配）。env 覆盖：IAM_STORAGE_LOCAL_ROOT=/var/lib/sys-iam/files
 # - s3：S3 兼容端点（工控机现场为 RustFS）。env 覆盖：IAM_STORAGE_S3_ENDPOINT=
 #   http://10.0.0.9:9000、IAM_STORAGE_S3_ACCESS_KEY=...、IAM_STORAGE_S3_SECRET_KEY=...
 #   下方 access_key/secret_key 默认值照源 RustfsProperties——现场部署必须替换，
-#   且错误消息/日志全程不回显凭证值（T-4-04）
+#   且错误消息/日志全程不回显凭证值
 storage:
   driver: local
   local:

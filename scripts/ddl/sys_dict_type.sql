@@ -1,7 +1,7 @@
--- sys_dict_type 建表 DDL（Phase 4 字典域）
+-- sys_dict_type 建表 DDL（字典域）
 -- 来源：本机容器实测真实 DDL（SHOW CREATE TABLE sys_iam.sys_dict_type，2026-11-01）
--- 列集 11 列；幂等（DROP TABLE IF EXISTS + CREATE TABLE）；不含外键（T-1-07）。
--- uk_dict_type 唯一索引是 DICT-01 判重语义的 DB 保障（1062 → 400/10400 翻译）；
+-- 列集 11 列；幂等（DROP TABLE IF EXISTS + CREATE TABLE）；不含外键。
+-- uk_dict_type 唯一索引是判重语义的 DB 保障（1062 → 400/10400 翻译）；
 -- scripts/ddl/*.sql 由 testutil.execDDLDir 按文件名序自动加载，落目录即生效。
 
 DROP TABLE IF EXISTS `sys_dict_type`;

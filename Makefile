@@ -1,10 +1,10 @@
-# sys-iam-go 构建入口（Phase 1 / ENG-08 静态单二进制出厂门 + ENG-06 关停验证入口）
+# sys-iam-go 构建入口（静态单二进制出厂门 + 关停验证入口）
 #
 # 核心纪律：
 #   - CGO_ENABLED=0 显式进构建命令——任何 CGO 泄漏在工控机上表现为部署期才炸
-#     （glibc 不匹配），必须在构建期以 make verify-static 的 file 断言拦截（T-1-09）。
-#   - -ldflags "-s -w" 剥离符号表（研究实测：全依赖集产物 17-18MB，未剥离 26MB）。
-#   - 构建环境假设（ENG-08）：Go 1.27.3、目标机无需 /usr/share/zoneinfo 与 glibc 匹配
+#     （glibc 不匹配），必须在构建期以 make verify-static 的 file 断言拦截。
+#   - -ldflags "-s -w" 剥离符号表（实测：全依赖集产物 17-18MB，未剥离 26MB）。
+#   - 构建环境假设：Go 1.27.3、目标机无需 /usr/share/zoneinfo 与 glibc 匹配
 #     （time/tzdata 已内嵌进 cmd/server/main.go）。
 
 BIN_DIR := bin
@@ -16,7 +16,7 @@ MYSQL_DEV_DATABASE ?= sys_iam
 
 .PHONY: build build-arm64 test test-integration verify-static verify-shutdown ddl-dev clean
 
-# build amd64 静态单二进制（工控机默认架构，研究 A3）
+# build amd64 静态单二进制（工控机默认架构）
 build:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o $(BIN_DIR)/sys-iam-go ./cmd/server
 
@@ -32,17 +32,17 @@ test:
 test-integration:
 	TZ=UTC go test -tags=integration ./...
 
-# verify-static 静态链接断言（出厂门，T-1-09）：file 输出必须含 statically linked，
+# verify-static 静态链接断言（出厂门）：file 输出必须含 statically linked，
 # 否则以非 0 退出——动态链接产物禁止出厂。
 verify-static:
 	@out=$$(file $(BIN_DIR)/sys-iam-go); \
 	echo "$$out"; \
 	case "$$out" in \
 	*statically\ linked*) echo "OK: statically linked";; \
-	*) echo "FAIL: $(BIN_DIR)/sys-iam-go 缺少 statically linked（CGO 泄漏，禁止出厂 T-1-09）"; exit 1;; \
+	*) echo "FAIL: $(BIN_DIR)/sys-iam-go 缺少 statically linked（CGO 泄漏，禁止出厂）"; exit 1;; \
 	esac
 
-# verify-shutdown 真实二进制 SIGTERM 排空验证（ENG-06；脚本见 Task 2 产物）
+# verify-shutdown 真实二进制 SIGTERM 排空验证（脚本 scripts/test-graceful-shutdown.sh）
 verify-shutdown:
 	bash scripts/test-graceful-shutdown.sh
 

@@ -1,7 +1,7 @@
 // Package errcode 定义全库统一的业务错误码：分段常量、错误类型与 HTTP 状态如实映射。
 package errcode
 
-// 错误码分段常量（锁定表，见 01-01-PLAN.md Task 1 第 4 步）。
+// 错误码分段常量（分段锁定表）。
 const (
 	CodeInternal        = 10001 // 内部错误
 	CodeUnauthenticated = 10100 // 未登录
@@ -10,22 +10,21 @@ const (
 	CodeInvalidParam    = 10400 // 参数无效（含"记录已存在"）
 	CodeValidation      = 10401 // 参数校验失败
 	CodeBadCredentials  = 10501 // 用户名或密码错误
-	// Phase 2 认证增量：全部 HTTP 401（源消息可区分，独立错误码保持 errcode 语义
-	// 清晰——02-RESEARCH Open Question 3 决议）。
+	// 认证增量：全部 HTTP 401（源消息可区分，独立错误码保持 errcode 语义清晰）。
 	CodeUserDisabled       = 10502 // 用户已被禁用
 	CodeApiKeyInvalid      = 10503 // API Key 无效或已过期
 	CodeApiKeyNoUser       = 10504 // API Key 未关联用户
 	CodeApiKeyUserMissing  = 10505 // API Key 关联用户不存在
 	CodeApiKeyUserDisabled = 10506 // API Key 关联用户已被禁用
-	// Phase 2 builtin 冲突段：HTTP 409（D-14 builtin 守卫统一语义——USER-07/ROLE-02）。
-	CodeBuiltinUser = 10601 // 系统内置用户不可删除（02-03 User 域复用）
+	// builtin 冲突段：HTTP 409（builtin 守卫统一语义）。
+	CodeBuiltinUser = 10601 // 系统内置用户不可删除（User 域复用）
 	CodeBuiltinRole = 10602 // 系统内置角色不可删除
-	// Phase 3 builtin 分配守卫（CR-03 提权收口）：HTTP 403——非 super_admin 操作者
+	// builtin 分配守卫（提权收口）：HTTP 403——非 super_admin 操作者
 	// 分配 builtin 角色属越权行为（非资源状态冲突），与 10601/10602 的 409 删除冲突
 	// 语义区分。
 	CodeBuiltinRoleAssign = 10603 // 系统内置角色仅 super_admin 可分配
-	// Phase 3 builtin 停用守卫（WR-06）：HTTP 409——builtin 角色经 status 路径停用
-	// 与「不可删除」同族资源状态冲突（D-14 builtin 守卫统一语义，对齐 10602），非
+	// builtin 停用守卫：HTTP 409——builtin 角色经 status 路径停用
+	// 与「不可删除」同族资源状态冲突（builtin 守卫统一语义，对齐 10602），非
 	// 参数错误；独立于 10602 因消息语义不同（删除 vs 停用）。
 	CodeBuiltinRoleStatus = 10604 // 系统内置角色不可停用
 )

@@ -22,12 +22,12 @@ func TestHTTPStatusMapping(t *testing.T) {
 		{errcode.CodeInvalidParam, 400},
 		{errcode.CodeValidation, 400},
 		{errcode.CodeBadCredentials, 401},
-		// Phase 2 builtin 冲突段（D-14）：409
+		// builtin 冲突段：409
 		{errcode.CodeBuiltinUser, 409},
 		{errcode.CodeBuiltinRole, 409},
-		// Phase 3 builtin 分配守卫（CR-03）：越权行为译 403，非删除冲突 409
+		// builtin 分配守卫：越权行为译 403，非删除冲突 409
 		{errcode.CodeBuiltinRoleAssign, 403},
-		// Phase 3 builtin 停用守卫（WR-06）：与删除守卫同族资源状态冲突，409
+		// builtin 停用守卫：与删除守卫同族资源状态冲突，409
 		{errcode.CodeBuiltinRoleStatus, 409},
 	}
 	for _, tc := range cases {
