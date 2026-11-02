@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: 认证会话与 RBAC 主链路** - 自建 token-session（登录/登出/踢人/TTL/白名单）+ User/Role/Menu/Dept/ApiKey 五域完整 CRUD (completed 2026-11-01)
 - [x] **Phase 3: Casbin 授权与数据权限** - Casbin RBAC + 原生策略表 + 策略热重载（变更即时生效）+ requirePerm 中间件 + dataScope 五档行过滤 (completed 2026-11-01)
 - [x] **Phase 4: 业务域与操作日志** - Dict/Config/File/Shift/FaultInfo 六域 + 存储抽象（本地磁盘/RustFS-S3）+ 操作日志中间件 + Excel 导入 (completed 2026-11-02)
-- [ ] **Phase 5: 名称同步事件与验收收尾** - 进程内事件 dispatcher + 6 个名称同步 handler + 全量接口与自动化测试回归
+- [x] **Phase 5: 名称同步事件与验收收尾** - 进程内事件 dispatcher + 5 个名称同步 handler + 全量接口与自动化测试回归 (completed 2026-11-02)
 
 ## Phase Details
 
@@ -120,10 +120,10 @@ Plans:
 **Depends on**: Phase 4
 **Requirements**: SYNC-01, SYNC-02
 **Success Criteria** (what must be TRUE):
-  1. 修改部门/字典类型/菜单/角色名或用户名/真名后，所有关联表冗余名称字段同步更新（realName 变更波及 14 张表）
+  1. 修改部门/字典类型/菜单/角色名或真名后，所有关联表冗余名称字段同步更新（realName 变更波及 14 张表；username 经 UAT Q1 裁决移除——登录锚点不可改）
   2. 事件在事务提交后发布、handler 同步执行且使用独立事务（非 goroutine 异步，修正源"事务内发布 + REQUIRES_NEW"时序），UPDATE 带 `!= newName` 条件且名称为 NULL 的行不被更新（NULL 语义锁定测试）
   3. 全量验收回归：14 个功能域全部接口 + 自动化测试通过，"Looks Done But Isn't" 清单逐项过（存量 hash 登录、API Key 双路径、内置删除拦截、编辑不传字段不清空、分页边界不 500、枚举未知值兜底、失败请求有日志、SIGTERM 后日志完整落库）
-**Plans**: 3/3 plans executed
+**Plans**: 3/3 plans complete
 
 Plans:
 **Wave 1**
@@ -146,4 +146,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. 认证会话与 RBAC 主链路 | 3/3 | Complete    | 2026-11-01 |
 | 3. Casbin 授权与数据权限 | 3/3 | Complete    | 2026-11-01 |
 | 4. 业务域与操作日志 | 4/4 | Complete    | 2026-11-02 |
-| 5. 名称同步事件与验收收尾 | 3/3 | In Progress | - |
+| 5. 名称同步事件与验收收尾 | 3/3 | Complete    | 2026-11-02 |
