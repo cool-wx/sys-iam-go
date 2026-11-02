@@ -123,6 +123,22 @@ func (s *RoleService) Update(ctx context.Context, id int64, req *dto.RoleUpdateR
 			return nil, errcode.ErrBuiltinRoleStatus
 		}
 	}
+	// 改名同步回读（Phase 5 SYNC-01，源 RoleApplicationService.editRole 发布条件
+	// 逐字移植）：仅当请求显式带角色名时回读旧行（源 oldName 取值前置）；行不存在
+	// 提前 404 拦截，Patch 与发布一个都不触发。与上方 builtin 停用守卫的 FindByID
+	// **相互独立不合并**——守卫仅 status=DISABLED 触发，二者条件域不相交（本任务
+	// 改名回读独立判断 req.RoleName != nil）。
+	var old *po.RolePO
+	if req.RoleName != nil {
+		var err error
+		old, err = s.roleRepo.FindByID(ctx, id)
+		if err != nil {
+			if errors.Is(err, errcode.ErrNotFound) {
+				return nil, errcode.New(errcode.CodeNotFound, fmt.Sprintf("角色不存在: %d", id))
+			}
+			return nil, err
+		}
+	}
 	cols := map[string]any{}
 	if req.RoleName != nil {
 		cols["role_name"] = *req.RoleName
@@ -141,6 +157,22 @@ func (s *RoleService) Update(ctx context.Context, id int64, req *dto.RoleUpdateR
 			return nil, errcode.New(errcode.CodeNotFound, fmt.Sprintf("角色不存在: %d", id))
 		}
 		return nil, err
+	}
+	// 改名事件发布（Patch 返回 nil 即已提交，D-02）：仅当本次请求带了角色名且回读
+	// 成功、新名≠旧行名时发布（源条件 `roleName != null && !roleName.equals(oldName)`
+	// 逐字移植，禁无条件发布——防"仅改备注/档位"触发三表冗余同步）。RolePO.RoleName
+	// 为非指针 string 列（DDL NOT NULL），无需空值兜底。Publish 失败上抛 500
+	// （D-03：客户端重试经幂等 UPDATE 自愈，沿 casbin 双轨纪律）。
+	if old != nil && req.RoleName != nil && *req.RoleName != old.RoleName {
+		evt := event.NameChangedEvent{
+			Type:    event.RoleNameChanged,
+			ID:      id,
+			OldName: old.RoleName,
+			NewName: *req.RoleName,
+		}
+		if err := s.pub.Publish(ctx, evt); err != nil {
+			return nil, err // → 500（D-03：同步 UPDATE 失败可观察，重试幂等自愈）
+		}
 	}
 	// 运行期策略同步（仅 status 显式传入时触发；Patch 成功后执行，失败上抛 500
 	// 可重试自愈——见上注）。roleCode 从本次 Patch 结果回读（Get 走同一查库路径，

@@ -61,7 +61,27 @@ func (s *DictService) CreateDictType(ctx context.Context, req *dto.DictTypeCreat
 // 审计由 repo.Patch 显式并入（ENG-02）。白名单含唯一键列 dict_type，撞
 // uk_dict_type 与 Create 同冲突同翻译（WR-02：400/10400「字典类型已存在」，
 // 不透传 500）。
+//
+// 改名同步（Phase 5 SYNC-01/02，源 DictApplicationService.editDictType 发布条件
+// 逐字移植）：请求显式带 dictName 时先回读旧行（行不存在提前拦为 404，照
+// GetDictType 同款译域）；Patch 成功后仅当新名≠旧行名时发布 DictTypeNameChanged
+// （源条件 `updated && !Objects.equals(oldName, newName) && newName != null` 多一个
+// updated 前置——Go 形态下 Patch 返回 nil 即 updated，条件等价成立）；Publish
+// 失败上抛 500（D-03，客户端重试经幂等 UPDATE 自愈）。
 func (s *DictService) UpdateDictType(ctx context.Context, id int64, req *dto.DictTypeUpdateReq) (*dto.DictTypeResp, error) {
+	// 改名同步回读：仅当请求显式带类型名时回读旧行（源 oldName 取值前置）；
+	// 行不存在提前 404 拦截，Patch 与发布一个都不触发。
+	var old *po.DictTypePO
+	if req.DictName != nil {
+		var err error
+		old, err = s.typeRepo.FindByID(ctx, id)
+		if err != nil {
+			if errors.Is(err, errcode.ErrNotFound) {
+				return nil, errcode.New(errcode.CodeNotFound, fmt.Sprintf("字典类型不存在: %d", id))
+			}
+			return nil, err
+		}
+	}
 	cols := map[string]any{}
 	if req.DictName != nil {
 		cols["dict_name"] = *req.DictName
@@ -83,6 +103,20 @@ func (s *DictService) UpdateDictType(ctx context.Context, id int64, req *dto.Dic
 			return nil, errcode.New(errcode.CodeInvalidParam, "字典类型已存在")
 		}
 		return nil, err
+	}
+	// 改名事件发布（Patch 返回 nil 即已提交，D-02）：源条件的 updated 前置在 Go
+	// 形态下由"执行到这里即 Patch 成功"等价成立；新名≠旧行名才发布（禁无条件
+	// 发布）。DictTypePO.DictName 为非指针 string 列（DDL NOT NULL），无需空值兜底。
+	if old != nil && req.DictName != nil && *req.DictName != old.DictName {
+		evt := event.NameChangedEvent{
+			Type:    event.DictTypeNameChanged,
+			ID:      id,
+			OldName: old.DictName,
+			NewName: *req.DictName,
+		}
+		if err := s.pub.Publish(ctx, evt); err != nil {
+			return nil, err // → 500（D-03：同步 UPDATE 失败可观察，重试幂等自愈）
+		}
 	}
 	return s.GetDictType(ctx, id)
 }

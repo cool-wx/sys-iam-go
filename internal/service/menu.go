@@ -73,7 +73,27 @@ func (s *MenuService) Create(ctx context.Context, req *dto.MenuCreateReq) (*dto.
 // 传入时联动父校验 + parentName 重冗余（源 editMenu 每次编辑执行 resolveParentName
 // 语义）；不显式传则不动父列。落库后回读返回最新契约。审计由 repo.Patch 显式并入
 // （ENG-02）。
+//
+// 改名同步（Phase 5 SYNC-01/02，源 MenuApplicationService.editMenu 发布条件逐字
+// 移植）：请求显式带 name 时先回读旧行（行不存在提前拦为 404，照 Get 同款译域）；
+// Patch 成功（单语句已提交——「提交后发布」由代码顺序天然满足，D-02）之后，仅当
+// 新名≠旧行名时发布 MenuNameChanged（源条件 `menu.getName() != null &&
+// !menu.getName().equals(oldName)`，禁无条件发布）；Publish 失败上抛 500（D-03，
+// 客户端重试经幂等 UPDATE 自愈）。
 func (s *MenuService) Update(ctx context.Context, id int64, req *dto.MenuUpdateReq) (*dto.MenuResp, error) {
+	// 改名同步回读：仅当请求显式带菜单名时回读旧行（源 oldName 取值前置）；
+	// 行不存在提前 404 拦截，Patch 与发布一个都不触发。
+	var old *po.MenuPO
+	if req.Name != nil {
+		var err error
+		old, err = s.repo.FindByID(ctx, id)
+		if err != nil {
+			if errors.Is(err, errcode.ErrNotFound) {
+				return nil, errcode.New(errcode.CodeNotFound, fmt.Sprintf("菜单不存在: %d", id))
+			}
+			return nil, err
+		}
+	}
 	cols := map[string]any{}
 	if req.Name != nil {
 		cols["name"] = *req.Name
@@ -135,6 +155,25 @@ func (s *MenuService) Update(ctx context.Context, id int64, req *dto.MenuUpdateR
 			return nil, errcode.New(errcode.CodeNotFound, fmt.Sprintf("菜单不存在: %d", id))
 		}
 		return nil, err
+	}
+	// 改名事件发布（Patch 返回 nil 即已提交，D-02）：新名≠旧行名才发布——oldName
+	// 取回读行值、NULL 兜底 ""（源 oldName != null ? oldName : "" 同款）。
+	if old != nil && req.Name != nil {
+		oldName := ""
+		if old.Name != nil {
+			oldName = *old.Name
+		}
+		if *req.Name != oldName {
+			evt := event.NameChangedEvent{
+				Type:    event.MenuNameChanged,
+				ID:      id,
+				OldName: oldName,
+				NewName: *req.Name,
+			}
+			if err := s.pub.Publish(ctx, evt); err != nil {
+				return nil, err // → 500（D-03：同步 UPDATE 失败可观察，重试幂等自愈）
+			}
+		}
 	}
 	return s.Get(ctx, id)
 }

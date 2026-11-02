@@ -5,6 +5,7 @@ package handler_test
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"testing"
 
@@ -111,4 +112,110 @@ func requireSynced(t *testing.T, got *string, want, msg string) {
 	t.Helper()
 	require.NotNil(t, got, "%s（列值为 NULL）", msg)
 	require.Equal(t, want, *got, msg)
+}
+
+// createViaAPI 经 API 建实体并解析 data.id（name_sync 三域测试共用的 seed 原料）。
+func createViaAPI(t *testing.T, ts *httptest.Server, token, method, path, body string) int64 {
+	t.Helper()
+	status, respBody := doAuthRequest(t, token, method, ts.URL+path, body)
+	require.Equal(t, http.StatusOK, status, "%s %s 失败: %s", method, path, respBody)
+	var envelope struct {
+		Code int `json:"code"`
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(respBody, &envelope), "body=%s", respBody)
+	require.Equal(t, 0, envelope.Code, "body=%s", respBody)
+	id, err := strconv.ParseInt(envelope.Data.ID, 10, 64)
+	require.NoError(t, err, "data.id 必须是十进制字符串: %q", envelope.Data.ID)
+	return id
+}
+
+// putViaAPI 经 API 提交更新（非创建路径——响应无 data.id 可解析，仅断言 200）。
+func putViaAPI(t *testing.T, ts *httptest.Server, token, path, body string) {
+	t.Helper()
+	status, respBody := doAuthRequest(t, token, "PUT", ts.URL+path, body)
+	require.Equal(t, http.StatusOK, status, "PUT %s 失败: %s", path, respBody)
+}
+
+// stringColOf 单行单列查询出口（冗余列断言原料——SELECT 必须恰 1 行）。
+func stringColOf(t *testing.T, db *gorm.DB, query string, args ...any) *string {
+	t.Helper()
+	var row struct {
+		Col *string
+	}
+	require.NoError(t, db.Raw(query, args...).Scan(&row).Error)
+	return row.Col
+}
+
+// TestRoleNameSync 角色改名端到端同步直证（SYNC-01 role 事件 3 表）：sys_role_menu
+// （AssignMenus 冗余写入）+ sys_user_role（AssignRoles 冗余写入）+ sys_role_dept
+// （AssignScopes 冗余写入，Go 扩展 Q2）的 role_name 在 PUT 改名后全部同步为新名。
+func TestRoleNameSync(t *testing.T) {
+	ts, dsn, adminToken, _ := newTestApp(t)
+	checkDB := openCheckDB(t, dsn)
+	token := adminToken()
+
+	roleID := createViaAPI(t, ts, token, "POST", "/api/v1/roles", `{"roleName":"巡检员","roleCode":"inspector"}`)
+	menuID := createViaAPI(t, ts, token, "POST", "/api/v1/menus", `{"name":"巡检菜单","type":"MENU","path":"/inspect"}`)
+	deptID := createViaAPI(t, ts, token, "POST", "/api/v1/depts", `{"deptName":"巡检部"}`)
+	userIDStr := createRawUser(t, ts, token, `{"username":"role-sync-user","password":"pw-123456","realName":"角色同步用户","deptId":"`+strconv.FormatInt(deptID, 10)+`"}`)
+
+	// 三张关联表 seed（走真实 API 链路——冗余列写入路径一并直证）：
+	// sys_role_menu（AssignMenus）、sys_user_role（AssignRoles）、sys_role_dept（AssignScopes）。
+	putViaAPI(t, ts, token, "/api/v1/roles/"+strconv.FormatInt(roleID, 10)+"/menus", `{"menuIds":["`+strconv.FormatInt(menuID, 10)+`"]}`)
+	putViaAPI(t, ts, token, "/api/v1/users/"+userIDStr+"/roles", `{"roleIds":["`+strconv.FormatInt(roleID, 10)+`"]}`)
+	putViaAPI(t, ts, token, "/api/v1/roles/"+strconv.FormatInt(roleID, 10)+"/scopes", `{"deptIds":["`+strconv.FormatInt(deptID, 10)+`"]}`)
+
+	// 基线：三表 role_name 均为创建时冗余的旧名
+	requireSynced(t, stringColOf(t, checkDB, "SELECT role_name AS col FROM sys_role_menu WHERE role_id = ?", roleID), "巡检员", "改名前 sys_role_menu.role_name 基线")
+	requireSynced(t, stringColOf(t, checkDB, "SELECT role_name AS col FROM sys_user_role WHERE role_id = ?", roleID), "巡检员", "改名前 sys_user_role.role_name 基线")
+	requireSynced(t, stringColOf(t, checkDB, "SELECT role_name AS col FROM sys_role_dept WHERE role_id = ?", roleID), "巡检员", "改名前 sys_role_dept.role_name 基线")
+
+	// 改名 → 三表同步为新名（role 事件表 1/2/3，第三表 Go 扩展 Q2）
+	putViaAPI(t, ts, token, "/api/v1/roles/"+strconv.FormatInt(roleID, 10), `{"roleName":"巡检长"}`)
+	requireSynced(t, stringColOf(t, checkDB, "SELECT role_name AS col FROM sys_role_menu WHERE role_id = ?", roleID), "巡检长", "改名后 sys_role_menu.role_name 同步（role 事件表 1）")
+	requireSynced(t, stringColOf(t, checkDB, "SELECT role_name AS col FROM sys_user_role WHERE role_id = ?", roleID), "巡检长", "改名后 sys_user_role.role_name 同步（role 事件表 2）")
+	requireSynced(t, stringColOf(t, checkDB, "SELECT role_name AS col FROM sys_role_dept WHERE role_id = ?", roleID), "巡检长", "改名后 sys_role_dept.role_name 同步（role 事件表 3，Go 扩展 Q2）")
+}
+
+// TestMenuNameSync 菜单改名端到端同步直证（SYNC-01 menu 事件 2 表）：sys_role_menu
+// .menu_name（menu_id 锚）+ sys_menu.parent_name（parent_id 锚，子菜单冗余）。
+func TestMenuNameSync(t *testing.T) {
+	ts, dsn, adminToken, _ := newTestApp(t)
+	checkDB := openCheckDB(t, dsn)
+	token := adminToken()
+
+	menuID := createViaAPI(t, ts, token, "POST", "/api/v1/menus", `{"name":"菜单甲","type":"DIR","sort":1,"path":"/menu-a"}`)
+	childID := createViaAPI(t, ts, token, "POST", "/api/v1/menus", `{"name":"子菜单","type":"MENU","parentId":"`+strconv.FormatInt(menuID, 10)+`","path":"/menu-a/child"}`)
+	roleID := createViaAPI(t, ts, token, "POST", "/api/v1/roles", `{"roleName":"菜单观察员","roleCode":"menu_observer"}`)
+	putViaAPI(t, ts, token, "/api/v1/roles/"+strconv.FormatInt(roleID, 10)+"/menus", `{"menuIds":["`+strconv.FormatInt(menuID, 10)+`"]}`)
+
+	// 基线：role_menu.menu_name 与子菜单 parent_name 均为旧名
+	requireSynced(t, stringColOf(t, checkDB, "SELECT menu_name AS col FROM sys_role_menu WHERE menu_id = ?", menuID), "菜单甲", "改名前 sys_role_menu.menu_name 基线")
+	requireSynced(t, stringColOf(t, checkDB, "SELECT parent_name AS col FROM sys_menu WHERE id = ?", childID), "菜单甲", "改名前子菜单 sys_menu.parent_name 基线")
+
+	// 改名 → 两表同步为新名（menu 事件表 1/2）
+	putViaAPI(t, ts, token, "/api/v1/menus/"+strconv.FormatInt(menuID, 10), `{"name":"菜单甲新名"}`)
+	requireSynced(t, stringColOf(t, checkDB, "SELECT menu_name AS col FROM sys_role_menu WHERE menu_id = ?", menuID), "菜单甲新名", "改名后 sys_role_menu.menu_name 同步（menu 事件表 1）")
+	requireSynced(t, stringColOf(t, checkDB, "SELECT parent_name AS col FROM sys_menu WHERE id = ?", childID), "菜单甲新名", "改名后子菜单 sys_menu.parent_name 同步（menu 事件表 2）")
+}
+
+// TestDictTypeNameSync 字典类型改名端到端同步直证（SYNC-01 dictType 事件 1 表）：
+// sys_dict_data.dict_type_name（dict_type_id 锚，CreateDictData 服务端查库冗余）。
+func TestDictTypeNameSync(t *testing.T) {
+	ts, dsn, adminToken, _ := newTestApp(t)
+	checkDB := openCheckDB(t, dsn)
+	token := adminToken()
+
+	typeID := createViaAPI(t, ts, token, "POST", "/api/v1/dict-types", `{"dictName":"故障类型","dictType":"fault_kind_sync"}`)
+	createViaAPI(t, ts, token, "POST", "/api/v1/dict-datas", `{"dictTypeId":"`+strconv.FormatInt(typeID, 10)+`","label":"类型A","value":"A"}`)
+
+	// 基线：dict_data.dict_type_name 为创建时服务端冗余的旧名
+	requireSynced(t, stringColOf(t, checkDB, "SELECT dict_type_name AS col FROM sys_dict_data WHERE dict_type_id = ?", typeID), "故障类型", "改名前 sys_dict_data.dict_type_name 基线")
+
+	// 改名 → dict_type_name 同步为新名（dictType 事件表 1）
+	putViaAPI(t, ts, token, "/api/v1/dict-types/"+strconv.FormatInt(typeID, 10), `{"dictName":"故障类别"}`)
+	requireSynced(t, stringColOf(t, checkDB, "SELECT dict_type_name AS col FROM sys_dict_data WHERE dict_type_id = ?", typeID), "故障类别", "改名后 sys_dict_data.dict_type_name 同步（dictType 事件表 1）")
 }
