@@ -35,7 +35,7 @@ evidence: "Claude 实测（2026-11-02）：PUT /users/{id}/roles 挂 super_admin
 ### 5. 增量 fix 后全量回归门（单元 + 集成分批）
 expected: CR-01/WR-02 改动 internal/event + internal/service + internal/model/dto 后：全量单元测试（15 包，无容器）+ 集成测试受影响包（service/handler/app，testcontainers 串行 -p 1、任意时刻 ≤1 MySQL 测试容器、用完即删）全绿，无跨 phase 回归
 result: pass
-evidence: "Claude 执行（2026-11-02，Q2 认可的分批等价形态）：批 0 单元 `go test ./... -count=1` 15 包全绿；批 1a service 集成（TestNameChangePublish* 4 项 + TestUser 系）PASS 68.7s，每测试独立容器创建→销毁零残留；批 2 handler 全量集成首轮 2 FAIL：TestDeptNameSync（确定性——CR-01 语义变更后 handler 层同名重放断言未随 service 层同步更新，系 code-review-fix 遗漏面，非产品缺陷，断言已按新契约对齐修复）+ TestUpdateUserSameSecondIdempotentRetry（61.85s 异常超长后失败、单独复现 PASS 20.3s、-count=3 稳定性验证，判环境 flaky——1.6GB 内存下 85 测试连跑的容器就绪压力）；批 2 复跑全量 85+1SKIP 全绿；批 3 app 集成 2/2 PASS（TestReadinessFlipBeforeDrain 34.07s + TestGracefulShutdownDrains 22.32s）。每批 testcontainers 容器独立销毁，全程与常驻 mysql/redis 容器无冲突。"
+evidence: "Claude 执行（2026-11-02，Q2 认可的分批等价形态）：批 0 单元 `go test ./... -count=1` 15 包全绿；批 1a service 集成（TestNameChangePublish* 4 项 + TestUser 系）PASS 68.7s，批后核查零容器残留；批 2 handler 全量集成首轮 2 FAIL：TestDeptNameSync（确定性——CR-01 语义变更后 handler 层同名重放断言未随 service 层同步更新，系 code-review-fix 遗漏面，非产品缺陷，断言已按新契约对齐修复 520ace4）+ TestUpdateUserSameSecondIdempotentRetry（61.85s 异常超长后失败、单独复现 PASS 20.3s、-count=3 稳定性验证，判环境 flaky——1.6GB 内存下 85 测试连跑的容器就绪压力；该 flaky 测试失败致 1 个测试容器未及清理，verifier 复核时发现并 docker rm -f 清除，host 常驻容器未触碰）；批 2 复跑（520ace4 后）全量 ok 1544.9s 全绿、零残留；批 3 app 集成 2/2 PASS（TestReadinessFlipBeforeDrain 34.07s + TestGracefulShutdownDrains 22.32s）。verifier 独立活体复跑 TestNameChangePublishRole 20.87s + TestDeptNameSync 27.33s 佐证。全程与常驻 mysql/redis 容器无冲突。"
 
 ## Summary
 
