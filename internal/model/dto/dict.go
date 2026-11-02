@@ -7,17 +7,17 @@ import (
 )
 
 // DictTypeCreateReq 创建字典类型请求。指针字段 nil=未提供；dictName/dictType 必填
-// 由 binding 校验拦截；status 不接受客户端传入（服务端默认 1 正常，ENG-02 同源纪律）。
-// 不得定义任何审计字段键（ENG-02 禁止）。
+// 由 binding 校验拦截；status 不接受客户端传入（服务端默认 1 正常，同源纪律）。
+// 不得定义任何审计字段键。
 type DictTypeCreateReq struct {
 	DictName *string `json:"dictName" binding:"required"`
 	DictType *string `json:"dictType" binding:"required"`
 	Remark   *string `json:"remark"`
 }
 
-// DictTypeUpdateReq 更新字典类型请求：全指针字段，nil=未提供（不写库，ENG-05），
-// 空串=显式清空。白名单收敛于本结构键集（T-1-10）；status 经 UsageStatus 严格解析
-// （Phase 2 WR-03 先例：未知值 400/10401）。
+// DictTypeUpdateReq 更新字典类型请求：全指针字段，nil=未提供（不写库），
+// 空串=显式清空。白名单收敛于本结构键集；status 经 UsageStatus 严格解析
+// （先例：未知值 400/10401）。
 type DictTypeUpdateReq struct {
 	DictName *string            `json:"dictName"`
 	DictType *string            `json:"dictType"`
@@ -26,7 +26,7 @@ type DictTypeUpdateReq struct {
 }
 
 // DictTypeResp 字典类型响应契约。全部键无 omitempty——未赋值字段以 null 键输出
-// 而非键缺失（源 JacksonConfig 契约）；无凭据类字段（02-01 T-2-05 纪律）。
+// 而非键缺失（源 JacksonConfig 契约）；无凭据类字段。
 type DictTypeResp struct {
 	ID           ids.ID               `json:"id"`
 	DictName     *string              `json:"dictName"`
@@ -75,8 +75,8 @@ func ToDictTypeResp(m *po.DictTypePO) *DictTypeResp {
 }
 
 // DictDataCreateReq 创建字典数据请求。dictTypeId 必填（service 前置类型存在性校验，
-// 缺失返回 404「字典类型不存在: {id}」源消息原文，DICT-02）；label/value/sort 可选；
-// dictTypeName 不接受客户端传入——服务端查库冗余写入（T-1-10，DICT-02）。
+// 缺失返回 404「字典类型不存在: {id}」源消息原文）；label/value/sort 可选；
+// dictTypeName 不接受客户端传入——服务端查库冗余写入。
 type DictDataCreateReq struct {
 	DictTypeID *ids.ID `json:"dictTypeId" binding:"required"`
 	Label      *string `json:"label"`
@@ -85,9 +85,9 @@ type DictDataCreateReq struct {
 	Remark     *string `json:"remark"`
 }
 
-// DictDataUpdateReq 更新字典数据请求：全指针字段，nil=未提供（不写库，ENG-05）。
+// DictDataUpdateReq 更新字典数据请求：全指针字段，nil=未提供（不写库）。
 // dictTypeId 显式传入时联动类型校验 + dictTypeName 重冗余（源 editDictData 语义）；
-// 不显式传则不动类型列。白名单收敛于本结构键集（T-1-10）。
+// 不显式传则不动类型列。白名单收敛于本结构键集。
 type DictDataUpdateReq struct {
 	DictTypeID *ids.ID `json:"dictTypeId"`
 	Label      *string `json:"label"`

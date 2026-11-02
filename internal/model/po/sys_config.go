@@ -10,7 +10,7 @@ import (
 )
 
 // SysConfigPO sys_config 表映射（11 列，列名对齐真实 DDL，snake_case）。
-// config_key 列由 DB 层 UNIQUE KEY uk_config_key 约束（CONF-01 判重 1062 语义）。
+// config_key 列由 DB 层 UNIQUE KEY uk_config_key 约束（判重 1062 语义）。
 type SysConfigPO struct {
 	BaseWithOperator
 

@@ -8,7 +8,7 @@ import (
 
 // DeptCreateReq 创建部门请求（与菜单域同构，dept_name 替 name 族，无 type/path
 // 等菜单专属列）。指针字段 nil=未提供；deptName 必填由 binding 校验拦截。
-// 不得定义任何审计字段键（ENG-02）；parentId 传 0 与不传同义（根）。
+// 不得定义任何审计字段键；parentId 传 0 与不传同义（根）。
 type DeptCreateReq struct {
 	DeptName *string `json:"deptName" binding:"required"`
 	ParentID *ids.ID `json:"parentId"`
@@ -18,7 +18,7 @@ type DeptCreateReq struct {
 
 // DeptUpdateReq 更新部门请求：全指针字段，nil=未提供（不写库），空串=显式清空。
 // parentId 显式传入时联动父校验 + parentName 重冗余（源 editDept resolveParentName
-// 同构语义）；白名单收敛于本结构键集（T-1-10）。
+// 同构语义）；白名单收敛于本结构键集。
 type DeptUpdateReq struct {
 	DeptName *string            `json:"deptName"`
 	ParentID *ids.ID            `json:"parentId"`
@@ -28,7 +28,7 @@ type DeptUpdateReq struct {
 }
 
 // DeptResp 部门响应契约。全部键无 omitempty（源 JacksonConfig 契约）；
-// 无凭据类字段（02-01 T-2-05 纪律）。
+// 无凭据类字段。
 type DeptResp struct {
 	ID           ids.ID               `json:"id"`
 	ParentID     *ids.ID              `json:"parentId"`

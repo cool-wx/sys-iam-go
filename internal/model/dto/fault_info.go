@@ -8,7 +8,7 @@ import (
 
 // FaultCreateReq 创建故障信息请求。code/name 必填由 binding 校验拦截；bitIndex/
 // type 可选（服务端默认 -1/3——GORM nil 指针写 NULL 会绕过 DB 列默认，语义由
-// service 层承担，FAUL-01）。
+// service 层承担）。
 type FaultCreateReq struct {
 	Code       *string          `json:"code" binding:"required"`
 	Name       *string          `json:"name" binding:"required"`
@@ -22,8 +22,8 @@ type FaultCreateReq struct {
 	Remark     *string          `json:"remark"`
 }
 
-// FaultUpdateReq 更新故障信息请求：全指针字段，nil=未提供（不写库，ENG-05），
-// 空串=显式清空。白名单收敛于本结构键集（T-1-10）。
+// FaultUpdateReq 更新故障信息请求：全指针字段，nil=未提供（不写库），
+// 空串=显式清空。白名单收敛于本结构键集。
 type FaultUpdateReq struct {
 	Code       *string          `json:"code"`
 	Name       *string          `json:"name"`
@@ -100,7 +100,7 @@ func ToFaultResp(m *po.FaultInfoPO) *FaultResp {
 }
 
 // ImportResult Excel 导入结果契约（源 ImportResult DTO，FEATURES.md:205）：
-// JSON 键 insertCount/updateCount（FAUL-02/D-15）。
+// JSON 键 insertCount/updateCount。
 type ImportResult struct {
 	InsertCount int `json:"insertCount"`
 	UpdateCount int `json:"updateCount"`

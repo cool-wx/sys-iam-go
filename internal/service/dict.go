@@ -1,5 +1,5 @@
 // Package service 字典域业务逻辑：类型 CRUD（uk_dict_type 1062 翻译）+ 数据 CRUD
-// （类型存在性前置校验 + dict_type_name 服务端冗余写，DICT-01/02/03）。
+// （类型存在性前置校验 + dict_type_name 服务端冗余写）。
 package service
 
 import (
@@ -19,8 +19,8 @@ import (
 
 // DictService 字典域服务（类型 + 数据合并一个 service——04-RESEARCH Implementation
 // Guidance 建议形态；数据侧依赖类型 repo 做存在性校验与冗余名读取）。pub 用于字典
-// 类型改名事件发布（Phase 5 SYNC-01）：本 plan 一次改齐构造签名，DictTypeNameChanged
-// 发布挂点在 05-02 实装——字段暂存不用。
+// 类型改名事件发布（DictTypeNameChanged），发布时序契约见
+// internal/event 包注释——字段暂存不用。
 type DictService struct {
 	typeRepo *repository.DictTypeRepo
 	dataRepo *repository.DictDataRepo
@@ -32,13 +32,13 @@ func NewDictService(typeRepo *repository.DictTypeRepo, dataRepo *repository.Dict
 	return &DictService{typeRepo: typeRepo, dataRepo: dataRepo, pub: pub}
 }
 
-// ---- 字典类型侧（DICT-01）----
+// ---- 字典类型侧----
 
 // CreateDictType 创建字典类型：DTO→PO（status 服务端默认 1 正常——对齐 DDL default
 // 与源 MP null-skip 语义）；uk_dict_type 冲突（TranslateError 开启后 MySQL 1062 →
-// gorm.ErrDuplicatedKey，P4）译为 400/10400「字典类型已存在」——Phase 2 惯例代码
+// gorm.ErrDuplicatedKey）译为 400/10400「字典类型已存在」——惯例代码
 // 实证为 400/10400 非 409（role.go 先例）。审计字段由 PO 钩子服务端填充，不接受
-// 请求体任何同名客户端字段（ENG-02）。
+// 请求体任何同名客户端字段。
 func (s *DictService) CreateDictType(ctx context.Context, req *dto.DictTypeCreateReq) (*dto.DictTypeResp, error) {
 	m := &po.DictTypePO{
 		DictName: *req.DictName,
@@ -56,21 +56,21 @@ func (s *DictService) CreateDictType(ctx context.Context, req *dto.DictTypeCreat
 	return dto.ToDictTypeResp(m), nil
 }
 
-// UpdateDictType 更新字典类型（部分更新，ENG-05）：白名单 dict_name/dict_type/
+// UpdateDictType 更新字典类型（部分更新）：白名单 dict_name/dict_type/
 // status/remark（nil=不写库；空串=显式清空照写）。落库后回读返回最新契约。
-// 审计由 repo.Patch 显式并入（ENG-02）。白名单含唯一键列 dict_type，撞
-// uk_dict_type 与 Create 同冲突同翻译（WR-02：400/10400「字典类型已存在」，
+// 审计由 repo.Patch 显式并入。白名单含唯一键列 dict_type，撞
+// uk_dict_type 与 Create 同冲突同翻译（400/10400「字典类型已存在」，
 // 不透传 500）。
 //
-// 改名同步（Phase 5 SYNC-01/02，源 DictApplicationService.editDictType 的 oldName
-// 取值前置同构；CR-01 修订：**不设**源条件 `updated &&
+// 改名同步（源 DictApplicationService.editDictType 的 oldName
+// 取值前置同构；契约修订：**不设**源条件 `updated &&
 // !Objects.equals(oldName, newName) && newName != null` 的新≠旧短路——主行已提交
-// 后重试同一请求时旧行已是新名，新≠旧守卫恒假、事件永不重发，D-03「重试幂等自愈」
+// 后重试同一请求时旧行已是新名，新≠旧守卫恒假、事件永不重发——「重试幂等自愈」
 // 被证伪；显式带 dictName 即发布，幂等 UPDATE 使同名重发退化为 no-op；updated 前置
 // 在 Go 形态下由 Patch 返回 nil 等价成立）：请求显式带 dictName 时先回读旧行（行
 // 不存在提前拦为 404，照 GetDictType 同款译域）；Patch 成功后发布
 // DictTypeNameChanged（显式带名门保留，"仅改备注"不带 dictName 仍零发布，非无条件
-// 发布）；Publish 失败上抛 500（D-03，客户端重试同一请求必重发事件，幂等 UPDATE
+// 发布）；Publish 失败上抛 500（客户端重试同一请求必重发事件，幂等 UPDATE
 // 自愈）。
 func (s *DictService) UpdateDictType(ctx context.Context, id int64, req *dto.DictTypeUpdateReq) (*dto.DictTypeResp, error) {
 	// 改名同步回读：仅当请求显式带类型名时回读旧行（源 oldName 取值前置）；
@@ -108,7 +108,7 @@ func (s *DictService) UpdateDictType(ctx context.Context, id int64, req *dto.Dic
 		}
 		return nil, err
 	}
-	// 改名事件发布（Patch 返回 nil 即已提交，D-02；CR-01 修订：显式带名即发布、
+	// 改名事件发布（Patch 返回 nil 即已提交；契约修订：显式带名即发布、
 	// 不设新≠旧短路——重试自愈契约见上注）。DictTypePO.DictName 为非指针 string
 	// 列（DDL NOT NULL），无需空值兜底。
 	if old != nil && req.DictName != nil {
@@ -119,14 +119,14 @@ func (s *DictService) UpdateDictType(ctx context.Context, id int64, req *dto.Dic
 			NewName: *req.DictName,
 		}
 		if err := s.pub.Publish(ctx, evt); err != nil {
-			return nil, err // → 500（D-03：同步 UPDATE 失败可观察，重试必重发自愈）
+			return nil, err // → 500（同步 UPDATE 失败可观察，重试必重发自愈）
 		}
 	}
 	return s.GetDictType(ctx, id)
 }
 
 // GetDictType 字典类型详情：未命中译为 404/10300「字典类型不存在: {id}」
-// （源消息原文 DictApplicationService:49；code/HTTP 契约与 Phase 1 一致）。
+// （源消息原文 DictApplicationService:49；code/HTTP 契约全库统一）。
 func (s *DictService) GetDictType(ctx context.Context, id int64) (*dto.DictTypeResp, error) {
 	m, err := s.typeRepo.FindByID(ctx, id)
 	if err != nil {
@@ -138,7 +138,7 @@ func (s *DictService) GetDictType(ctx context.Context, id int64) (*dto.DictTypeR
 	return dto.ToDictTypeResp(m), nil
 }
 
-// ListDictTypes 字典类型分页列表（无 dataScope——D-03 拍板零应用）。
+// ListDictTypes 字典类型分页列表（无 dataScope）。
 func (s *DictService) ListDictTypes(ctx context.Context, page, size int) (*paging.PageData[dto.DictTypeResp], error) {
 	items, total, err := s.typeRepo.List(ctx, page, size)
 	if err != nil {
@@ -157,12 +157,12 @@ func (s *DictService) DeleteDictType(ctx context.Context, id int64) error {
 	return s.typeRepo.Delete(ctx, id)
 }
 
-// ---- 字典数据侧（DICT-02/03）----
+// ---- 字典数据侧----
 
 // CreateDictData 创建字典数据：第一步先校验类型存在（缺失 → 404/10300
 // 「字典类型不存在: {typeId}」源消息原文 DictApplicationService:87）；命中后把
 // 类型的 dict_name 冗余写入行内 dict_type_name 列（源 addDictData 冗余写行为，
-// 服务端查库值不信请求体，T-1-10）。
+// 服务端查库值不信请求体）。
 func (s *DictService) CreateDictData(ctx context.Context, req *dto.DictDataCreateReq) (*dto.DictDataResp, error) {
 	typeID := int64(*req.DictTypeID)
 	dt, err := s.resolveDictType(ctx, typeID)
@@ -171,7 +171,7 @@ func (s *DictService) CreateDictData(ctx context.Context, req *dto.DictDataCreat
 	}
 	m := &po.DictDataPO{
 		DictTypeID:   typeID,
-		DictTypeName: &dt.DictName, // 服务端查库冗余（DICT-02）
+		DictTypeName: &dt.DictName, // 服务端查库冗余
 		Label:        req.Label,
 		Value:        req.Value,
 		Sort:         req.Sort,
@@ -183,7 +183,7 @@ func (s *DictService) CreateDictData(ctx context.Context, req *dto.DictDataCreat
 	return dto.ToDictDataResp(m), nil
 }
 
-// UpdateDictData 更新字典数据（部分更新，ENG-05）：dictTypeId 显式传入时联动
+// UpdateDictData 更新字典数据（部分更新）：dictTypeId 显式传入时联动
 // 类型校验 + dictTypeName 重冗余（源 editDictData:102 每次编辑执行校验语义）；
 // 不显式传则不动类型列。落库后回读返回最新契约。
 func (s *DictService) UpdateDictData(ctx context.Context, id int64, req *dto.DictDataUpdateReq) (*dto.DictDataResp, error) {
@@ -230,7 +230,7 @@ func (s *DictService) GetDictData(ctx context.Context, id int64) (*dto.DictDataR
 	return dto.ToDictDataResp(m), nil
 }
 
-// ListDictDatas 字典数据分页列表；dictTypeID 非零时按类型过滤（DICT-03 可选分支，
+// ListDictDatas 字典数据分页列表；dictTypeID 非零时按类型过滤（可选分支，
 // 源 list?dictTypeId= 语义）。
 func (s *DictService) ListDictDatas(ctx context.Context, page, size int, dictTypeID int64) (*paging.PageData[dto.DictDataResp], error) {
 	items, total, err := s.dataRepo.List(ctx, page, size, dictTypeID)

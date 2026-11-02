@@ -1,4 +1,4 @@
-// sys_config 数据访问（照 repository/dict.go 模板；FindByKey 供 CONF-01 key 读取）。
+// sys_config 数据访问（照 repository/dict.go 模板；FindByKey 供 key 读取）。
 package repository
 
 import (
@@ -24,13 +24,13 @@ func NewSysConfigRepo(db *gorm.DB) *SysConfigRepo {
 }
 
 // Create 插入一行；uk_config_key 冲突时（TranslateError 开启）返回
-// gorm.ErrDuplicatedKey，由 service 层翻译为 400/10400「配置键已存在」（CONF-01）。
-// 参数化由 GORM 占位符保证，不拼 SQL 字符串（T-1-03）。
+// gorm.ErrDuplicatedKey，由 service 层翻译为 400/10400「配置键已存在」。
+// 参数化由 GORM 占位符保证，不拼 SQL 字符串。
 func (r *SysConfigRepo) Create(ctx context.Context, m *po.SysConfigPO) error {
 	return r.db.WithContext(ctx).Create(m).Error
 }
 
-// Patch 显式列更新（零值保护核心，ENG-05；CR-01 回读确认语义同族）。
+// Patch 显式列更新（零值保护核心；回读确认语义同族）。
 func (r *SysConfigRepo) Patch(ctx context.Context, id int64, cols map[string]any) error {
 	if cols == nil {
 		cols = map[string]any{}
@@ -47,7 +47,7 @@ func (r *SysConfigRepo) Patch(ctx context.Context, id int64, cols map[string]any
 	}
 	if res.RowsAffected == 0 {
 		// 0 变更 ≠ 不存在：同秒重复提交相同内容时 SET 值全等 → 0 行变更但行存在，
-		// 需 Count 二次确认（CR-01）
+		// 需 Count 二次确认
 		var n int64
 		if err := r.db.WithContext(ctx).Model(&po.SysConfigPO{}).Where("id = ?", id).Count(&n).Error; err != nil {
 			return err
@@ -66,7 +66,7 @@ func (r *SysConfigRepo) Delete(ctx context.Context, id int64) error {
 }
 
 // List 分页查询（Count 与查询同一闭包防 total 漂移）；无条件过滤（无 dataScope
-// ——D-03 拍板零应用）；ORDER BY create_time DESC, id DESC（源列序惯例）。
+// ——本阶段零应用）；ORDER BY create_time DESC, id DESC（源列序惯例）。
 func (r *SysConfigRepo) List(ctx context.Context, page, size int) ([]po.SysConfigPO, int64, error) {
 	q := func() *gorm.DB {
 		return r.db.WithContext(ctx).Model(&po.SysConfigPO{})
@@ -103,7 +103,7 @@ func (r *SysConfigRepo) FindByID(ctx context.Context, id int64) (*po.SysConfigPO
 }
 
 // FindByKey 按 config_key 精确查询（uk_config_key 保证至多一行）；未命中返回
-// ErrNotFound（10300）——CONF-01 getByKey 语义（源返回 configValue 字符串，
+// ErrNotFound（10300）——getByKey 语义（源返回 configValue 字符串，
 // 不存在由 service 层翻译「配置不存在: {key}」）。
 func (r *SysConfigRepo) FindByKey(ctx context.Context, key string) (*po.SysConfigPO, error) {
 	var m po.SysConfigPO

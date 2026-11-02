@@ -10,7 +10,7 @@ import (
 )
 
 // ApiKeyPO sys_api_key 表映射（13 列，列名对齐真实 DDL，snake_case）。
-// ApiKey 明文存储为源语义（schema 沿用禁改，T-2-06 accept）；明文仅在 add 响应一次性返回。
+// ApiKey 明文存储为源语义（schema 沿用禁改，威胁评审接受）；明文仅在 add 响应一次性返回。
 type ApiKeyPO struct {
 	BaseWithOperator
 

@@ -1,6 +1,6 @@
 //go:build integration
 
-// Package testutil 提供集成测试的 MySQL 容器基建（D-10/D-12 铁律：自动化测试一律
+// Package testutil 提供集成测试的 MySQL 容器基建（铁律：自动化测试一律
 // testcontainers 独立容器，不锚定本机具名容器，对环境漂移免疫）。
 package testutil
 
@@ -23,7 +23,7 @@ import (
 const defaultMySQLImage = "mysql:8.4"
 
 // RunMySQL 启动独立 mysql:8.4 容器（库 sys_iam，root/root123），打开 GORM 连接，
-// 并在返回前【BLOCKING】执行 scripts/ddl/ 目录全部 .sql 建表（按文件名序，Phase 2
+// 并在返回前【BLOCKING】执行 scripts/ddl/ 目录全部 .sql 建表（按文件名序，
 // 起 7 表全量就绪）——断言运行前表必须就绪。
 // 返回 go-sql-driver 格式 dsn（parseTime/loc 参数已固化）与 cleanup（关连接+终止容器）。
 func RunMySQL(ctx context.Context) (string, func(), error) {

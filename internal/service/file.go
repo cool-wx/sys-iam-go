@@ -1,13 +1,13 @@
-// Package service 文件域业务逻辑（FILE-01/02/03）：上传 MD5 判重五语义（源
+// Package service 文件域业务逻辑：上传 MD5 判重五语义（源
 // FileUploadHashDedupTest 蓝本）+ 流式下载 + 存储宽容删除 + 分页列表。
 //
-// 上传链顺序（D-12 语义不变，实现用 multipart.File 的 Seek(0) 重放替代研究期
+// 上传链顺序（语义不变，实现用 multipart.File 的 Seek(0) 重放替代研究期
 // TeeReader 表述——04-RESEARCH Implementation Guidance 建议）：分类校验 → 流式算
 // MD5 → 判重（拒绝即返回，此刻存储/DB 零副作用）→ Seek(0) 重放流 → 事务内
 // Create + storage.Put（源 save DB → 上传存储同序且 @Transactional 含存储调用，
 // Put 失败 DB 回滚——横切发现 6）。
 //
-// 删除链（FILE-03 宽容语义，源 FileApplicationService:112-122 逐字）：存储端删除
+// 删除链（宽容语义，源 FileApplicationService:112-122 逐字）：存储端删除
 // 失败仅 slog.Warn 留痕（「S3对象删除失败，继续删除数据库记录: {filePath}」），
 // 继续删 DB 记录——存储失败绝不阻断 DB 清理。
 package service
@@ -37,7 +37,7 @@ import (
 )
 
 // FileService 文件域服务（依赖 FileStorage 抽象——同一套代码对 local/s3 后端
-// 无差别，FILE-05；db 供上传链显式事务——app.go SkipDefaultTransaction=true）。
+// 无差别；db 供上传链显式事务——app.go SkipDefaultTransaction=true）。
 type FileService struct {
 	db      *gorm.DB
 	repo    *repository.FileInfoRepo
@@ -50,15 +50,15 @@ func NewFileService(db *gorm.DB, repo *repository.FileInfoRepo, catRepo *reposit
 	return &FileService{db: db, repo: repo, catRepo: catRepo, storage: fileStorage}
 }
 
-// Upload 上传文件（FILE-01 判重五语义）：handler 已解析 multipart FileHeader 与
+// Upload 上传文件（判重五语义）：handler 已解析 multipart FileHeader 与
 // category_id 表单字段（空串=未分类）。返回落库后的文件信息契约。
 //
 // 零副作用保证（prohibition）：判重命中前不触碰存储与 DB——拒绝时 sys_file 零
-// 新行、存储无对象（D-12 拒绝零副作用语义）。
+// 新行、存储无对象（拒绝零副作用语义）。
 func (s *FileService) Upload(ctx context.Context, fh *multipart.FileHeader, categoryIDRaw string) (*dto.FileInfoResp, error) {
-	// 入口长度钳位（WR-05）：file_name varchar(255)、file_path varchar(500) 均
+	// 入口长度钳位：file_name varchar(255)、file_path varchar(500) 均
 	// 字符语义（中文文件名按 rune 计数）——超长直接 400「文件名过长」，不走
-	// strict mode 1406 → 500（落库字符串字段不全信客户端长度，与 CR-02
+	// strict mode 1406 → 500（落库字符串字段不全信客户端长度，与
 	// contentType 钳位同一收口）。key = uuid(36 字符) + "_" + filename，
 	// filename ≤255 时 file_path ≤292 < 500 恒安全，255 为有效上界。
 	if utf8.RuneCountInString(fh.Filename) > maxFileNameLen {
@@ -121,9 +121,9 @@ func (s *FileService) Upload(ctx context.Context, fh *multipart.FileHeader, cate
 	}
 
 	// (f) 对象键：uuid + "_" + 原名（源 filePath 形态对齐；uuid 前缀天然去重防
-	// 同名互覆，LocalStorage resolveKey 对键做路径逃逸防御——T-4-02）
+	// 同名互覆，LocalStorage resolveKey 对键做路径逃逸防御）
 	key := uuid.NewString() + "_" + fh.Filename
-	// contentType 钳位（CR-02）：file_type 列 varchar(50)（DDL 保真不 ALTER），
+	// contentType 钳位：file_type 列 varchar(50)（DDL 保真不 ALTER），
 	// 客户端 Content-Type 不可信——浏览器对 Office 文档 part 发送的标准 MIME 超
 	// 列宽（xlsx/docx 均 65 字符），strict mode 1406 → 上传事务确定性回滚 500。
 	// 规范化后仍超长兜底 octet-stream：上游不可信字段永不触发 500。
@@ -159,11 +159,11 @@ func (s *FileService) Upload(ctx context.Context, fh *multipart.FileHeader, cate
 const maxFileTypeLen = 50
 
 // maxFileNameLen file_name 列宽（DDL sys_file.file_name varchar(255)，字符
-// 语义——中文名按 rune 计数；上传链入口钳位，WR-05）。
+// 语义——中文名按 rune 计数；上传链入口钳位）。
 const maxFileNameLen = 255
 
-// normalizeContentType 规范化并钳位客户端 Content-Type 至 file_type 列宽
-// （CR-02）：先取分号前 media type 本体（去可能跟的参数段），仍超 50 字符则兜底
+// normalizeContentType 规范化并钳位客户端 Content-Type 至 file_type 列宽：
+// 先取分号前 media type 本体（去可能跟的参数段），仍超 50 字符则兜底
 // "application/octet-stream"——上传链落库的该字段永不触发 strict mode 1406。
 // 空 Content-Type（curl 等不带 part 头的客户端）原样返回空串（既有落库行为不变）。
 func normalizeContentType(raw string) string {
@@ -184,7 +184,7 @@ type DownloadResult struct {
 	ContentType string
 }
 
-// Download 下载链（FILE-02 流式，全链不整载）：FindByID（缺失 → 404「文件不存在:
+// Download 下载链（流式，全链不整载）：FindByID（缺失 → 404「文件不存在:
 // {id}」源消息原文）→ FilePath 空值防御（「文件路径为空，文件ID: {id}」源消息
 // 原文）→ storage.GetStream 返回 reader/size/contentType。调用方负责 Close。
 func (s *FileService) Download(ctx context.Context, id int64) (*DownloadResult, error) {
@@ -209,7 +209,7 @@ func (s *FileService) Download(ctx context.Context, id int64) (*DownloadResult, 
 	return &DownloadResult{Row: row, Reader: reader, Size: size, ContentType: contentType}, nil
 }
 
-// Delete 删除链（FILE-03 宽容语义，源 FileApplicationService:112-122 逐字）：
+// Delete 删除链（宽容语义，源 FileApplicationService:112-122 逐字）：
 // FindByID → storage.Delete 失败仅 slog.Warn（消息含 filePath，源日志原文）继续 →
 // repo.Delete——存储失败不阻断 DB 清理。文件不存在 → 404 源消息原文。
 func (s *FileService) Delete(ctx context.Context, id int64) error {

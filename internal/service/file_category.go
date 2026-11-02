@@ -1,5 +1,5 @@
 // Package service 文件分类域业务逻辑（与部门域同构）：父校验 + parentName 服务端
-// 冗余 + 树查询（FILE-04；树构建复用 internal/tree 泛型构建器，孤儿提升语义与
+// 冗余 + 树查询（树构建复用 internal/tree 泛型构建器，孤儿提升语义与
 // dept/menu 一致——以源服务层 buildTree 为准，勿仿实体静态 buildTree 的不提升版本，
 // 04-RESEARCH 重点 1 差异警示）。
 package service
@@ -55,10 +55,10 @@ func (s *FileCategoryService) Create(ctx context.Context, req *dto.FileCategoryC
 	return dto.ToFileCategoryResp(fc), nil
 }
 
-// Update 更新文件分类（部分更新，ENG-05）：白名单 categoryName/parentId/
+// Update 更新文件分类（部分更新）：白名单 categoryName/parentId/
 // categoryType/sort/icon/status/remark；parentId 显式传入时联动父校验 + parentName
-// 重冗余（源 edit 同构语义）。落库后回读返回最新契约；审计由 repo.Patch 显式并入
-// （ENG-02）。WR-04 成环拦截与部门域同构（自引用/挂到自身子孙均拒绝）。
+// 重冗余（源 edit 同构语义）。落库后回读返回最新契约；审计由 repo.Patch 显式并入。
+// 成环拦截与部门域同构（自引用/挂到自身子孙均拒绝）。
 func (s *FileCategoryService) Update(ctx context.Context, id int64, req *dto.FileCategoryUpdateReq) (*dto.FileCategoryResp, error) {
 	cols := map[string]any{}
 	if req.CategoryName != nil {
@@ -68,7 +68,7 @@ func (s *FileCategoryService) Update(ctx context.Context, id int64, req *dto.Fil
 		pid := int64(*req.ParentID)
 		if pid == 0 {
 			// 显式移至根：parent_id 落 NULL + parent_name 清 NULL——根 = parent_id
-			// NULL 成为唯一形态（WR-07 方向 A，与 Create 根同形态；源自身 Create
+			// NULL 成为唯一形态（与 Create 根同形态；源自身 Create
 			// null / Update 0 不对称，此处为 Go 内一致性修正、显式偏离源）。存量
 			// parent_id=0 行不迁移：tree.Build/ensureNotDescendant/resolveParent
 			// 对 nil/0 双形态兼容，读侧零回归。GORM Updates(map) 显式 nil 写 NULL
@@ -169,7 +169,7 @@ func (s *FileCategoryService) Delete(ctx context.Context, id int64) error {
 	return s.repo.Delete(ctx, id)
 }
 
-// ensureNotDescendant 成环拦截（WR-04，与部门域同构）：把 id 挂到 pid 下前，沿
+// ensureNotDescendant 成环拦截（与部门域同构）：把 id 挂到 pid 下前，沿
 // pid 的父链向上上溯（visited 集防存量环数据死循环 + 深度上限冗余兜底）——若
 // 途中遇到 id，说明 pid 位于 id 的子链上，挂接将成环，报 400。父链中断（节点
 // 不存在/到根）即无环。
@@ -192,7 +192,7 @@ func (s *FileCategoryService) ensureNotDescendant(ctx context.Context, pid, id i
 }
 
 // resolveParent 父校验（源 resolveParentName 语义；父缺失译为 404/10300 源消息
-// 原文——与部门域 400 不同，04-02 PLAN Task 2 action 5 显式拍板 CodeNotFound）：
+// 原文——与部门域 400 不同，显式拍板译 CodeNotFound）：
 // 父不存在或父 category_name 为 NULL 均报「上级分类不存在: {pid}」；parentName
 // 只信服务端查库值。
 func (s *FileCategoryService) resolveParent(ctx context.Context, pid int64) (*po.FileCategoryPO, error) {

@@ -8,7 +8,7 @@ import (
 )
 
 // UserCreateReq 创建用户请求。指针字段 nil=未提供；required 键缺失由 binding 校验拦截。
-// 不得定义任何审计字段键（ENG-02 禁止：审计字段只能由服务端钩子从 ctx identity 与
+// 不得定义任何审计字段键（审计字段只能由服务端钩子从 ctx identity 与
 // 系统时钟填充，防审计伪造）。
 type UserCreateReq struct {
 	Username *string       `json:"username" binding:"required"`
@@ -22,13 +22,13 @@ type UserCreateReq struct {
 }
 
 // UpdateUserReq 更新用户请求：全指针字段，nil=未提供（不写库），空串=显式清空。
-// 不得定义任何审计字段键（ENG-02 禁令：update_by/update_time 只由服务端填充，
+// 不得定义任何审计字段键（update_by/update_time 只由服务端填充，
 // 客户端不可伪造）。可更新列集合收敛于本结构键集——请求体任意额外 JSON 键被
-// 忽略且永远不会进 UPDATE 语句（T-1-10 白名单）。deptName 不在本结构键集（IN-03：
-// dept_name 是服务端查库冗余，随 deptId 变更联动覆写——客户端直写即违背 02-03
-// USER-01"冗余不可伪造"truth；请求体 deptName 键被忽略，恒不进 UPDATE）。
+// 忽略且永远不会进 UPDATE 语句（白名单）。deptName 不在本结构键集：
+// dept_name 是服务端查库冗余，随 deptId 变更联动覆写——客户端直写即违背
+// "冗余不可伪造"truth；请求体 deptName 键被忽略，恒不进 UPDATE。
 type UpdateUserReq struct {
-	// RealName 例外于本结构「空串=显式清空」总则：空白值服务端拒绝（WR-02——
+	// RealName 例外于本结构「空串=显式清空」总则：空白值服务端拒绝（
 	// 真名是 26 条冗余列的同步源不可清空，见 service.validateRealName）。
 	RealName *string       `json:"realName"`
 	Phone    *string       `json:"phone"`
@@ -43,7 +43,7 @@ type UpdateUserReq struct {
 // UserResp 用户响应契约。
 // 不定义 password/extToken 键（源 @JsonProperty WRITE_ONLY 语义，永不序列化出网）；
 // 全部键无 omitempty——未赋值字段以 null 键输出而非键缺失（源 JacksonConfig 契约）；
-// roles 装配由 service 层两查询完成（USER-05 防 N+1），ToUserResp 初始化为空切片
+// roles 装配由 service 层两查询完成（防 N+1），ToUserResp 初始化为空切片
 // ——空角色输出 [] 非 null（对齐 PageData 契约）。
 type UserResp struct {
 	ID           ids.ID               `json:"id"`
@@ -75,14 +75,14 @@ type UserRoleRef struct {
 	RoleName string `json:"roleName"`
 }
 
-// AssignRolesReq 分配用户角色请求：roleIds 全量替换语义（USER-04/D-12）——
+// AssignRolesReq 分配用户角色请求：roleIds 全量替换语义——
 // 空数组=全回收（合法语义）。
 type AssignRolesReq struct {
 	RoleIDs []ids.ID `json:"roleIds"`
 }
 
 // UpdateStatusReq 更新用户状态请求：DISABLED 停用 / ENABLED 启用（停用即踢存量
-// 会话——D-09 安全增强）。required 拦截缺失键。
+// 会话——安全增强）。required 拦截缺失键。
 type UpdateStatusReq struct {
 	Status *types.UsageStatus `json:"status" binding:"required"`
 }

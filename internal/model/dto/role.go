@@ -8,10 +8,10 @@ import (
 
 // RoleCreateReq 创建角色请求。roleName/roleCode 必填由 binding 校验拦截；
 // dataScope/remark 可选（nil → 服务端默认 dataScope=1，源 Role.create 语义；
-// status 恒默认 ENABLED，创建请求不含 status 键）。不得定义任何审计字段键（ENG-02）。
-// builtin 键保留仅用于拒绝检测（WR-01：builtin=true 显式 400——builtin 只能由
+// status 恒默认 ENABLED，创建请求不含 status 键）。不得定义任何审计字段键。
+// builtin 键保留仅用于拒绝检测（builtin=true 显式 400——builtin 只能由
 // seed/迁移流程设定，防 role:add 制造"永生角色"绕过删除守卫）；服务端恒落 false。
-// dataScope 域校验 1..5（IN-02：validator 对 *int8 自动 deref——域外值 400/10401，
+// dataScope 域校验 1..5（validator 对 *int8 自动 deref——域外值 400/10401，
 // 防 role:edit 把他人角色置 99 使其全部用户列表视图静默清空的定向 DoS 面）。
 type RoleCreateReq struct {
 	RoleName  *string `json:"roleName" binding:"required"`
@@ -22,11 +22,11 @@ type RoleCreateReq struct {
 }
 
 // RoleUpdateReq 更新角色请求：全指针字段，nil=未提供（不写库）——源 withEdit
-// 逐字段 null-skip 语义。builtin 不在本结构键集（WR-01：不可经 edit 翻转——否则
+// 逐字段 null-skip 语义。builtin 不在本结构键集（不可经 edit 翻转——否则
 // role:edit 持有者可先翻转 builtin=false 再删除 super_admin，builtin 删除守卫
 // 被整体绕行；请求体 builtin 键被忽略，恒不进 UPDATE）。dataScope 域校验 1..5
-// （IN-02，同 Create）。role_code 不在本结构键集（角色编码为引用锚点，Go API 契约
-// 不开放修改——与 plan DTO 定义一致）。白名单收敛于本结构键集（T-1-10）。
+// （同 Create）。role_code 不在本结构键集（角色编码为引用锚点，Go API 契约
+// 不开放修改——与本契约定义一致）。白名单收敛于本结构键集。
 type RoleUpdateReq struct {
 	RoleName  *string            `json:"roleName"`
 	DataScope *int8              `json:"dataScope" binding:"omitempty,min=1,max=5"`
@@ -36,7 +36,7 @@ type RoleUpdateReq struct {
 
 // RoleResp 角色响应契约（13 列照 UserResp 形态；dataScope int8 原样——存量
 // super_admin 行 data_scope=NULL 以 null 输出）。全部键无 omitempty
-// （源 JacksonConfig 契约）；无凭据类字段（02-01 T-2-05 纪律）。
+// （源 JacksonConfig 契约）；无凭据类字段。
 type RoleResp struct {
 	ID           ids.ID               `json:"id"`
 	RoleName     *string              `json:"roleName"`
@@ -58,7 +58,7 @@ type AssignMenusReq struct {
 	MenuIDs []ids.ID `json:"menuIds"`
 }
 
-// AssignScopesReq 分配角色数据权限范围部门请求（D-10 档位 4 存储面）：deptIds
+// AssignScopesReq 分配角色数据权限范围部门请求（档位 4 存储面）：deptIds
 // 全量替换语义（空数组=全回收，合法）——与 AssignMenusReq 同构。
 type AssignScopesReq struct {
 	DeptIDs []ids.ID `json:"deptIds"`

@@ -7,7 +7,7 @@ import (
 )
 
 // ConfigCreateReq 创建系统配置请求。configKey/configValue 必填由 binding 校验
-// 拦截；configType 可选。不得定义任何审计字段键（ENG-02 禁止）。
+// 拦截；configType 可选。不得定义任何审计字段键。
 type ConfigCreateReq struct {
 	ConfigKey   *string `json:"configKey" binding:"required"`
 	ConfigValue *string `json:"configValue" binding:"required"`
@@ -15,8 +15,8 @@ type ConfigCreateReq struct {
 	Remark      *string `json:"remark"`
 }
 
-// ConfigUpdateReq 更新系统配置请求：全指针字段，nil=未提供（不写库，ENG-05），
-// 空串=显式清空。白名单收敛于本结构键集（T-1-10）。
+// ConfigUpdateReq 更新系统配置请求：全指针字段，nil=未提供（不写库），
+// 空串=显式清空。白名单收敛于本结构键集。
 type ConfigUpdateReq struct {
 	ConfigKey   *string `json:"configKey"`
 	ConfigValue *string `json:"configValue"`

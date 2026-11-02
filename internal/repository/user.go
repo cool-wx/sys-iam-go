@@ -25,19 +25,19 @@ func NewUserRepo(db *gorm.DB) *UserRepo {
 }
 
 // Create 插入一行；ctx 经 WithContext 传递，供审计钩子读取 identity。
-// 参数化由 GORM 占位符保证，不拼 SQL 字符串（T-1-03）。
+// 参数化由 GORM 占位符保证，不拼 SQL 字符串。
 func (r *UserRepo) Create(ctx context.Context, u *po.UserPO) error {
 	return r.db.WithContext(ctx).Create(u).Error
 }
 
-// Patch 显式列更新（零值保护核心，ENG-05）：只写 cols 中出现的列（白名单收敛于
-// 调用方构造的 map 键，请求体额外键不可能进入，T-1-10）；恒带 Where("id = ?") 防
-// 全表更新（T-1-08）。update_time 与审计操作人列在此显式并入 map——GORM 对
+// Patch 显式列更新（零值保护核心）：只写 cols 中出现的列（白名单收敛于
+// 调用方构造的 map 键，请求体额外键不可能进入）；恒带 Where("id = ?") 防
+// 全表更新。update_time 与审计操作人列在此显式并入 map——GORM 对
 // Updates(map) 不会把钩子改动的结构体字段写进 SET 子句（已知语义坑），显式并入
-// 保证确定性。绝不在更新路径调用 Save（Pitfall 3）。ctx 含 identity 时写入
+// 保证确定性。绝不在更新路径调用 Save。ctx 含 identity 时写入
 // update_by 两列，否则仅刷 update_time。
 //
-// 存在性判定不以 RowsAffected 为准（CR-01）：go-sql-driver 默认
+// 存在性判定不以 RowsAffected 为准：go-sql-driver 默认
 // clientFoundRows=false，UPDATE 返回的是实际变更行数而非匹配行数；update_time 为
 // 秒精度 datetime，同秒内重复提交相同内容（幂等重试/双击保存/PUT {}）时 SET 值
 // 全部与现值相等 → 0 行变更但行存在。故 RowsAffected==0 时回读 Count 二次确认，
@@ -57,7 +57,7 @@ func (r *UserRepo) Patch(ctx context.Context, id int64, cols map[string]any) err
 		return res.Error
 	}
 	if res.RowsAffected == 0 {
-		// 0 变更 ≠ 不存在：需 Count 确认行是否存在（见函数注释 CR-01）
+		// 0 变更 ≠ 不存在：需 Count 确认行是否存在（见函数注释）
 		var n int64
 		if err := r.db.WithContext(ctx).Model(&po.UserPO{}).Where("id = ?", id).Count(&n).Error; err != nil {
 			return err
@@ -71,16 +71,16 @@ func (r *UserRepo) Patch(ctx context.Context, id int64, cols map[string]any) err
 
 // List 分页查询：Count 与记录查询经同一闭包构造（条件集天然一致，防 total 漂移，
 // P15）；datascope.Filter 统一在闭包内 Apply——**total 与行集出自同一过滤闭包**
-// （PERM-03：dataScope 档位同时约束 Count 与 Find，列表页 total 不漂移，T-3-06/
-// T-3-07 缓解）；排序 create_time DESC, id DESC——稳定 tiebreaker 保证同秒插入时
-// 翻页不漂移；排序串为代码常量，无 ORDER 注入面（T-1-10）。
+// （dataScope 档位同时约束 Count 与 Find，列表页 total 不漂移）；
+// 排序 create_time DESC, id DESC——稳定 tiebreaker 保证同秒插入时
+// 翻页不漂移；排序串为代码常量，无 ORDER 注入面。
 // page/size 已由 paging.Parse 钳位（≥1 且 page ≤ maxPage）；Offset 计算后仍防负
-// （int 溢出双保险，WR-03，P8）。filter 为 datascope 五档解析产物；Apply 零条件
+// （int 溢出双保险）。filter 为 datascope 五档解析产物；Apply 零条件
 // 档（ModeAll）返回原 query，闭包语义不变。
 func (r *UserRepo) List(ctx context.Context, page, size int, filter datascope.Filter) ([]po.UserPO, int64, error) {
 	q := func() *gorm.DB {
 		// table "sys_user" 为代码常量调用（列名白名单在 datascope 包内硬编码，
-		// 值全占位符参数化——T-3-06/T-1-03）
+		// 值全占位符参数化）
 		return filter.Apply(r.db.WithContext(ctx).Model(&po.UserPO{}), "sys_user")
 	}
 	var total int64
@@ -89,7 +89,7 @@ func (r *UserRepo) List(ctx context.Context, page, size int, filter datascope.Fi
 	}
 	offset := (page - 1) * size
 	if offset < 0 {
-		// int 溢出保护（WR-03，双保险）：GORM clause.Limit 仅在 Offset>0 时写
+		// int 溢出保护（双保险）：GORM clause.Limit 仅在 Offset>0 时写
 		// OFFSET 子句，溢出为负会被静默省略 → 静默回退第 1 页数据。钳位后正常
 		// 不会触发，防御绕过 paging.Parse 的直接调用。
 		offset = 0
@@ -105,7 +105,7 @@ func (r *UserRepo) List(ctx context.Context, page, size int, filter datascope.Fi
 }
 
 // FindByUsername 按 username 精确查询（登录六步链第一步）；未命中返回 (nil, nil)——
-// "用户不存在"与"密码错误"在 service 层统一译为 ErrBadCredentials（防枚举，T-2-01），
+// "用户不存在"与"密码错误"在 service 层统一译为 ErrBadCredentials（防枚举），
 // repo 层不区分这两种语义，故不做 ErrNotFound 翻译。
 func (r *UserRepo) FindByUsername(ctx context.Context, username string) (*po.UserPO, error) {
 	var u po.UserPO

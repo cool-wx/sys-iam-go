@@ -14,7 +14,7 @@ import (
 )
 
 // FileInfoPO sys_file 表映射（16 列）。file_hash 无唯一索引——判重由应用层
-// FindByCategoryAndHash 的 categoryId IS NULL 双分支查询承担（FILE-01，唯一索引
+// FindByCategoryAndHash 的 categoryId IS NULL 双分支查询承担（唯一索引
 // 对 NULL 视为互不相等，未分类判重全靠 IS NULL 分支）；category_name 冗余列由
 // 上传链服务端查库写入（不信请求体）。
 type FileInfoPO struct {

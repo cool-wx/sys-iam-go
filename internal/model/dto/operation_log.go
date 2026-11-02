@@ -6,7 +6,7 @@ import (
 	"github.com/cool-wx/sys-iam-go/pkg/types"
 )
 
-// OlogResp 操作日志响应契约（OLOG-03 查询域只读）。全部键无 omitempty
+// OlogResp 操作日志响应契约（查询域只读）。全部键无 omitempty
 // （源 JacksonConfig 契约）；UserID 为 *ids.ID（NULL 语义保留——未登录路由
 // 如 login 自身落 NULL）。
 type OlogResp struct {
@@ -33,7 +33,7 @@ func ToOlogResp(m *po.OperationLogPO) *OlogResp {
 		ID:       &id,
 		RealName: m.RealName,
 		Module:   m.Module,
-		// Operation 路由声明的方法名（D-05 声明制，如 "create"/"login"）。
+		// Operation 路由声明的方法名（声明制，如 "create"/"login"）。
 		Operation: m.Operation,
 		Method:    m.Method,
 		Params:    m.Params,

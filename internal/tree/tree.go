@@ -7,13 +7,13 @@
 // 语义（照源逐字）：
 //   - parentIDOf 返回 nil 或 0 → 归入 roots（源 `pid == null || pid == 0L`）；
 //   - parentIDOf 指向 items 中不存在的 id（节点索引 map 未命中）→ 提升为根
-//     （孤儿提升，DEPT-02 验收语义；源 `map.get(pid) == null → roots.add(dept)`）；
+//     （孤儿提升，验收语义；源 `map.get(pid) == null → roots.add(dept)`）；
 //   - 环引用双方 parent 均命中索引 → 均不归根、不可达、静默不产出（源同语义）；
-//     无递归父链遍历、仅从根向下装配，天然不死循环（T-2-09：children 分组 map
+//     无递归父链遍历、仅从根向下装配，天然不死循环（children 分组 map
 //     不命中即归 roots 的天然免疫性）；
 //   - 子节点顺序与输入序一致（repo 按 sort ASC 供给——输入序即展示序）；
 //   - attach 对叶子节点也会以空 children 切片调用一次——回调内借此把 children
-//     归一化为非 nil（JSON 出口 [] 而非 null，ENG-01）。
+//     归一化为非 nil（JSON 出口 [] 而非 null）。
 package tree
 
 // Build 构建父子层级树，返回根节点切片（恒非 nil）。

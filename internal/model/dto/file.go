@@ -1,6 +1,6 @@
 // Package dto File 域响应/请求契约：文件分类（树形，与 dept 同构）+ 文件信息
 // （分页列表 + 上传/下载/删除链载体）。全部键无 omitempty（源 JacksonConfig 契约）；
-// 不得定义任何审计字段键（ENG-02，审计由 PO 钩子服务端填充）。
+// 不得定义任何审计字段键（审计由 PO 钩子服务端填充）。
 package dto
 
 import (
@@ -9,7 +9,7 @@ import (
 	"github.com/cool-wx/sys-iam-go/pkg/types"
 )
 
-// ---- 文件分类侧（FILE-04，与部门域同构）----
+// ---- 文件分类侧（与部门域同构）----
 
 // FileCategoryCreateReq 创建文件分类请求。categoryName 必填由 binding 校验拦截；
 // parentId 传 0 与不传同义（根）；status 服务端默认 1 正常（对齐 DDL default）。
@@ -22,9 +22,9 @@ type FileCategoryCreateReq struct {
 	Remark       *string `json:"remark"`
 }
 
-// FileCategoryUpdateReq 更新文件分类请求：全指针字段，nil=未提供（不写库，ENG-05），
+// FileCategoryUpdateReq 更新文件分类请求：全指针字段，nil=未提供（不写库），
 // 空串=显式清空。parentId 显式传入时联动父校验 + parentName 重冗余（源 edit
-// resolveParentName 同构语义）；白名单收敛于本结构键集（T-1-10）。
+// resolveParentName 同构语义）；白名单收敛于本结构键集。
 type FileCategoryUpdateReq struct {
 	CategoryName *string            `json:"categoryName"`
 	ParentID     *ids.ID            `json:"parentId"`
@@ -110,10 +110,10 @@ func ToFileCategoryTreeResp(m *po.FileCategoryPO) *FileCategoryTreeResp {
 	}
 }
 
-// ---- 文件信息侧（FILE-01/02/03）----
+// ---- 文件信息侧----
 
 // FileInfoResp 文件信息响应契约（列表项 + 上传返回体）。file_path 为服务端生成
-// 的存储对象键（uuid_原名），下载寻址恒经 DB 内 file_path（非客户端参数，T-4-02）。
+// 的存储对象键（uuid_原名），下载寻址恒经 DB 内 file_path（非客户端参数）。
 type FileInfoResp struct {
 	ID           ids.ID               `json:"id"`
 	CategoryID   *ids.ID              `json:"categoryId"`

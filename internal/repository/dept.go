@@ -28,10 +28,10 @@ func (r *DeptRepo) Create(ctx context.Context, d *po.DeptPO) error {
 	return r.db.WithContext(ctx).Create(d).Error
 }
 
-// Patch 显式列更新（零值保护核心，ENG-05；CR-01 回读确认语义与 UserRepo.Patch
-// 一致）：只写 cols 中出现的列（白名单由调用方 service 层收敛，T-1-10）；恒带
-// Where("id = ?") 防全表更新（T-1-08）。update_time 与审计操作人列在此显式并入
-// map（GORM Updates(map) 钩子语义坑），绝不在更新路径调用 Save（Pitfall 3）。
+// Patch 显式列更新（零值保护核心；回读确认语义与 UserRepo.Patch
+// 一致）：只写 cols 中出现的列（白名单由调用方 service 层收敛）；恒带
+// Where("id = ?") 防全表更新。update_time 与审计操作人列在此显式并入
+// map（GORM Updates(map) 钩子语义坑），绝不在更新路径调用 Save。
 func (r *DeptRepo) Patch(ctx context.Context, id int64, cols map[string]any) error {
 	if cols == nil {
 		cols = map[string]any{}
@@ -47,7 +47,7 @@ func (r *DeptRepo) Patch(ctx context.Context, id int64, cols map[string]any) err
 		return res.Error
 	}
 	if res.RowsAffected == 0 {
-		// 0 变更 ≠ 不存在：Count 二次确认（CR-01）
+		// 0 变更 ≠ 不存在：Count 二次确认
 		var n int64
 		if err := r.db.WithContext(ctx).Model(&po.DeptPO{}).Where("id = ?", id).Count(&n).Error; err != nil {
 			return err
@@ -92,7 +92,7 @@ func (r *DeptRepo) FindByID(ctx context.Context, id int64) (*po.DeptPO, error) {
 }
 
 // FindByIDs 批量按主键查询（WHERE id IN ?，照 MenuRepo.FindByIDs 模板）；供
-// 角色数据权限范围分配（AssignScopes，D-10）前置全量校验与 dept_name 冗余装配
+// 角色数据权限范围分配（AssignScopes）前置全量校验与 dept_name 冗余装配
 // 使用。缺失的 id 自然缺席结果集，由调用方对比求缺失集合。
 func (r *DeptRepo) FindByIDs(ctx context.Context, ids []int64) ([]po.DeptPO, error) {
 	if len(ids) == 0 {

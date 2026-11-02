@@ -1,7 +1,7 @@
 //go:build integration
 
 // Redis 集成测试容器基建（与 mysql.go 同构：独立容器 + cleanup + 镜像离线自适应）。
-// D-10/D-12 铁律：自动化测试一律 testcontainers 独立容器，不锚定本机具名容器。
+// 铁律：自动化测试一律 testcontainers 独立容器，不锚定本机具名容器。
 package testutil
 
 import (

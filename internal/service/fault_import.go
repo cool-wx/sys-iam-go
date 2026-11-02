@@ -1,8 +1,8 @@
-// FAUL-02 Excel 三键 upsert 导入（源 FaultInfoApplicationService.importExcel
-// 62-90 蓝本）：8 列契约严格解析 + 行数/表头双前置防线（D-15）+ 整批单事务
+// Excel 三键 upsert 导入（源 FaultInfoApplicationService.importExcel
+// 62-90 蓝本）：8 列契约严格解析 + 行数/表头双前置防线 + 整批单事务
 // （源 @Transactional 语义）+ ImportResult 契约（FEATURES.md:205）。
 //
-// 8 列契约（源 FaultInfo @ExcelProperty 声明序，D-14/D-15 锁定照抄不重排、
+// 8 列契约（源 FaultInfo @ExcelProperty 声明序，锁定照抄不重排、
 // 禁容错重排——列序表 04-RESEARCH Implementation Guidance）：
 //
 //	列 1 故障代码(code) / 列 2 故障变量(name，三键，空→skip) / 列 3 触发位
@@ -10,7 +10,7 @@
 //	列 5 故障描述(detail) / 列 6 故障原因(reason) / 列 7 故障位置(location，
 //	三键，空→NULL) / 列 8 解决方法(fix)
 //
-// dict_data_id 无 @ExcelProperty：不进 Excel 不进导入（D-15 prohibition）。
+// dict_data_id 无 @ExcelProperty：不进 Excel 不进导入（设计锁定）。
 package service
 
 import (
@@ -29,12 +29,12 @@ import (
 	"github.com/cool-wx/sys-iam-go/pkg/types"
 )
 
-// maxImportRows 导入行数上限（含表头计，D-15 内存防线）：流式迭代读取（WR-03）
+// maxImportRows 导入行数上限（含表头计，内存防线）：流式迭代读取
 // 中逐行计数，超限在读取流阶段立即拒绝、不再继续读——不存在 GetRows 全量载入
 // 步骤，20MB xlsx zip 炸弹（高压缩比工作表）无「解压后数百 MB～GB 全量缓冲」
 // 放大面。工控机内存推导：5000 行 × ~2KB/行（8 列 × 平均 250 字符）≈ 10MB
 // 解析上界，叠加 BodyLimitWithMB(20) 体积封顶与 MaxMultipartMemory 8MB 落盘
-// 阈值，三维封顶（T-4-11 DoS 缓解）。
+// 阈值，三维封顶（DoS 缓解）。
 const maxImportRows = 5000
 
 // faultImportHeaders 契约表头文案（列序即 8 列契约，逐一全等比较——禁容错）。
@@ -49,11 +49,11 @@ func strPtr(s string) *string {
 	return &s
 }
 
-// ImportExcel Excel 导入全链（FAUL-02）。防线顺序即解析顺序（prohibition：
+// ImportExcel Excel 导入全链。防线顺序即解析顺序（设计纪律：
 // 行数上限与表头校验必须在解析用户数据前生效）：
 //
 //	(a) OpenReader + Rows("Sheet1") 流式行迭代器（源 ExcelHelper 默认 sheet 名；
-//	    WR-03：替代 GetRows 全量载入——行数防线在读取流阶段即生效，超限文件读到
+//	    替代 GetRows 全量载入——行数防线在读取流阶段即生效，超限文件读到
 //	    上限立即中断读取，无全量缓冲面）
 //	(b) 表头严格匹配（首行）：前 8 列逐一全等 → 不符 400 整批拒绝
 //	(c) 行数上限（含表头计）：流式逐行计数，超限在读取阶段立即 400 整批拒绝
@@ -62,10 +62,10 @@ func strPtr(s string) *string {
 //	    任一可解析列失败（触发位非数字等）→ 行错误上抛
 //	(e) 整批单事务：tx 变体 repo FindByThreeKeys 命中 → Patch 复用原行 id →
 //	    updateCount++；未命中 → Create → insertCount++；任一行 error 上抛即
-//	    全批无痕回滚（源 @Transactional 语义，D-15）
+//	    全批无痕回滚（源 @Transactional 语义）
 //	(f) 返回 ImportResult{insertCount, updateCount}
 func (s *FaultService) ImportExcel(ctx context.Context, r io.Reader) (*dto.ImportResult, error) {
-	// (a) 打开工作簿并取 Sheet1 流式行迭代器（WR-03：行数防线前移到读取流阶段）
+	// (a) 打开工作簿并取 Sheet1 流式行迭代器（行数防线前移到读取流阶段）
 	f, err := excelize.OpenReader(r)
 	if err != nil {
 		return nil, errcode.New(errcode.CodeInvalidParam, "Excel 文件无法解析")
@@ -89,7 +89,7 @@ func (s *FaultService) ImportExcel(ctx context.Context, r io.Reader) (*dto.Impor
 		rowCount++
 		if rowCount == 1 {
 			// (b) 表头严格匹配：前 8 列逐一与契约文案全等（列序禁重排禁容错，
-			// D-15——行尾空单元格跳过，不足 8 列的表头行按缺列处理即不符）
+			// 行尾空单元格跳过，不足 8 列的表头行按缺列处理即不符）
 			for i, want := range faultImportHeaders {
 				got := ""
 				if len(row) > i {
@@ -102,7 +102,7 @@ func (s *FaultService) ImportExcel(ctx context.Context, r io.Reader) (*dto.Impor
 			continue
 		}
 		// (c) 行数上限（含表头计）：超限文件在读取流阶段拒绝——不进逐行解析、
-		// 不再继续读后续行（D-15 内存防线，WR-03 前置）
+		// 不再继续读后续行（内存防线前置）
 		if rowCount > maxImportRows {
 			return nil, errcode.New(errcode.CodeInvalidParam, fmt.Sprintf("导入数据超过上限 %d 行", maxImportRows))
 		}

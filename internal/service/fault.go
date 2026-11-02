@@ -1,7 +1,7 @@
-// Package service 故障域业务逻辑（FAUL-01）：CRUD + 分页列表（code 索引列 eq
+// Package service 故障域业务逻辑：CRUD + 分页列表（code 索引列 eq
 // 过滤）+ 服务端默认值 bit_index=-1/type=3（GORM nil 指针显式写 NULL 会绕过 DB
 // 列默认——默认值语义由本层承担，不依赖 DDL DEFAULT）。Excel 三键 upsert 导入
-// 见 fault_import.go（FAUL-02）。无 builtin 守卫（源 fault 域无 builtin 概念，
+// 见 fault_import.go。无 builtin 守卫（源 fault 域无 builtin 概念，
 // 04-RESEARCH 横切发现 5）；无唯一索引无 1062 分支。
 package service
 
@@ -21,7 +21,7 @@ import (
 )
 
 // FaultService 故障域服务。db 供 Excel 导入显式事务（SkipDefaultTransaction 下
-// 唯一事务边界，04-04 Task 2——照 RoleService 持 db 构造形态）。
+// 唯一事务边界——照 RoleService 持 db 构造形态）。
 type FaultService struct {
 	db   *gorm.DB
 	repo *repository.FaultInfoRepo
@@ -34,7 +34,7 @@ func NewFaultService(db *gorm.DB, repo *repository.FaultInfoRepo) *FaultService 
 
 // Create 创建故障信息：bitIndex 未传服务端默认 -1、type 未传默认 3(UNKNOWN)
 // （源字段默认值语义——DDL DEFAULT -1/3 仅为兜底，GORM nil 指针显式写 NULL 会
-// 绕过列默认，故服务端承担，FAUL-01）。审计字段由 PO 钩子填充（ENG-02）。
+// 绕过列默认，故服务端承担）。审计字段由 PO 钩子填充。
 func (s *FaultService) Create(ctx context.Context, req *dto.FaultCreateReq) (*dto.FaultResp, error) {
 	m := &po.FaultInfoPO{
 		Code:     req.Code,
@@ -67,7 +67,7 @@ func (s *FaultService) Create(ctx context.Context, req *dto.FaultCreateReq) (*dt
 	return dto.ToFaultResp(m), nil
 }
 
-// Update 更新故障信息（部分更新，ENG-05）：白名单 code/name/bit_index/type/
+// Update 更新故障信息（部分更新）：白名单 code/name/bit_index/type/
 // dict_data_id/detail/reason/location/fix/remark（nil=不写库；空串=显式清空
 // 照写）。落库后回读返回。
 func (s *FaultService) Update(ctx context.Context, id int64, req *dto.FaultUpdateReq) (*dto.FaultResp, error) {

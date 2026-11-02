@@ -24,16 +24,16 @@ func NewMenuRepo(db *gorm.DB) *MenuRepo {
 }
 
 // Create 插入一行；ctx 经 WithContext 传递，供审计钩子读取 identity。
-// 参数化由 GORM 占位符保证，不拼 SQL 字符串（T-1-03）。
+// 参数化由 GORM 占位符保证，不拼 SQL 字符串。
 func (r *MenuRepo) Create(ctx context.Context, m *po.MenuPO) error {
 	return r.db.WithContext(ctx).Create(m).Error
 }
 
-// Patch 显式列更新（零值保护核心，ENG-05；CR-01 回读确认语义与 UserRepo.Patch
-// 一致）：只写 cols 中出现的列（白名单由调用方 service 层收敛，T-1-10）；恒带
-// Where("id = ?") 防全表更新（T-1-08）。update_time 与审计操作人列在此显式并入
+// Patch 显式列更新（零值保护核心；回读确认语义与 UserRepo.Patch
+// 一致）：只写 cols 中出现的列（白名单由调用方 service 层收敛）；恒带
+// Where("id = ?") 防全表更新。update_time 与审计操作人列在此显式并入
 // map——GORM 对 Updates(map) 不写钩子改动的结构体字段（已知语义坑），显式并入
-// 保证确定性。绝不在更新路径调用 Save（Pitfall 3）。
+// 保证确定性。绝不在更新路径调用 Save。
 func (r *MenuRepo) Patch(ctx context.Context, id int64, cols map[string]any) error {
 	if cols == nil {
 		cols = map[string]any{}
@@ -50,7 +50,7 @@ func (r *MenuRepo) Patch(ctx context.Context, id int64, cols map[string]any) err
 	}
 	if res.RowsAffected == 0 {
 		// 0 变更 ≠ 不存在：同秒重复提交相同内容时 SET 值全等 → 0 行变更但行存在，
-		// 需 Count 二次确认（CR-01），仅当行确实不存在才返回 ErrNotFound
+		// 需 Count 二次确认，仅当行确实不存在才返回 ErrNotFound
 		var n int64
 		if err := r.db.WithContext(ctx).Model(&po.MenuPO{}).Where("id = ?", id).Count(&n).Error; err != nil {
 			return err
@@ -71,7 +71,7 @@ func (r *MenuRepo) Delete(ctx context.Context, id int64) error {
 }
 
 // List 全量查询，ORDER BY sort ASC, id ASC（源 MenuRepositoryImpl list
-// orderByAsc(sort)；id ASC tiebreaker 保证同 sort 稳定序——Phase 1 先例）。
+// orderByAsc(sort)；id ASC tiebreaker 保证同 sort 稳定序）。
 // 无分页：树查询与源 list 语义（前端一次性拉全量建树）。
 func (r *MenuRepo) List(ctx context.Context) ([]po.MenuPO, error) {
 	var menus []po.MenuPO
@@ -98,7 +98,7 @@ func (r *MenuRepo) FindByID(ctx context.Context, id int64) (*po.MenuPO, error) {
 }
 
 // FindByIDs 批量按主键查询（WHERE id IN ?）；供角色 assignMenus 前置全量校验
-// 与冗余 menuName 装配使用（02-02 Task 2 依赖）。缺失的 id 自然缺席结果集，
+// 与冗余 menuName 装配使用。缺失的 id 自然缺席结果集，
 // 由调用方对比求缺失集合。
 func (r *MenuRepo) FindByIDs(ctx context.Context, ids []int64) ([]po.MenuPO, error) {
 	if len(ids) == 0 {

@@ -16,7 +16,7 @@ type RoleRef struct {
 	RoleCode string
 }
 
-// UserRule boot 对账投影（casbin g 行原料，T-3-05）：user → role_code。
+// UserRule boot 对账投影（casbin g 行原料）：user → role_code。
 type UserRule struct {
 	UserID   int64
 	RoleCode string
@@ -28,7 +28,7 @@ type RolePermRule struct {
 	Perm     string
 }
 
-// RoleScope 用户角色档位投影（datascope Resolve 数据源，PERM-03）：role_id +
+// RoleScope 用户角色档位投影（datascope Resolve 数据源）：role_id +
 // data_scope 指针列——NULL 精确保留（存量行为 NULL 的角色不贡献档位，Widest 跳过）。
 type RoleScope struct {
 	RoleID    int64
@@ -46,9 +46,9 @@ func NewRelationRepo(db *gorm.DB) *RelationRepo {
 }
 
 // FindRolesByUserIDs 一次 IN 查询返回 user→roles 映射（两查询防 N+1 的第一查询，
-// USER-05/AUTH-01 会话装配共用）。返回 map 恒非 nil（无角色用户缺席即可）；行内
+// 会话装配共用）。返回 map 恒非 nil（无角色用户缺席即可）；行内
 // role 行已被 JOIN 过滤（不存在的 role_id 不产生 RoleRef）；停用角色不产生行
-// （WR-04：r.status=1——停用角色对登录装配/详情装配即刻零效果，与 D-09 用户停用
+// （r.status=1——停用角色对登录装配/详情装配即刻零效果，与用户停用
 // 家族语义对称）。
 func (r *RelationRepo) FindRolesByUserIDs(ctx context.Context, userIDs []int64) (map[int64][]RoleRef, error) {
 	out := make(map[int64][]RoleRef, len(userIDs))
@@ -82,9 +82,9 @@ func (r *RelationRepo) FindRolesByUserIDs(ctx context.Context, userIDs []int64) 
 
 // FindRoleScopesByUserIDs 一次 IN 查询返回 user→(roleID, data_scope) 映射（照
 // FindRolesByUserIDs JOIN 模板）：datascope 档位聚合（Widest）与档位 4 角色部门
-// 集查询（FindDeptIDsByRoleIDs）的单一数据源（service Resolve 挂接，PERM-03）。
+// 集查询（FindDeptIDsByRoleIDs）的单一数据源（service Resolve 挂接）。
 // 行内 role 行已被 JOIN 过滤（不存在的 role_id 不产生行）；停用角色不产生行
-// （WR-04：停用角色的档位不参与聚合，否则其 data_scope 仍贡献行过滤面）。返回
+// （停用角色的档位不参与聚合，否则其 data_scope 仍贡献行过滤面）。返回
 // map 恒非 nil（无角色用户缺席即可）。
 func (r *RelationRepo) FindRoleScopesByUserIDs(ctx context.Context, userIDs []int64) (map[int64][]RoleScope, error) {
 	out := make(map[int64][]RoleScope, len(userIDs))
@@ -111,9 +111,9 @@ func (r *RelationRepo) FindRoleScopesByUserIDs(ctx context.Context, userIDs []in
 	return out, nil
 }
 
-// FindUserRoleCodes boot 对账数据源一（casbin g 行导入，T-3-05）：sys_user_role
+// FindUserRoleCodes boot 对账数据源一（casbin g 行导入）：sys_user_role
 // ur JOIN sys_role r 投影 user_id + role_code（照 FindRolesByUserIDs JOIN 模板）。
-// 行内 role 行已被 JOIN 过滤（不存在的 role_id 不产生行）；停用角色不导入（WR-04：
+// 行内 role 行已被 JOIN 过滤（不存在的 role_id 不产生行）；停用角色不导入（
 // 否则停用角色的 g 行在重启后复活——运行期 Update 停用已 ClearRole，boot 对账必须
 // 同口径，且停用 super_admin 的豁免 g 行绝不可经对账还魂）。返回恒非 nil。
 func (r *RelationRepo) FindUserRoleCodes(ctx context.Context) ([]UserRule, error) {
@@ -138,7 +138,7 @@ func (r *RelationRepo) FindUserRoleCodes(ctx context.Context) ([]UserRule, error
 
 // FindRolePerms boot 对账数据源二（casbin p 行导入）：sys_role_menu rm JOIN
 // sys_role r（取 role_code）JOIN sys_menu m（取 permission 串），仅投影非空
-// permission；停用角色不导入（WR-04：与 FindUserRoleCodes 同口径——停用角色的
+// permission；停用角色不导入（与 FindUserRoleCodes 同口径——停用角色的
 // p 行运行期已随 Update 停用 ClearRole，对账不得复活）；内存 map 去重（Error 1869
 // 防御第一道——MySQL 8.4 同批重复行整批失败，03-RESEARCH probe 实证）。返回恒非 nil。
 func (r *RelationRepo) FindRolePerms(ctx context.Context) ([]RolePermRule, error) {
@@ -183,7 +183,7 @@ func (r *RelationRepo) FindMenuIDsByRoleID(ctx context.Context, roleID int64) (m
 }
 
 // DeleteRoleMenus 删除角色的全部菜单关联（assignMenus 全删重建的前半步 /
-// role 删除四连删的第二步）；roleID 经参数化占位符传入（T-1-03）。
+// role 删除四连删的第二步）；roleID 经参数化占位符传入。
 func (r *RelationRepo) DeleteRoleMenus(ctx context.Context, roleID int64) (err error) {
 	return r.db.WithContext(ctx).Where("role_id = ?", roleID).Delete(&po.RoleMenuPO{}).Error
 }
@@ -205,7 +205,7 @@ func (r *RelationRepo) BatchCreateRoleMenus(ctx context.Context, rows []po.RoleM
 
 // DeleteUserRolesByUserID 删除用户的全部角色关联（AssignRoles 全删重建的前半步 /
 // user 删除事务的第一步——源 removeById 先删关联再删用户顺序）；userID 经参数化
-// 占位符传入（T-1-03）。可接事务 tx（NewRelationRepo(tx)）。
+// 占位符传入。可接事务 tx（NewRelationRepo(tx)）。
 func (r *RelationRepo) DeleteUserRolesByUserID(ctx context.Context, userID int64) (err error) {
 	return r.db.WithContext(ctx).Where("user_id = ?", userID).Delete(&po.UserRolePO{}).Error
 }
@@ -220,8 +220,8 @@ func (r *RelationRepo) BatchCreateUserRoles(ctx context.Context, rows []po.UserR
 	return r.db.WithContext(ctx).CreateInBatches(rows, 100).Error
 }
 
-// ---- sys_role_dept（dataScope 档位 4「指定部门」集合存储，D-10——与 RoleMenu
-// 三方法完全同构；四方法均经占位符参数化，T-1-03）----
+// ---- sys_role_dept（dataScope 档位 4「指定部门」集合存储——与 RoleMenu
+// 三方法完全同构；四方法均经占位符参数化）----
 
 // FindDeptIDsByRoleID 返回角色已配置的 deptId 列表（GET /roles/:id/scopes 契约）；
 // 未配置返回空切片（恒非 nil）。dept_id 升序输出保证稳定（照 FindMenuIDsByRoleID
@@ -241,13 +241,13 @@ func (r *RelationRepo) FindDeptIDsByRoleID(ctx context.Context, roleID int64) (d
 }
 
 // DeleteRoleDepts 删除角色的全部数据权限范围部门关联（AssignScopes 全删重建的
-// 前半步 / role 删除四连删的第三步，D-10）；roleID 经参数化占位符传入（T-1-03）。
+// 前半步 / role 删除四连删的第三步）；roleID 经参数化占位符传入。
 func (r *RelationRepo) DeleteRoleDepts(ctx context.Context, roleID int64) (err error) {
 	return r.db.WithContext(ctx).Where("role_id = ?", roleID).Delete(&po.RoleDeptPO{}).Error
 }
 
 // BatchCreateRoleDepts 批量插入角色-范围部门关联（AssignScopes 全删重建的后半步）；
-// 行内 role_name/dept_name 冗余列由 service 层装配（查库值非请求体，T-2-15）。
+// 行内 role_name/dept_name 冗余列由 service 层装配（查库值非请求体）。
 func (r *RelationRepo) BatchCreateRoleDepts(ctx context.Context, rows []po.RoleDeptPO) (err error) {
 	if len(rows) == 0 {
 		return nil
@@ -256,8 +256,8 @@ func (r *RelationRepo) BatchCreateRoleDepts(ctx context.Context, rows []po.RoleD
 }
 
 // FindDeptIDsByRoleIDs 一次 IN 查询返回 role→deptIDs 映射（照 FindRolesByUserIDs
-// 映射模板）：dataScope 档位 4 多角色部门集合并集的数据源（service Resolve 挂接，
-// PERM-03）。返回 map 恒非 nil（无配置角色缺席即可）。
+// 映射模板）：dataScope 档位 4 多角色部门集合并集的数据源（service Resolve 挂接）。
+// 返回 map 恒非 nil（无配置角色缺席即可）。
 func (r *RelationRepo) FindDeptIDsByRoleIDs(ctx context.Context, roleIDs []int64) (map[int64][]int64, error) {
 	out := make(map[int64][]int64, len(roleIDs))
 	if len(roleIDs) == 0 {
@@ -282,7 +282,7 @@ func (r *RelationRepo) FindDeptIDsByRoleIDs(ctx context.Context, roleIDs []int64
 	return out, nil
 }
 
-// ---- 角色策略重建原料（WR-04：角色停用/恢复的运行期策略同步）----
+// ---- 角色策略重建原料（角色停用/恢复的运行期策略同步）----
 
 // FindPermsByRoleID 返回角色经 sys_role_menu 关联的全部非空 permission 串（升序、
 // map 去重——Error 1869 防御同 FindRolePerms）：角色恢复 ENABLED 时 SyncRolePerms

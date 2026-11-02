@@ -28,7 +28,7 @@ func NewOperationLogRepo(db *gorm.DB) *OperationLogRepo {
 }
 
 // InsertBatch 批量插入（OpLogWriter worker 消费——批量落库失败由 writer 层
-// slog.Warn 静默丢弃，绝不反压业务）。参数化由 GORM 占位符保证（T-1-03）。
+// slog.Warn 静默丢弃，绝不反压业务）。参数化由 GORM 占位符保证。
 func (r *OperationLogRepo) InsertBatch(ctx context.Context, entries []po.OperationLogPO) error {
 	if len(entries) == 0 {
 		return nil
@@ -36,13 +36,13 @@ func (r *OperationLogRepo) InsertBatch(ctx context.Context, entries []po.Operati
 	return r.db.WithContext(ctx).CreateInBatches(&entries, len(entries)).Error
 }
 
-// List 分页查询：Count 与记录查询经同一闭包构造（条件集天然一致，防 total 漂移，
-// P15）。无 dataScope（D-03 本阶段零应用——闭包结构照 user.go List 去掉 filter.Apply）。
-// 三条件 like 模糊（值经占位符参数化，% 拼接在参数侧不进 SQL 文本——T-1-03）；
+// List 分页查询：Count 与记录查询经同一闭包构造（条件集天然一致，防 total 漂移）。
+// 无 dataScope（本阶段零应用——闭包结构照 user.go List 去掉 filter.Apply）。
+// 三条件 like 模糊（值经占位符参数化，% 拼接在参数侧不进 SQL 文本）；
 // 排序 create_time DESC, id DESC（源 orderByDesc createTime + 稳定 tiebreaker）；
-// 排序串为代码常量，无 ORDER 注入面（T-1-10）。
+// 排序串为代码常量，无 ORDER 注入面。
 // page/size 已由 paging.ParseWithDefaults 钳位（≥1 且 page ≤ maxPage）；Offset
-// 计算后仍防负（WR-03 双保险，P8）。
+// 计算后仍防负（双保险）。
 func (r *OperationLogRepo) List(ctx context.Context, page, size int, f OlogListFilter) ([]po.OperationLogPO, int64, error) {
 	q := func() *gorm.DB {
 		query := r.db.WithContext(ctx).Model(&po.OperationLogPO{})
@@ -63,7 +63,7 @@ func (r *OperationLogRepo) List(ctx context.Context, page, size int, f OlogListF
 	}
 	offset := (page - 1) * size
 	if offset < 0 {
-		// int 溢出保护（WR-03，双保险）：GORM clause.Limit 仅在 Offset>0 时写
+		// int 溢出保护（双保险）：GORM clause.Limit 仅在 Offset>0 时写
 		// OFFSET 子句，溢出为负会被静默省略 → 静默回退第 1 页数据。
 		offset = 0
 	}

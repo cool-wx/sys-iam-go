@@ -1,5 +1,5 @@
 // sys_dict_type/sys_dict_data 数据访问（照 repository/menu.go + user.go List 模板；
-// List 分页闭包无 dataScope——D-03 拍板本阶段零 dataScope 应用，闭包内不得出现
+// List 分页闭包无 dataScope——本阶段零 dataScope 应用，闭包内不得出现
 // filter.Apply）。
 package repository
 
@@ -27,17 +27,17 @@ func NewDictTypeRepo(db *gorm.DB) *DictTypeRepo {
 
 // Create 插入一行；ctx 经 WithContext 传递，供审计钩子读取 identity。
 // uk_dict_type 冲突时（TranslateError 开启）返回 gorm.ErrDuplicatedKey，
-// 由 service 层翻译为 400/10400「字典类型已存在」（DICT-01）。
-// 参数化由 GORM 占位符保证，不拼 SQL 字符串（T-1-03）。
+// 由 service 层翻译为 400/10400「字典类型已存在」。
+// 参数化由 GORM 占位符保证，不拼 SQL 字符串。
 func (r *DictTypeRepo) Create(ctx context.Context, m *po.DictTypePO) error {
 	return r.db.WithContext(ctx).Create(m).Error
 }
 
-// Patch 显式列更新（零值保护核心，ENG-05；CR-01 回读确认语义与 MenuRepo.Patch
-// 一致）：只写 cols 中出现的列（白名单由调用方 service 层收敛，T-1-10）；恒带
-// Where("id = ?") 防全表更新（T-1-08）。update_time 与审计操作人列在此显式并入
+// Patch 显式列更新（零值保护核心；回读确认语义与 MenuRepo.Patch
+// 一致）：只写 cols 中出现的列（白名单由调用方 service 层收敛）；恒带
+// Where("id = ?") 防全表更新。update_time 与审计操作人列在此显式并入
 // map——GORM 对 Updates(map) 不写钩子改动的结构体字段（已知语义坑），显式并入
-// 保证确定性。绝不在更新路径调用 Save（Pitfall 3）。
+// 保证确定性。绝不在更新路径调用 Save。
 func (r *DictTypeRepo) Patch(ctx context.Context, id int64, cols map[string]any) error {
 	if cols == nil {
 		cols = map[string]any{}
@@ -54,7 +54,7 @@ func (r *DictTypeRepo) Patch(ctx context.Context, id int64, cols map[string]any)
 	}
 	if res.RowsAffected == 0 {
 		// 0 变更 ≠ 不存在：同秒重复提交相同内容时 SET 值全等 → 0 行变更但行存在，
-		// 需 Count 二次确认（CR-01），仅当行确实不存在才返回 ErrNotFound
+		// 需 Count 二次确认，仅当行确实不存在才返回 ErrNotFound
 		var n int64
 		if err := r.db.WithContext(ctx).Model(&po.DictTypePO{}).Where("id = ?", id).Count(&n).Error; err != nil {
 			return err
@@ -74,7 +74,7 @@ func (r *DictTypeRepo) Delete(ctx context.Context, id int64) error {
 }
 
 // List 分页查询（Count 与查询同一闭包防 total 漂移——user.go List 先例）；
-// 无 dataScope（D-03：闭包内无 filter.Apply）；ORDER BY create_time DESC, id DESC
+// 无 dataScope（闭包内无 filter.Apply）；ORDER BY create_time DESC, id DESC
 // （源 PageHelper orderByDesc(createTime) + id tiebreaker 稳定序）。
 func (r *DictTypeRepo) List(ctx context.Context, page, size int) ([]po.DictTypePO, int64, error) {
 	q := func() *gorm.DB {
@@ -99,7 +99,7 @@ func (r *DictTypeRepo) List(ctx context.Context, page, size int) ([]po.DictTypeP
 }
 
 // FindByID 按主键查询；未命中返回 ErrNotFound（10300）。供 dict_data add/edit
-// 的类型存在性校验复用（FindByTypeAndID 语义，DICT-02）。
+// 的类型存在性校验复用（FindByTypeAndID 语义）。
 func (r *DictTypeRepo) FindByID(ctx context.Context, id int64) (*po.DictTypePO, error) {
 	var m po.DictTypePO
 	err := r.db.WithContext(ctx).Where("id = ?", id).First(&m).Error
@@ -123,12 +123,12 @@ func NewDictDataRepo(db *gorm.DB) *DictDataRepo {
 }
 
 // Create 插入一行；ctx 经 WithContext 传递，供审计钩子读取 identity。
-// sys_dict_data 无唯一索引——不触发 1062（DICT-02）。
+// sys_dict_data 无唯一索引——不触发 1062。
 func (r *DictDataRepo) Create(ctx context.Context, m *po.DictDataPO) error {
 	return r.db.WithContext(ctx).Create(m).Error
 }
 
-// Patch 显式列更新（零值保护核心，ENG-05；CR-01 语义与 DictTypeRepo.Patch 一致）。
+// Patch 显式列更新（零值保护核心；语义与 DictTypeRepo.Patch 一致）。
 func (r *DictDataRepo) Patch(ctx context.Context, id int64, cols map[string]any) error {
 	if cols == nil {
 		cols = map[string]any{}
@@ -161,7 +161,7 @@ func (r *DictDataRepo) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&po.DictDataPO{}).Error
 }
 
-// List 分页查询；dictTypeID 非零时 Where dict_type_id = ?（DICT-03 可选过滤分支，
+// List 分页查询；dictTypeID 非零时 Where dict_type_id = ?（可选过滤分支，
 // 源 list?dictTypeId= 语义——不传返回全量分页）。
 func (r *DictDataRepo) List(ctx context.Context, page, size int, dictTypeID int64) ([]po.DictDataPO, int64, error) {
 	q := func() *gorm.DB {

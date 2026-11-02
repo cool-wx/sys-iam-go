@@ -1,5 +1,5 @@
 // Package service 系统配置域业务逻辑：CRUD + 按 key 读取（uk_config_key 1062
-// 翻译 + key 未命中翻译，CONF-01）。
+// 翻译 + key 未命中翻译）。
 package service
 
 import (
@@ -27,8 +27,8 @@ func NewConfigService(repo *repository.SysConfigRepo) *ConfigService {
 }
 
 // Create 创建配置：uk_config_key 冲突（TranslateError 开启后 MySQL 1062 →
-// gorm.ErrDuplicatedKey，P4）译为 400/10400「配置键已存在」（CONF-01，Phase 2
-// 惯例代码实证）。审计字段由 PO 钩子服务端填充（ENG-02）。
+// gorm.ErrDuplicatedKey）译为 400/10400「配置键已存在」（惯例代码
+// 实证）。审计字段由 PO 钩子服务端填充。
 func (s *ConfigService) Create(ctx context.Context, req *dto.ConfigCreateReq) (*dto.ConfigResp, error) {
 	m := &po.SysConfigPO{
 		ConfigKey:   *req.ConfigKey,
@@ -47,10 +47,10 @@ func (s *ConfigService) Create(ctx context.Context, req *dto.ConfigCreateReq) (*
 	return dto.ToConfigResp(m), nil
 }
 
-// Update 更新配置（部分更新，ENG-05）：白名单 config_key/config_value/
+// Update 更新配置（部分更新）：白名单 config_key/config_value/
 // config_type/remark（nil=不写库；空串=显式清空照写）。落库后回读返回最新契约。
 // 白名单含唯一键列 config_key，撞 uk_config_key 与 Create 同冲突同翻译
-// （WR-02：400/10400「配置键已存在」，不透传 500）。
+// （400/10400「配置键已存在」，不透传 500）。
 func (s *ConfigService) Update(ctx context.Context, id int64, req *dto.ConfigUpdateReq) (*dto.ConfigResp, error) {
 	cols := map[string]any{}
 	if req.ConfigKey != nil {
@@ -102,7 +102,7 @@ func (s *ConfigService) GetByKey(ctx context.Context, key string) (*po.SysConfig
 	return m, nil
 }
 
-// List 配置分页列表（无 dataScope——D-03 拍板零应用）。
+// List 配置分页列表（无 dataScope）。
 func (s *ConfigService) List(ctx context.Context, page, size int) (*paging.PageData[dto.ConfigResp], error) {
 	items, total, err := s.repo.List(ctx, page, size)
 	if err != nil {

@@ -10,7 +10,7 @@ import (
 )
 
 // ShiftPO sys_shift 表映射（13 列，列名对齐真实 DDL，snake_case）。
-// start_time/end_time 为 MySQL TIME 列——以 HH:MM:SS 字符串直传（SHFT-02 源行为
+// start_time/end_time 为 MySQL TIME 列——以 HH:MM:SS 字符串直传（源行为
 // 直译，不加 time.Time 解析层、不加自定义格式校验；非法串由 DB 报错走既有翻译
 // 路径）。无唯一索引。
 type ShiftPO struct {

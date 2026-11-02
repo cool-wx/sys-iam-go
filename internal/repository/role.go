@@ -31,10 +31,10 @@ func (r *RoleRepo) Create(ctx context.Context, role *po.RolePO) error {
 	return r.db.WithContext(ctx).Create(role).Error
 }
 
-// Patch 显式列更新（零值保护核心，ENG-05；CR-01 回读确认语义与 UserRepo.Patch
-// 一致）：只写 cols 中出现的列（白名单由调用方 service 层收敛，T-1-10）；恒带
-// Where("id = ?") 防全表更新（T-1-08）。update_time 与审计操作人列在此显式并入
-// map（GORM Updates(map) 钩子语义坑），绝不在更新路径调用 Save（Pitfall 3）。
+// Patch 显式列更新（零值保护核心；回读确认语义与 UserRepo.Patch
+// 一致）：只写 cols 中出现的列（白名单由调用方 service 层收敛）；恒带
+// Where("id = ?") 防全表更新。update_time 与审计操作人列在此显式并入
+// map（GORM Updates(map) 钩子语义坑），绝不在更新路径调用 Save。
 func (r *RoleRepo) Patch(ctx context.Context, id int64, cols map[string]any) error {
 	if cols == nil {
 		cols = map[string]any{}
@@ -50,7 +50,7 @@ func (r *RoleRepo) Patch(ctx context.Context, id int64, cols map[string]any) err
 		return res.Error
 	}
 	if res.RowsAffected == 0 {
-		// 0 变更 ≠ 不存在：Count 二次确认（CR-01）
+		// 0 变更 ≠ 不存在：Count 二次确认
 		var n int64
 		if err := r.db.WithContext(ctx).Model(&po.RolePO{}).Where("id = ?", id).Count(&n).Error; err != nil {
 			return err
@@ -112,7 +112,7 @@ func (r *RoleRepo) FindByID(ctx context.Context, id int64) (*po.RolePO, error) {
 	return &role, nil
 }
 
-// FindByIDs 批量按主键查询（WHERE id IN ?）；供 02-03 用户角色装配等需全量
+// FindByIDs 批量按主键查询（WHERE id IN ?）；供用户角色装配等需全量
 // 场景使用（源 RoleApplicationService.listByIds 等价）。缺失 id 自然缺席结果集。
 func (r *RoleRepo) FindByIDs(ctx context.Context, ids []int64) ([]po.RolePO, error) {
 	if len(ids) == 0 {

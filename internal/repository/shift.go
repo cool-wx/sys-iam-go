@@ -1,4 +1,4 @@
-// sys_shift 数据访问（照 repository/menu.go 模板；List 全量无分页——SHFT-01
+// sys_shift 数据访问（照 repository/menu.go 模板；List 全量无分页——
 // 源 list 无分页行为直译，勿统一为分页）。
 package repository
 
@@ -29,7 +29,7 @@ func (r *ShiftRepo) Create(ctx context.Context, m *po.ShiftPO) error {
 	return r.db.WithContext(ctx).Create(m).Error
 }
 
-// Patch 显式列更新（零值保护核心，ENG-05；CR-01 回读确认语义同族）。
+// Patch 显式列更新（零值保护核心；回读确认语义同族）。
 func (r *ShiftRepo) Patch(ctx context.Context, id int64, cols map[string]any) error {
 	if cols == nil {
 		cols = map[string]any{}
@@ -62,7 +62,7 @@ func (r *ShiftRepo) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&po.ShiftPO{}).Error
 }
 
-// List 全量查询（无分页——SHFT-01 源 list 无分页行为直译，勿统一为分页），
+// List 全量查询（无分页——源 list 无分页行为直译，勿统一为分页），
 // ORDER BY shift_code ASC, id ASC（源列序 + id tiebreaker 稳定序）。
 func (r *ShiftRepo) List(ctx context.Context) ([]po.ShiftPO, error) {
 	var items []po.ShiftPO

@@ -1,6 +1,6 @@
 // Package service 角色域业务逻辑：CRUD + builtin 守卫（409/10602 零删除前置拦截）
-// + 四连删事务（user_role→role_menu→role_dept→role，D-10 第三删档位 4 存储）
-// + assignMenus/assignScopes 全量替换（ROLE-01/02/03 + PERM-03）。
+// + 四连删事务（user_role→role_menu→role_dept→role，第三删档位 4 存储）
+// + assignMenus/assignScopes 全量替换。
 package service
 
 import (
@@ -26,8 +26,8 @@ import (
 
 // RoleService 角色域服务。db 用于 service 层显式事务（四连删 / assignMenus 与
 // assignScopes 全删重建——SkipDefaultTransaction 下唯一事务边界）；enf 用于业务
-// 事务提交成功后的 Casbin 策略双轨同步（D-13——adapter 独立 Session 物理上不在
-// 业务事务内，两独立提交）；deptRepo 供数据权限范围部门（D-10 档位 4）前置校验。
+// 事务提交成功后的 Casbin 策略双轨同步（adapter 独立 Session 物理上不在
+// 业务事务内，两独立提交）；deptRepo 供数据权限范围部门（档位 4）前置校验。
 type RoleService struct {
 	db           *gorm.DB
 	roleRepo     *repository.RoleRepo
@@ -35,9 +35,9 @@ type RoleService struct {
 	relationRepo *repository.RelationRepo
 	deptRepo     *repository.DeptRepo
 	enf          *authz.Enforcer
-	// pub 改名事件发布依赖（Phase 5 SYNC-01）：本 plan 一次改齐构造签名
-	//（照 04-01 perms.go 六域常量先例消除装配串行链），RoleNameChanged 发布
-	// 挂点在 05-02 实装——字段暂存不用（Go 允许未使用的 struct 字段）。
+	// pub 改名事件发布依赖（RoleNameChanged）：构造签名一次改齐
+	//（照 perms.go 六域常量先例消除装配串行链），发布时序契约见 internal/event
+	// 包注释——字段暂存不用（Go 允许未使用的 struct 字段）。
 	pub event.Publisher
 }
 
@@ -47,9 +47,9 @@ func NewRoleService(db *gorm.DB, roleRepo *repository.RoleRepo, menuRepo *reposi
 }
 
 // Create 创建角色：服务端默认值 dataScope=1/status=ENABLED/builtin=false
-// （源 Role.create 语义，ROLE-01）；role_code 唯一冲突（uk_role_code，注意
+// （源 Role.create 语义）；role_code 唯一冲突（uk_role_code，注意
 // utf8mb4_general_ci 大小写不敏感）译为 400「角色编码已存在」。builtin=true
-// 显式拒绝 400（WR-01：builtin 只能由 seed/迁移流程设定——放行会让 role:add
+// 显式拒绝 400（builtin 只能由 seed/迁移流程设定——放行会让 role:add
 // 制造守卫永不可删的"永生角色"，删除守卫不变量被绕过）。
 func (s *RoleService) Create(ctx context.Context, req *dto.RoleCreateReq) (*dto.RoleResp, error) {
 	if req.Builtin != nil && *req.Builtin {
@@ -80,14 +80,14 @@ func (s *RoleService) Create(ctx context.Context, req *dto.RoleCreateReq) (*dto.
 	return dto.ToRoleResp(role), nil
 }
 
-// Update 更新角色（部分更新，ENG-05）：白名单 role_name/data_scope/status/remark
-// （nil=不写库）。builtin 刻意不在白名单（WR-01：不可经 edit 翻转——否则 role:edit
+// Update 更新角色（部分更新）：白名单 role_name/data_scope/status/remark
+// （nil=不写库）。builtin 刻意不在白名单（不可经 edit 翻转——否则 role:edit
 // 持有者可先翻转 builtin=false 再 DELETE，builtin 删除守卫形同虚设，super_admin
 // 的 g 行随四连删永久消失=全系统管理员豁免被摧毁；请求体 builtin 键被 DTO 白名单
 // 忽略）。行不存在译为 404/10300「角色不存在: {id}」（源消息原文；code/HTTP 契约与
-// Phase 1 一致）。落库后回读返回最新契约；审计由 repo.Patch 显式并入（ENG-02）。
+// 全库统一）。落库后回读返回最新契约；审计由 repo.Patch 显式并入。
 //
-// status 显式传入时的运行期策略同步（WR-04：停用角色对授权即刻生效，D-09 家族
+// status 显式传入时的运行期策略同步（停用角色对授权即刻生效，家族
 // 语义在角色轴的对应物——用户轴停用踢会话，角色轴停用清策略）：
 //   - → DISABLED：Patch 落库后 ClearRole 双清该角色 p+g 行——持该角色的存量 token
 //     下一请求即 403（g 行没了 matcher 豁免与 p 行均不命中），停用是授权即刻撤销；
@@ -101,15 +101,15 @@ func (s *RoleService) Create(ctx context.Context, req *dto.RoleCreateReq) (*dto.
 // 的 404 挡死不同，Patch 幂等）。业务表是唯一事实源：停用期间 sys_role_menu/
 // sys_user_role 关联不动，恢复时全量重建即可。
 //
-// builtin × status 组合守卫（WR-06，前置拦截零写调用，与 Delete 的 builtin 删除
+// builtin × status 组合守卫（前置拦截零写调用，与 Delete 的 builtin 删除
 // 守卫对称——builtin 角色不可删除，亦不可经 status 路径停用）：req.Status 为
 // DISABLED 时先行查行校验 builtin，命中即 409/10604，Patch/ClearRole 一个都不触发。
 // 无守卫时停用 builtin 角色会经 ClearRole 双清全部 super_admin 持有者的豁免 g 行
 // （下一请求全 403），且 boot 对账 r.status=1 口径不还魂、role:edit 若仅 super_admin
-// 持有则无人可恢复——重启不自愈的锁死（WR-06 后果链）。仅拦 DISABLED：改名/档位/
+// 持有则无人可恢复——重启不自愈的锁死（后果链）。仅拦 DISABLED：改名/档位/
 // ENABLED 等更新不受影响（守卫零误伤）。
 func (s *RoleService) Update(ctx context.Context, id int64, req *dto.RoleUpdateReq) (*dto.RoleResp, error) {
-	// builtin 停用守卫（WR-06）：仅 status 显式 DISABLED 时触发，查行 fail-closed
+	// builtin 停用守卫：仅 status 显式 DISABLED 时触发，查行 fail-closed
 	//（ErrNotFound 译 404 域消息，与 Patch 后置 404 语义一致）
 	if req.Status != nil && *req.Status == types.UsageDisabled {
 		existing, err := s.roleRepo.FindByID(ctx, id)
@@ -123,7 +123,7 @@ func (s *RoleService) Update(ctx context.Context, id int64, req *dto.RoleUpdateR
 			return nil, errcode.ErrBuiltinRoleStatus
 		}
 	}
-	// 改名同步回读（Phase 5 SYNC-01，源 RoleApplicationService.editRole 的 oldName
+	// 改名同步回读（源 RoleApplicationService.editRole 的 oldName
 	// 取值前置同构）：仅当请求显式带角色名时回读旧行；行不存在提前 404 拦截，Patch
 	// 与发布一个都不触发。与上方 builtin 停用守卫的 FindByID
 	// **相互独立不合并**——守卫仅 status=DISABLED 触发，二者条件域不相交（本任务
@@ -158,13 +158,13 @@ func (s *RoleService) Update(ctx context.Context, id int64, req *dto.RoleUpdateR
 		}
 		return nil, err
 	}
-	// 改名事件发布（Patch 返回 nil 即已提交，D-02）：仅当本次请求带了角色名且回读
-	// 成功即发布（CR-01 修订：**不设**源 `roleName != null && !roleName.equals(oldName)`
+	// 改名事件发布（Patch 返回 nil 即已提交）：仅当本次请求带了角色名且回读
+	// 成功即发布（契约修订：**不设**源 `roleName != null && !roleName.equals(oldName)`
 	// 的新≠旧短路——主行已提交后重试同一请求时旧行已是新名，守卫恒假、事件永不
-	// 重发，D-03「重试幂等自愈」被证伪；显式带名即发布，幂等 UPDATE 使同名重发
+	// 重发——「重试幂等自愈」被证伪；显式带名即发布，幂等 UPDATE 使同名重发
 	// 退化为 no-op。"仅改备注/档位"（不带角色名）仍零发布，非无条件发布）。RolePO
 	// .RoleName 为非指针 string 列（DDL NOT NULL），无需空值兜底。Publish 失败上抛
-	// 500（D-03：客户端重试同一请求必重发事件，幂等 UPDATE 自愈，沿 casbin 双轨
+	// 500（客户端重试同一请求必重发事件，幂等 UPDATE 自愈，沿 casbin 双轨
 	// 纪律）。
 	if old != nil && req.RoleName != nil {
 		evt := event.NameChangedEvent{
@@ -174,7 +174,7 @@ func (s *RoleService) Update(ctx context.Context, id int64, req *dto.RoleUpdateR
 			NewName: *req.RoleName,
 		}
 		if err := s.pub.Publish(ctx, evt); err != nil {
-			return nil, err // → 500（D-03：同步 UPDATE 失败可观察，重试必重发自愈）
+			return nil, err // → 500（同步 UPDATE 失败可观察，重试必重发自愈）
 		}
 	}
 	// 运行期策略同步（仅 status 显式传入时触发；Patch 成功后执行，失败上抛 500
@@ -224,7 +224,7 @@ func (s *RoleService) Get(ctx context.Context, id int64) (*dto.RoleResp, error) 
 }
 
 // List 角色分页条件查询：roleName 语义（trim + LIKE + id ASC）由 repo 承担
-// （源特例，ROLE-03）；envelope 照 paging.PageData 契约。
+// （源特例）；envelope 照 paging.PageData 契约。
 func (s *RoleService) List(ctx context.Context, page, size int, roleName string) (*paging.PageData[dto.RoleResp], error) {
 	roles, total, err := s.roleRepo.List(ctx, page, size, roleName)
 	if err != nil {
@@ -238,11 +238,11 @@ func (s *RoleService) List(ctx context.Context, page, size int, roleName string)
 }
 
 // Delete 删除角色：builtin 守卫**前置拦截（零删除调用）**——builtin=true 直接
-// 409/10602「系统内置角色不可删除」，四连删一个都不触发（ROLE-02/D-14，源
-// removeById 语义）；否则**预清模式**（CR-02 修复裁决）：四连删事务提交前先
+// 409/10602「系统内置角色不可删除」，四连删一个都不触发（源
+// removeById 语义）；否则**预清模式**（修复裁决）：四连删事务提交前先
 // enf.ClearRole 双清 casbin 该角色 p+g 行，再 db.Transaction 四连删
-// user_role → role_menu → role_dept（D-10 档位 4 存储随角色连带清理）→ role
-// （前三步源顺序，第四删插在第三步；任一失败整体回滚，T-2-10——多步关联写绝不
+// user_role → role_menu → role_dept（档位 4 存储随角色连带清理）→ role
+// （前三步源顺序，第四删插在第三步；任一失败整体回滚——多步关联写绝不
 // 拆为多次独立提交）。
 //
 // 预清为何不可后置（原 post-commit ClearRole 缺陷）：清理放在事务提交后时，失败即
@@ -262,7 +262,7 @@ func (s *RoleService) Delete(ctx context.Context, id int64) error {
 	if role.Builtin != nil && *role.Builtin {
 		return errcode.ErrBuiltinRole
 	}
-	// 预清：双清 casbin 该角色的 p 行 + g 行（D-13/T-3-01 级联撤权——builtin 守卫
+	// 预清：双清 casbin 该角色的 p 行 + g 行（级联撤权——builtin 守卫
 	// 已保证不会对 builtin 角色走到这里）
 	if err := s.enf.ClearRole(role.RoleCode); err != nil {
 		return err
@@ -275,7 +275,7 @@ func (s *RoleService) Delete(ctx context.Context, id int64) error {
 		if err := relationTx.DeleteRoleMenus(ctx, id); err != nil {
 			return err
 		}
-		// 第四删（D-10）：sys_role_dept 与 sys_role_menu 同构关联，角色删除连带清理
+		// 第四删：sys_role_dept 与 sys_role_menu 同构关联，角色删除连带清理
 		if err := relationTx.DeleteRoleDepts(ctx, id); err != nil {
 			return err
 		}
@@ -284,10 +284,10 @@ func (s *RoleService) Delete(ctx context.Context, id int64) error {
 	})
 }
 
-// AssignMenus 分配角色菜单（全量替换语义）：角色校验 → 停用写路径封口（WR-07）→
+// AssignMenus 分配角色菜单（全量替换语义）：角色校验 → 停用写路径封口 →
 // menuIds 前置全量校验（缺失集合译 400「菜单不存在: [逗号拼接]」，防脏关联）→
 // db.Transaction{ DeleteRoleMenus + BatchCreateRoleMenus }——删旧插新同事务，杜绝
-// "删后插前"窗口期角色权限全空的可见态（T-2-11）；role_name/menu_name 冗余逐行
+// "删后插前"窗口期角色权限全空的可见态；role_name/menu_name 冗余逐行
 // 写入（源 RoleMenu.create 语义）。空数组=全回收（合法语义）。
 func (s *RoleService) AssignMenus(ctx context.Context, roleID int64, menuIDs []ids.ID) error {
 	role, err := s.roleRepo.FindByID(ctx, roleID)
@@ -297,15 +297,15 @@ func (s *RoleService) AssignMenus(ctx context.Context, roleID int64, menuIDs []i
 		}
 		return err
 	}
-	// 停用角色写路径封口（WR-07，前置拦截零写调用）：停用即 ClearRole 双清授权
-	// （WR-04 语义），而运行期 matcher 只看 casbin p/g 行、无 status 概念——对停用
+	// 停用角色写路径封口（前置拦截零写调用）：停用即 ClearRole 双清授权
+	// （停用语义），而运行期 matcher 只看 casbin p/g 行、无 status 概念——对停用
 	// 角色再分配菜单会经 SyncRolePerms 把 p 行写回，停用状态被合法 API 复活。NULL
 	// status 视作启用（照 UsageStatusFromInt「非 0 一律 ENABLED」读路径兜底；DDL
 	// status DEFAULT '1'，NULL 实际不可达）。消息沿域 400 风格（「角色不存在」同款）。
 	if role.Status != nil && *role.Status != 1 {
 		return errcode.New(errcode.CodeInvalidParam, fmt.Sprintf("角色已停用，不可分配: %d", roleID))
 	}
-	// reqIDs map 去重（WR-02，照 AssignRoles reqSeen 模板）：请求体重复 menuID 会让
+	// reqIDs map 去重（照 AssignRoles reqSeen 模板）：请求体重复 menuID 会让
 	// BatchCreateRoleMenus 在 sys_role_menu 插入完全重复行（两表仅普通索引无唯一键），
 	// 脏数据持续累积且 GET /roles/:id/menuIds 原样回显失真。
 	reqIDs := make([]int64, 0, len(menuIDs))
@@ -321,7 +321,7 @@ func (s *RoleService) AssignMenus(ctx context.Context, roleID int64, menuIDs []i
 	menuNameOf := make(map[int64]string, len(reqIDs))
 	// 同一次 FindByIDs 结果顺带收集 casbin p 行原料（勿二次查库）：Permission
 	// 非空串 + map 去重（MySQL 8.4 同批重复行 Error 1869 整批失败——sys_menu
-	// 允许两菜单同 permission 串，去重是 AddPolicies 的硬前置，T-3-01/D-13）。
+	// 允许两菜单同 permission 串，去重是 AddPolicies 的硬前置）。
 	perms := make([]string, 0, len(reqIDs))
 	permSeen := make(map[string]struct{}, len(reqIDs))
 	if len(reqIDs) > 0 {
@@ -371,7 +371,7 @@ func (s *RoleService) AssignMenus(ctx context.Context, roleID int64, menuIDs []i
 	if err != nil {
 		return err
 	}
-	// 双轨第二轨：事务提交成功后全量替换该角色 casbin p 策略（D-13——策略写
+	// 双轨第二轨：事务提交成功后全量替换该角色 casbin p 策略（策略写
 	// 不在业务事务内，两独立提交；失败上抛 500 由客户端重试自愈，重试=幂等
 	// 全删全加即收敛）。空 menuIds 时 perms 为空=只删不加（全回收语义自然成立）。
 	return s.enf.SyncRolePerms(role.RoleCode, perms)
@@ -391,13 +391,13 @@ func (s *RoleService) GetMenuIDs(ctx context.Context, roleID int64) ([]ids.ID, e
 	return out, nil
 }
 
-// AssignScopes 分配角色数据权限范围部门（PERM-03 档位 4 存储面，D-10 方案 A；
-// 全量替换语义完全照 AssignMenus 同构——D-10 锁定 sys_role_menu 同构模式）：
+// AssignScopes 分配角色数据权限范围部门（档位 4 存储面，方案 A；
+// 全量替换语义完全照 AssignMenus 同构——锁定 sys_role_menu 同构模式）：
 // 角色校验（404「角色不存在: {id}」）→ deptIDs 前置全量校验（缺失集合译 400
 // 「部门不存在: [逗号拼接]」，防脏关联）→ db.Transaction{ DeleteRoleDepts +
-// BatchCreateRoleDepts }——删旧插新同事务（T-2-11 同款）；dept_name 以查库值
-// 冗余写入（请求体不可伪造，T-2-15）。空数组=全回收（合法语义）。
-// 本写路径不经 casbin 双轨（sys_role_dept 非 enforcer 消费数据，D-14 双轨仅覆盖
+// BatchCreateRoleDepts }——删旧插新同事务；dept_name 以查库值
+// 冗余写入（请求体不可伪造）。空数组=全回收（合法语义）。
+// 本写路径不经 casbin 双轨（sys_role_dept 非 enforcer 消费数据，双轨仅覆盖
 // 功能权限轴；档位变更的行过滤生效走 datascope 表驱动实时查询，无缓存）。
 func (s *RoleService) AssignScopes(ctx context.Context, roleID int64, deptIDs []ids.ID) error {
 	role, err := s.roleRepo.FindByID(ctx, roleID)
@@ -407,7 +407,7 @@ func (s *RoleService) AssignScopes(ctx context.Context, roleID int64, deptIDs []
 		}
 		return err
 	}
-	// reqIDs map 去重（WR-02，照 AssignRoles reqSeen 模板，同 AssignMenus 纪律）：
+	// reqIDs map 去重（照 AssignRoles reqSeen 模板，同 AssignMenus 纪律）：
 	// 重复 deptID 会在 sys_role_dept 插入完全重复行。
 	reqIDs := make([]int64, 0, len(deptIDs))
 	reqSeen := make(map[int64]struct{}, len(deptIDs))

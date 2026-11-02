@@ -25,8 +25,8 @@ func NewApiKeyRepo(db *gorm.DB) *ApiKeyRepo {
 
 // FindByKey 登录查询（等价源 ApiKeyRepositoryImpl.getByApiKey）：key 精确匹配 +
 // ENABLED + 未过期（expire_time IS NULL 或 > NOW()）；查不到返回 (nil, nil)——
-// 无效/停用/过期在 service 层统一译为 ErrApiKeyInvalid（10503，AKEY-02 依赖）。
-// 这是**唯一**登录取 key 路径（T-2-16）：停用/过期 key 恒不可登录。
+// 无效/停用/过期在 service 层统一译为 ErrApiKeyInvalid（10503）。
+// 这是**唯一**登录取 key 路径：停用/过期 key 恒不可登录。
 func (r *ApiKeyRepo) FindByKey(ctx context.Context, apiKey string) (*po.ApiKeyPO, error) {
 	var k po.ApiKeyPO
 	err := r.db.WithContext(ctx).
@@ -60,11 +60,11 @@ func (r *ApiKeyRepo) FindByID(ctx context.Context, id int64) (*po.ApiKeyPO, erro
 	return &k, nil
 }
 
-// Patch 更新白名单列（CR-01 存在性判定同 user repo：0 行变更回读 Count 确认，
+// Patch 更新白名单列（存在性判定同 user repo：0 行变更回读 Count 确认，
 // 仅当行确实不存在才返回 ErrNotFound）。审计（update_time/update_by 两列）在此
-// 显式并入，不接受客户端同名键（ENG-02）。service 层仅传 status 单列（源
+// 显式并入，不接受客户端同名键。service 层仅传 status 单列（源
 // editApiKey 单列语义——**任何写路径不得覆写 api_key/username/user_id/expire_time
-// 既有值**，T-2-15）。
+// 既有值**）。
 func (r *ApiKeyRepo) Patch(ctx context.Context, id int64, cols map[string]any) error {
 	if cols == nil {
 		cols = map[string]any{}
@@ -80,7 +80,7 @@ func (r *ApiKeyRepo) Patch(ctx context.Context, id int64, cols map[string]any) e
 		return res.Error
 	}
 	if res.RowsAffected == 0 {
-		// 0 变更 ≠ 不存在：需 Count 确认行是否存在（CR-01）
+		// 0 变更 ≠ 不存在：需 Count 确认行是否存在
 		var n int64
 		if err := r.db.WithContext(ctx).Model(&po.ApiKeyPO{}).Where("id = ?", id).Count(&n).Error; err != nil {
 			return err

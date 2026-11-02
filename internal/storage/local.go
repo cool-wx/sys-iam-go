@@ -1,8 +1,8 @@
-// local.go LocalStorage 实现（D-10/D-11）：os 文件流 Put/GetStream/Delete，
+// local.go LocalStorage 实现：os 文件流 Put/GetStream/Delete，
 // root 目录约定为 storage.local.root（默认 ./data/files，相对工作目录——systemd
-// WorkingDirectory 联动，D-11）。
+// WorkingDirectory 联动）。
 //
-// 路径安全（T-4-02）：key 恒为服务端生成（uuid_原名），但仍做防御纵深——
+// 路径安全：key 恒为服务端生成（uuid_原名），但仍做防御纵深——
 // resolveKey 清洗（Clean("/"+key) 吃掉 ..// 绝对路径片段）+ 落点前缀校验
 // （必须仍在 root 内），逃逸即拒绝。local_test.go 直测锁定本防御。
 package storage
@@ -29,7 +29,7 @@ func NewLocalStorage(root string) *LocalStorage {
 }
 
 // resolveKey key → root 内安全落点路径：Clean 吃掉穿越片段后校验落点仍带
-// root 前缀，逃逸即拒绝（T-4-02 双防御：清洗 + 校验，防御纵深不依赖 key
+// root 前缀，逃逸即拒绝（双防御：清洗 + 校验，防御纵深不依赖 key
 // 恒可信的调用约定）。
 func resolveKey(root, key string) (string, error) {
 	if key == "" {
@@ -76,7 +76,7 @@ func (s *LocalStorage) Put(_ context.Context, key string, r io.Reader, _ int64, 
 	return f.Close()
 }
 
-// GetStream 读取对象：os.Open + Stat 取 size（供 Content-Length，FILE-02）。
+// GetStream 读取对象：os.Open + Stat 取 size（供 Content-Length）。
 func (s *LocalStorage) GetStream(_ context.Context, key string) (io.ReadCloser, int64, error) {
 	path, err := resolveKey(s.root, key)
 	if err != nil {
@@ -95,7 +95,7 @@ func (s *LocalStorage) GetStream(_ context.Context, key string) (io.ReadCloser, 
 }
 
 // Delete 删除对象：os.Remove，对象不存在返回 nil（os.IsNotExist 宽容——对齐
-// S3 RemoveObject 幂等语义，FILE-03 宽容删除的双实现基座；删除链存储侧失败
+// S3 RemoveObject 幂等语义，宽容删除的双实现基座；删除链存储侧失败
 // 仅告警不阻断 DB 清理，此处"不存在"不算失败）。
 func (s *LocalStorage) Delete(_ context.Context, key string) error {
 	path, err := resolveKey(s.root, key)

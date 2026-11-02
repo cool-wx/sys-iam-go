@@ -30,7 +30,7 @@ func (r *FileCategoryRepo) Create(ctx context.Context, fc *po.FileCategoryPO) er
 }
 
 // Patch 显式列更新（照 MenuRepo.Patch 模板：白名单 map + 恒带 Where("id = ?") +
-// RowsAffected==0 时 Count 二次确认 CR-01 + 显式并入审计列）。
+// RowsAffected==0 时 Count 二次确认 + 显式并入审计列）。
 func (r *FileCategoryRepo) Patch(ctx context.Context, id int64, cols map[string]any) error {
 	if cols == nil {
 		cols = map[string]any{}

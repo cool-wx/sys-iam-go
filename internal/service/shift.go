@@ -1,5 +1,5 @@
-// Package service 排班域业务逻辑：CRUD（全量查询无分页——SHFT-01 源行为直译；
-// start_time/end_time HH:MM:SS 字符串直传——SHFT-02，无 1062 分支，sys_shift
+// Package service 排班域业务逻辑：CRUD（全量查询无分页——源行为直译；
+// start_time/end_time HH:MM:SS 字符串直传，无 1062 分支，sys_shift
 // 无唯一索引）。
 package service
 
@@ -25,8 +25,8 @@ func NewShiftService(repo *repository.ShiftRepo) *ShiftService {
 }
 
 // Create 创建排班：status 不收客户端值，服务端默认 1 正常（对齐 DDL default 与
-// 源 MP null-skip 语义；WR-04 对齐 dict/fileCategory 域 Create 形态）。审计字段
-// 由 PO 钩子服务端填充（ENG-02）。
+// 源 MP null-skip 语义；对齐 dict/fileCategory 域 Create 形态）。审计字段
+// 由 PO 钩子服务端填充。
 func (s *ShiftService) Create(ctx context.Context, req *dto.ShiftCreateReq) (*dto.ShiftResp, error) {
 	m := &po.ShiftPO{
 		ShiftCode: req.ShiftCode,
@@ -43,7 +43,7 @@ func (s *ShiftService) Create(ctx context.Context, req *dto.ShiftCreateReq) (*dt
 	return dto.ToShiftResp(m), nil
 }
 
-// Update 更新排班（部分更新，ENG-05）：白名单 shift_code/shift_name/start_time/
+// Update 更新排班（部分更新）：白名单 shift_code/shift_name/start_time/
 // end_time/status/remark（nil=不写库；空串=显式清空照写）。落库后回读返回。
 func (s *ShiftService) Update(ctx context.Context, id int64, req *dto.ShiftUpdateReq) (*dto.ShiftResp, error) {
 	cols := map[string]any{}
@@ -60,7 +60,7 @@ func (s *ShiftService) Update(ctx context.Context, id int64, req *dto.ShiftUpdat
 		cols["end_time"] = *req.EndTime
 	}
 	if req.Status != nil {
-		// UsageStatus 严格解析（WR-04）：未知值已在绑定层 400/10401，此处恒合法
+		// UsageStatus 严格解析：未知值已在绑定层 400/10401，此处恒合法
 		cols["status"] = int8(*req.Status)
 	}
 	if req.Remark != nil {
@@ -87,7 +87,7 @@ func (s *ShiftService) Get(ctx context.Context, id int64) (*dto.ShiftResp, error
 	return dto.ToShiftResp(m), nil
 }
 
-// List 排班全量列表——SHFT-01 源 list 无分页行为直译，勿统一为分页
+// List 排班全量列表——源 list 无分页行为直译，勿统一为分页
 // （repo ORDER BY shift_code ASC, id ASC）。
 func (s *ShiftService) List(ctx context.Context) ([]*dto.ShiftResp, error) {
 	items, err := s.repo.List(ctx)

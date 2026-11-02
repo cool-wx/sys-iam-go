@@ -24,7 +24,7 @@ type OperationLogPO struct {
 	UserID   *int64  `gorm:"column:user_id"` // 未登录（如 login 路由自身）为 NULL——源语义
 	RealName *string `gorm:"column:real_name;size:50"`
 	Module   *string `gorm:"column:module;size:100"`
-	// Operation 路由声明的方法名（D-05 声明制，如 "create"/"login"）。
+	// Operation 路由声明的方法名（声明制，如 "create"/"login"）。
 	Operation *string `gorm:"column:operation;size:200"`
 	// Method 形如 "POST /api/v1/dict-types"（源 request.getMethod()+" "+getRequestURI）。
 	Method *string `gorm:"column:method;size:200"`

@@ -1,4 +1,4 @@
-// s3.go S3Storage 实现（FILE-05，D-10）：minio-go v7.4.1（STACK 锁定版本，
+// s3.go S3Storage 实现：minio-go v7.4.1（锁定版本，
 // 纯 Go 无 CGO），对接任意 S3 兼容端点（工控机现场为 RustFS）。
 //
 // 两个 minio 集成坑（04-RESEARCH 重点 4 实证，改动前必读）：
@@ -103,7 +103,7 @@ func (s *S3Storage) GetStream(ctx context.Context, key string) (io.ReadCloser, i
 }
 
 // Delete 删除对象：RemoveObject 天然幂等（对象不存在成功返回），与 LocalStorage
-// 的 IsNotExist 宽容语义对齐（FILE-03 双实现基座）。
+// 的 IsNotExist 宽容语义对齐（双实现基座）。
 func (s *S3Storage) Delete(ctx context.Context, key string) error {
 	if err := s.client.RemoveObject(ctx, s.bucket, key, minio.RemoveObjectOptions{}); err != nil {
 		return fmt.Errorf("storage: remove object %q: %w", key, err)
