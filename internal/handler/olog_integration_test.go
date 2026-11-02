@@ -301,3 +301,40 @@ func TestOpLogListPagination(t *testing.T) {
 	assert.Less(t, int64(*secondFirst.ID), int64(*dictFirstLast.ID),
 		"第二页首条必须旧于第一页末条（create_time 倒序翻页不漂移）")
 }
+
+// TestOlogSurvivesStop 清单第 8 项『SIGTERM 后日志完整落库』一体化直证（05-03
+// Task 2）：写操作入队后【不手动调 FlushOpLogs】直接调真实 App.Stop()——Stop 即
+// SIGTERM 处理路径的进程内等价（沿 TestGracefulShutdownDrains 先例），其内部
+// srv.Shutdown 之后含 FlushOpLogs 排空（app.go Stop 次序契约 D-08），随后断言
+// 日志行已完整落库。IN-04 disposition（Stop 对 oplog 连续 Flush 两次）同面直证：
+// 落库由 Stop 内 Flush 完成、行为正确，双 Flush 属幂等冗余，无需另改。
+// 断言时序：API 调用全部先于 Stop（Stop 关闭 DB/Redis 连接池）；checkDB 断言
+// 全部放在 Stop 之后——latestOlogByModule 以 DSN 新开独立连接，不依赖 server
+// 与应用连接池存活。
+func TestOlogSurvivesStop(t *testing.T) {
+	ts, dsn, adminToken, adminID := newTestApp(t)
+	token := adminToken()
+
+	// 预置部门 → PUT 改名（复用 05-02 已通链路；PUT /api/v1/depts/:id 挂
+	// Oplog 声明 module=DeptController operation=update——router.go:102）
+	deptID := mustCreate(t, token, ts.URL+"/api/v1/depts", `{"deptName":"研发部","sort":1}`)
+	status, respBody := doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/depts/"+deptID,
+		`{"deptName":"研发中心"}`)
+	require.Equal(t, http.StatusOK, status, "改名必须成功: body=%s", respBody)
+
+	// 不手动调 FlushOpLogs——直接真实 Stop 路径（内含 Flush 排空）
+	testApplication.Stop()
+
+	// Stop 后直查（DSN 新开连接）：日志行已落库且要素完整
+	row := latestOlogByModule(t, dsn, "DeptController")
+	require.NotNil(t, row.Operation)
+	assert.Equal(t, "update", *row.Operation, "最新一条应为 PUT 改名日志")
+	require.NotNil(t, row.Method)
+	assert.Equal(t, "PUT /api/v1/depts/"+deptID, *row.Method)
+	require.NotNil(t, row.UserID)
+	assert.Equal(t, adminID, *row.UserID, "user_id 必须取会话 identity")
+	require.NotNil(t, row.RealName)
+	assert.Equal(t, "管理员", *row.RealName, "real_name 必须完整落库（SIGTERM 排空不丢失）")
+	require.NotNil(t, row.Status)
+	assert.Equal(t, int8(1), *row.Status, "200 请求 status=1")
+}
