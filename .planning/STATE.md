@@ -19,10 +19,10 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-11-02, Phase 4 transition)
+See: .planning/PROJECT.md (updated 2026-11-02, Phase 5 transition)
 
 **Core value:** 在工控机上以单个轻量 Go 服务完整复刻 sys-iam 的全部 IAM 能力，且接口实现与自动化测试全部通过。
-**Current focus:** Phase 05 — 名称同步事件与验收收尾
+**Current focus:** v1 里程碑收尾 — 全部 5 phases 完成（Phase 05 已验证 passed），待 /gsd-complete-milestone
 
 ## Current Position
 
@@ -143,6 +143,7 @@ None yet.
 - [现场部署] system:role:edit 仅授予管理员角色（WR-05 部署信任边界——角色菜单编辑即自授面，deferred 挂账）
 - [现场部署] 生产存量 super_admin 行 data_scope=NULL 需经 PUT /roles/:id 置 5（03-02 留档）
 - [现场部署] Nacos craft-satoken.yaml timeout 真值校正（D-06 已 30d 代理 + IAM_AUTH_SESSION_TIMEOUT 可覆盖；rnacos 空实例确认永不可得）
+- [里程碑收尾] git.allow_default_branch_commits=true 还原（05-02 明示逃生门，gsd/phase-02-rbac 单分支工作模式的显式化——complete-milestone 后决定是否保留）
 - ~~[Phase 4] WR-07/WR-08（advisory）：文件分类「移至根」响应 parentId="0" 与 Create 根 null 双形态 + 对应集成断言永真~~ — 05-03 收口（三域移根 parent_id 落 NULL 唯一形态 + file 断言 envelope 真化，23303e5；VERIFICATION.md 修复记录在案）
 - ~~[Phase 3] IN-14 过期 key 存量会话无自动撤销触发点~~ — 03-03 收口（iam:apikey-user: 反查键三件落地，过期 key 登录拒绝即撤销存量会话）
 - ~~[Phase 3] 管理端点全量授权~~ — 03-03 收口（34+2 路由逐路由 requirePerm，RequireRoles 仅 kickout 叠加保留）

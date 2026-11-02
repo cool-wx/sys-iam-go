@@ -31,17 +31,16 @@
 - ✓ 故障信息管理（FaultInfo）— 源系统既有
 - ✓ API Key 管理（ApiKey）— 源系统既有
 - ✓ 名称冗余同步（6 个领域事件监听器：部门/字典/菜单/角色/用户名/真名变更同步）— 源系统既有
+- ✓ 名称冗余同步 Go 化（internal/event 轻量 dispatcher：5 事件同步分发/失败 500 上抛幂等自愈，realName 14 表 26 列同事务 34 条幂等 UPDATE、发布条件五形态直证；UsernameChanged 系源死代码经 UAT Q1 裁决不移植）— Phase 5
+- ✓ 14 个功能域 REST API 全量实现收口（名称同步域挂点 + WR-07 三域移根 parent_id NULL 唯一形态 + WR-08 断言真化 + 8 项 Looks Done But Isn't 清单全映射 + 全量回归 14 批串行全绿）— Phase 5
 - ✓ 数据导入（ImportResult，故障信息 Excel 导入）— 源系统既有（仅 FaultInfo 域，2026-10-31 Phase 2 研究实证修正原"用户/角色"表述）
 - ✓ Go 工程骨架与横切地基（Gin+GORM+cmd/internal/pkg 结构、R 响应/雪花 ID/JSON 契约/审计填充/分页、静态单二进制+systemd+优雅关停）— Phase 1
 
 ### Active
 
-- [ ] 14 个功能域 REST API 全量重新设计并实现（允许 REST 最佳实践重设计）（Auth/User/Role/Menu/Dept/ApiKey 六域——Phase 2；权限收口——Phase 3；Dict/Config/Shift/File/FileCategory/Olog/Fault 七域——Phase 4；余名称同步域——Phase 5）
 - [ ] MySQL 沿用现有 schema（GORM 接入，不重设计表结构）
 - [ ] 配置管理去 Nacos 化：本地 YAML + 环境变量
-- [ ] 名称同步监听器等价实现（Go 事件机制替代 Spring 事件）
-- [ ] OpenAPI/Swagger 文档自动生成
-- [ ] 每个功能域配套自动化测试（Phase 1-4 各域已配集成/单元测试，Phase 5 域随实现补齐）
+- [ ] OpenAPI/Swagger 文档自动生成（v2 范畴——PROJECT 决策不进 v1 phase）
 
 ### Out of Scope
 
@@ -109,6 +108,10 @@
 | Oplog 异步链丢弃是设计而非缺陷（D-07） | Enqueue select-default 永不阻塞业务；chan 512 × 60KB ≈30MB 内存上界；Flush 保证停机 drain | ✓ Phase 4 |
 | Excel 三键 location NULL 判重恒不中照源保真（Q2） | eq 直传禁改 IS NULL 双分支（prohibition）；反复 INSERT 是源已接受行为——TestFaultImportLocationNullNoDedup 哨兵锁定 | ✓ Phase 4 |
 | Shift 全量直出 + HH:MM:SS 字符串直传 | SHFT-01 源行为直译（无分页 envelope、无解析层），标注勿统一为分页 | ✓ Phase 4 |
+| internal/event 轻量 dispatcher（同步分发/首错即返） | 6 监听器进程内同步场景引事件总线框架过度设计（PROJECT 约束）；D-02 提交后发布 + D-03 失败 500 上抛幂等 UPDATE 自愈，沿 casbin 双轨纪律 | ✓ Phase 5 |
+| UsernameChanged 事件不移植（5 事件口径） | 源 UsernameChangedEvent 全树无 publish——死代码；UAT Q1 用户拍板去除契约（username 系登录锚点不可改），SYNC-01 口径 6→5 | ✓ Phase 5（UAT Q1） |
+| 测试容器资源纪律（-p 1 串行 + 单实例 + label 清理） | 1.6GB 宿主机约束下 go test 多包并行曾拉起 5 个 MySQL 致就绪超时；per-test 串行创建销毁 + testcontainers label 精确圈定清理（两次误删开发库教训） | ✓ Phase 5 |
+| WR-07 根语义统一 parent_id NULL 唯一形态 | 三域（file_category/dept/menu）移根 cols["parent_id"] 0→nil，tree nil/0 双形态读侧兼容，存量 0 行不迁移 | ✓ Phase 5 |
 
 ## Evolution
 
@@ -128,4 +131,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-02 after Phase 4*
+*Last updated: 2026-11-02 after Phase 5*
