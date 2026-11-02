@@ -75,6 +75,20 @@ func (s *UserService) validateDept(ctx context.Context, deptID *ids.ID) (*po.Dep
 	return dept, nil
 }
 
+// validateRealName 非空白真名校验（WR-02）：请求显式带真名时拒绝空串/全空白——
+// 真名是 26 条冗余列的同步源，空串会经 RealNameChanged 事件把 sys_user_role.username
+// 展示名、24 条审计操作人名列与 operation_log.real_name 全数清空，与 AssignRoles
+// 「realName 非空优先、回退 username」的回退语义冲突（同列同状态两种语义并存，
+// 审计/展示数据被一次合法请求静默抹除）。binding required 对 *string 仅查非 nil
+// （validator hasValue），Create 侧 `binding:"required"` 挡不住空串——服务端显式
+// 校验是唯一收口；TrimSpace 与 AssignRoles 展示名回退的空白判定同轴。
+func validateRealName(realName *string) error {
+	if realName != nil && strings.TrimSpace(*realName) == "" {
+		return errcode.New(errcode.CodeInvalidParam, "真名不能为空")
+	}
+	return nil
+}
+
 // Create 创建用户：DTO→PO（服务端默认值 Status=1/FirstLogin=true/Builtin=false，
 // 源 User.create() 语义；password bcrypt 哈希化入库——与源 Hutool BCrypt 同为标准
 // $2a$ 格式，存量哈希零迁移兼容），落库后 PO→DTO 返回。审计字段（双时间/四操作人/
@@ -82,6 +96,11 @@ func (s *UserService) validateDept(ctx context.Context, deptID *ids.ID) (*po.Dep
 // deptId 必填且必须存在（源 addUser 校验链）；deptName 以查库值覆写——请求体
 // deptName 键被忽略（服务端冗余不可由请求伪造）。
 func (s *UserService) Create(ctx context.Context, req *dto.UserCreateReq) (*dto.UserResp, error) {
+	// 空白真名前置拦截（WR-02，见 validateRealName）：binding required 挡不住
+	// *string 空串，服务端显式拒绝。
+	if err := validateRealName(req.RealName); err != nil {
+		return nil, err
+	}
 	dept, err := s.validateDept(ctx, req.DeptID)
 	if err != nil {
 		return nil, err
@@ -139,6 +158,11 @@ func (s *UserService) Create(ctx context.Context, req *dto.UserCreateReq) (*dto.
 // 忽略，绝无客户端直写路径，02-03 USER-01"冗余不可伪造"truth 全覆盖）。
 // deptId 显式传入时走与 Create 相同的校验链。
 func (s *UserService) Update(ctx context.Context, id int64, req *dto.UpdateUserReq) (*dto.UserResp, error) {
+	// 空白真名前置拦截（WR-02，见 validateRealName）：先于回读/Patch/发布——空串
+	// 不得触达主行更不得成为 NewName（否则 26 条冗余列被一次合法请求清空）。
+	if err := validateRealName(req.RealName); err != nil {
+		return nil, err
+	}
 	// 改名同步回读（Phase 5 SYNC-01，源 UserApplicationService.editUser 的 oldRealName
 	// 取值前置同构）：仅当请求显式带真名时回读旧行；行不存在提前 404 拦截（照
 	// userNotFound 译域），Patch 与发布一个都不触发。
