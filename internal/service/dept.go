@@ -85,9 +85,14 @@ func (s *DeptService) Update(ctx context.Context, id int64, req *dto.DeptUpdateR
 	if req.ParentID != nil {
 		pid := int64(*req.ParentID)
 		if pid == 0 {
-			// 显式移至根：parent_id=0 + parent_name 清 NULL（与 Create 语义对齐，
-			// 源 MP null-skip 残留旧值的有意修正，同菜单域）
-			cols["parent_id"] = 0
+			// 显式移至根：parent_id 落 NULL + parent_name 清 NULL——根 = parent_id
+			// NULL 成为唯一形态（WR-07 方向 A，与 Create 根同形态；源自身 Create
+			// null / Update 0 不对称，此处为 Go 内一致性修正、显式偏离源）。存量
+			// parent_id=0 行不迁移：tree.Build/ensureNotDescendant/resolveParent
+			// 对 nil/0 双形态兼容，读侧零回归。GORM Updates(map) 显式 nil 写 NULL
+			//（与同分支 parent_name 清 NULL 同款，源 MP null-skip 残留旧值的有意
+			// 修正，同菜单域）。
+			cols["parent_id"] = nil
 			cols["parent_name"] = nil
 		} else {
 			// WR-04 成环拦截（与菜单域同构）：自引用/挂到自身子孙均拒绝——落库后

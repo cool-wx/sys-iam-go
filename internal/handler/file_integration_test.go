@@ -341,17 +341,24 @@ func TestFileCategoryTree(t *testing.T) {
 	assert.NotNil(t, child.Children, "叶子 children 必须是空数组 [] 而非 null")
 	assert.Empty(t, child.Children, "叶子 children 应为空数组")
 
-	// --- update 移动子分类到根：parent_id 显式 0 → parent_name 清 NULL ---
+	// --- update 移动子分类到根：parent_id 显式 0 → WR-07 修复后落 NULL（根 =
+	// parent_id NULL 唯一形态，与 Create 根同形态），响应 parentId 恒 null。
+	// 断言经 {code,message,data} envelope 的 Data 层解包（WR-08 真化——原断言漏
+	// Data 层永不失败；Data 为单对象，仿同文件 tree 断言 env 形态）---
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/file-categories/"+childID,
 		`{"parentId":0}`)
 	require.Equal(t, http.StatusOK, status, "移动到根必须成功: body=%s", body)
-	var cleared struct {
-		ParentID   *string `json:"parentId"`
-		ParentName *string `json:"parentName"`
+	var clearedEnv struct {
+		Code int `json:"code"`
+		Data struct {
+			ParentID   *string `json:"parentId"`
+			ParentName *string `json:"parentName"`
+		} `json:"data"`
 	}
-	require.NoError(t, json.Unmarshal(body, &cleared))
-	assert.Nil(t, cleared.ParentID)
-	assert.Nil(t, cleared.ParentName, "显式移至根后 parent_name 必须清空")
+	require.NoError(t, json.Unmarshal(body, &clearedEnv), "body=%s", body)
+	require.Equal(t, 0, clearedEnv.Code, "body=%s", body)
+	assert.Nil(t, clearedEnv.Data.ParentID, "移根后 parentId 必须为 null（WR-07：根唯一形态）")
+	assert.Nil(t, clearedEnv.Data.ParentName, "显式移至根后 parent_name 必须清空")
 
 	// --- delete 根分类（先删孤儿恢复两节点态）：删除带子节点的分类仍成功（源缺口按源保留）---
 	status, body = doAuthRequest(t, token, "DELETE", ts.URL+"/api/v1/file-categories/990101", "")
