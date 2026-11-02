@@ -62,12 +62,16 @@ func (s *DictService) CreateDictType(ctx context.Context, req *dto.DictTypeCreat
 // uk_dict_type 与 Create 同冲突同翻译（WR-02：400/10400「字典类型已存在」，
 // 不透传 500）。
 //
-// 改名同步（Phase 5 SYNC-01/02，源 DictApplicationService.editDictType 发布条件
-// 逐字移植）：请求显式带 dictName 时先回读旧行（行不存在提前拦为 404，照
-// GetDictType 同款译域）；Patch 成功后仅当新名≠旧行名时发布 DictTypeNameChanged
-// （源条件 `updated && !Objects.equals(oldName, newName) && newName != null` 多一个
-// updated 前置——Go 形态下 Patch 返回 nil 即 updated，条件等价成立）；Publish
-// 失败上抛 500（D-03，客户端重试经幂等 UPDATE 自愈）。
+// 改名同步（Phase 5 SYNC-01/02，源 DictApplicationService.editDictType 的 oldName
+// 取值前置同构；CR-01 修订：**不设**源条件 `updated &&
+// !Objects.equals(oldName, newName) && newName != null` 的新≠旧短路——主行已提交
+// 后重试同一请求时旧行已是新名，新≠旧守卫恒假、事件永不重发，D-03「重试幂等自愈」
+// 被证伪；显式带 dictName 即发布，幂等 UPDATE 使同名重发退化为 no-op；updated 前置
+// 在 Go 形态下由 Patch 返回 nil 等价成立）：请求显式带 dictName 时先回读旧行（行
+// 不存在提前拦为 404，照 GetDictType 同款译域）；Patch 成功后发布
+// DictTypeNameChanged（显式带名门保留，"仅改备注"不带 dictName 仍零发布，非无条件
+// 发布）；Publish 失败上抛 500（D-03，客户端重试同一请求必重发事件，幂等 UPDATE
+// 自愈）。
 func (s *DictService) UpdateDictType(ctx context.Context, id int64, req *dto.DictTypeUpdateReq) (*dto.DictTypeResp, error) {
 	// 改名同步回读：仅当请求显式带类型名时回读旧行（源 oldName 取值前置）；
 	// 行不存在提前 404 拦截，Patch 与发布一个都不触发。
@@ -104,10 +108,10 @@ func (s *DictService) UpdateDictType(ctx context.Context, id int64, req *dto.Dic
 		}
 		return nil, err
 	}
-	// 改名事件发布（Patch 返回 nil 即已提交，D-02）：源条件的 updated 前置在 Go
-	// 形态下由"执行到这里即 Patch 成功"等价成立；新名≠旧行名才发布（禁无条件
-	// 发布）。DictTypePO.DictName 为非指针 string 列（DDL NOT NULL），无需空值兜底。
-	if old != nil && req.DictName != nil && *req.DictName != old.DictName {
+	// 改名事件发布（Patch 返回 nil 即已提交，D-02；CR-01 修订：显式带名即发布、
+	// 不设新≠旧短路——重试自愈契约见上注）。DictTypePO.DictName 为非指针 string
+	// 列（DDL NOT NULL），无需空值兜底。
+	if old != nil && req.DictName != nil {
 		evt := event.NameChangedEvent{
 			Type:    event.DictTypeNameChanged,
 			ID:      id,
@@ -115,7 +119,7 @@ func (s *DictService) UpdateDictType(ctx context.Context, id int64, req *dto.Dic
 			NewName: *req.DictName,
 		}
 		if err := s.pub.Publish(ctx, evt); err != nil {
-			return nil, err // → 500（D-03：同步 UPDATE 失败可观察，重试幂等自愈）
+			return nil, err // → 500（D-03：同步 UPDATE 失败可观察，重试必重发自愈）
 		}
 	}
 	return s.GetDictType(ctx, id)

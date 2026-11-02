@@ -139,9 +139,9 @@ func (s *UserService) Create(ctx context.Context, req *dto.UserCreateReq) (*dto.
 // 忽略，绝无客户端直写路径，02-03 USER-01"冗余不可伪造"truth 全覆盖）。
 // deptId 显式传入时走与 Create 相同的校验链。
 func (s *UserService) Update(ctx context.Context, id int64, req *dto.UpdateUserReq) (*dto.UserResp, error) {
-	// 改名同步回读（Phase 5 SYNC-01，源 UserApplicationService.editUser 发布条件
-	// 逐字移植）：仅当请求显式带真名时回读旧行（源 oldRealName 取值前置）；行不存在
-	// 提前 404 拦截（照 userNotFound 译域），Patch 与发布一个都不触发。
+	// 改名同步回读（Phase 5 SYNC-01，源 UserApplicationService.editUser 的 oldRealName
+	// 取值前置同构）：仅当请求显式带真名时回读旧行；行不存在提前 404 拦截（照
+	// userNotFound 译域），Patch 与发布一个都不触发。
 	var old *po.UserPO
 	if req.RealName != nil {
 		var err error
@@ -194,28 +194,31 @@ func (s *UserService) Update(ctx context.Context, id int64, req *dto.UpdateUserR
 		return nil, err
 	}
 	// 改名事件发布（Patch 返回 nil 即已提交，D-02）：仅当本次请求带了真名且回读
-	// 成功、新真名≠旧真名时发布（源条件 `realName != null &&
-	// !realName.equals(oldRealName)` 逐字移植）。UserPO.RealName 为 *string——旧行
-	// NULL 兜底 ""（源 oldName != null ? oldName : "" 同款）。**不改白名单**
-	// （username/password 刻意排除——username 为登录锚点不可改，UsernameChanged
-	// 事件经 UAT Q1 裁决整体移除）；**不动 internal/auth**（D-04：会话快照照源
-	// 不刷新，下次登录生效）。Publish 失败上抛 500（D-03：客户端重试经幂等 UPDATE
-	// 自愈，沿 casbin 双轨纪律）。
+	// 成功即发布（CR-01 修订：**不设**源 `realName != null &&
+	// !realName.equals(oldRealName)` 中的新≠旧短路——主行已提交后客户端重试同一
+	// 请求时旧行已是新名，新≠旧守卫恒假、事件永不重发，26 条冗余同步永不补执行，
+	// D-03「重试幂等自愈」契约被证伪；显式带名即发布，handler 幂等 UPDATE
+	// （`冗余列 <> newName`）使同名重发退化为廉价 no-op，重试自愈重新可达。该
+	// 偏离源语义的裁决在案 05-CONTEXT.md D-03 修订）。UserPO.RealName 为 *string
+	// ——旧行 NULL 兜底 ""（源 oldName != null ? oldName : "" 同款，OldName 仅载荷
+	// 信息非 UPDATE 条件）。**不改白名单**（username/password 刻意排除——username
+	// 为登录锚点不可改，UsernameChanged 事件经 UAT Q1 裁决整体移除）；**不动
+	// internal/auth**（D-04：会话快照照源不刷新，下次登录生效）。Publish 失败上抛
+	// 500（D-03：客户端重试同一请求必重发事件，幂等 UPDATE 自愈，沿 casbin 双轨
+	// 纪律）。
 	if old != nil && req.RealName != nil {
 		oldName := ""
 		if old.RealName != nil {
 			oldName = *old.RealName
 		}
-		if *req.RealName != oldName {
-			evt := event.NameChangedEvent{
-				Type:    event.RealNameChanged,
-				ID:      id,
-				OldName: oldName,
-				NewName: *req.RealName,
-			}
-			if err := s.pub.Publish(ctx, evt); err != nil {
-				return nil, err // → 500（D-03：同步 UPDATE 失败可观察，重试幂等自愈）
-			}
+		evt := event.NameChangedEvent{
+			Type:    event.RealNameChanged,
+			ID:      id,
+			OldName: oldName,
+			NewName: *req.RealName,
+		}
+		if err := s.pub.Publish(ctx, evt); err != nil {
+			return nil, err // → 500（D-03：同步 UPDATE 失败可观察，重试必重发自愈）
 		}
 	}
 	return s.Get(ctx, id)

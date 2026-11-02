@@ -57,13 +57,15 @@ func (s *DeptService) Create(ctx context.Context, req *dto.DeptCreateReq) (*dto.
 // parentId 显式传入时联动父校验 + parentName 重冗余（源 editDept 同构语义）。
 // 落库后回读返回最新契约；审计由 repo.Patch 显式并入（ENG-02）。
 //
-// 改名同步（Phase 5 SYNC-01/02，源 DeptApplicationService.editDept 发布条件逐字
-// 移植）：请求显式带 deptName 时先回读旧行（同时把"行不存在"提前拦为 404，照 Get
-// 同款译域）；Patch 成功（SkipDefaultTransaction 下单语句已提交——「提交后发布」
-// 由代码顺序天然满足，D-02，发布语句绝不放在 Patch 之前或事务闭包内）之后，仅当
-// 新名≠旧行名时发布 DeptNameChanged（源按值变化检测，禁无条件发布——防"仅改备注"
-// 也触发关联表冗余同步）；Publish 失败上抛 500（D-03，客户端重试经幂等 UPDATE
-// 自愈，沿 casbin 双轨纪律）。
+// 改名同步（Phase 5 SYNC-01/02，源 DeptApplicationService.editDept 的 oldName 取值
+// 前置同构；CR-01 修订：**不设**源「新名≠旧名」短路——主行已提交后重试同一请求时
+// 旧行已是新名，新≠旧守卫恒假、事件永不重发，D-03「重试幂等自愈」被证伪；显式带
+// deptName 即发布，幂等 UPDATE 使同名重发退化为 no-op）：请求显式带 deptName 时先
+// 回读旧行（同时把"行不存在"提前拦为 404，照 Get 同款译域）；Patch 成功
+// （SkipDefaultTransaction 下单语句已提交——「提交后发布」由代码顺序天然满足，D-02，
+// 发布语句绝不放在 Patch 之前或事务闭包内）之后发布 DeptNameChanged（显式带名门
+// 保留，"仅改备注"不带 deptName 仍零发布，非无条件发布）；Publish 失败上抛 500
+// （D-03，客户端重试同一请求必重发事件，幂等 UPDATE 自愈，沿 casbin 双轨纪律）。
 func (s *DeptService) Update(ctx context.Context, id int64, req *dto.DeptUpdateReq) (*dto.DeptResp, error) {
 	// 发布条件需要旧名：仅当请求显式带部门名时回读旧行（源 oldName 取值前置）；
 	// 行不存在提前 404 拦截，Patch 与发布一个都不触发。
@@ -126,23 +128,22 @@ func (s *DeptService) Update(ctx context.Context, id int64, req *dto.DeptUpdateR
 		}
 		return nil, err
 	}
-	// 改名事件发布（Patch 返回 nil 即已提交，D-02）：新名≠旧行名才发布——oldName
-	// 取回读行值、NULL 兜底 ""（源 oldName != null ? oldName : "" 同款）。
+	// 改名事件发布（Patch 返回 nil 即已提交，D-02；CR-01 修订：显式带名即发布、
+	// 不设新≠旧短路——重试自愈契约见上注）：oldName 取回读行值、NULL 兜底 ""
+	// （源 oldName != null ? oldName : "" 同款，仅载荷信息非 UPDATE 条件）。
 	if old != nil && req.DeptName != nil {
 		oldName := ""
 		if old.DeptName != nil {
 			oldName = *old.DeptName
 		}
-		if *req.DeptName != oldName {
-			evt := event.NameChangedEvent{
-				Type:    event.DeptNameChanged,
-				ID:      id,
-				OldName: oldName,
-				NewName: *req.DeptName,
-			}
-			if err := s.pub.Publish(ctx, evt); err != nil {
-				return nil, err // → 500（D-03：同步 UPDATE 失败可观察，重试幂等自愈）
-			}
+		evt := event.NameChangedEvent{
+			Type:    event.DeptNameChanged,
+			ID:      id,
+			OldName: oldName,
+			NewName: *req.DeptName,
+		}
+		if err := s.pub.Publish(ctx, evt); err != nil {
+			return nil, err // → 500（D-03：同步 UPDATE 失败可观察，重试必重发自愈）
 		}
 	}
 	return s.Get(ctx, id)

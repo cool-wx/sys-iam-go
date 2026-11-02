@@ -123,9 +123,9 @@ func (s *RoleService) Update(ctx context.Context, id int64, req *dto.RoleUpdateR
 			return nil, errcode.ErrBuiltinRoleStatus
 		}
 	}
-	// 改名同步回读（Phase 5 SYNC-01，源 RoleApplicationService.editRole 发布条件
-	// 逐字移植）：仅当请求显式带角色名时回读旧行（源 oldName 取值前置）；行不存在
-	// 提前 404 拦截，Patch 与发布一个都不触发。与上方 builtin 停用守卫的 FindByID
+	// 改名同步回读（Phase 5 SYNC-01，源 RoleApplicationService.editRole 的 oldName
+	// 取值前置同构）：仅当请求显式带角色名时回读旧行；行不存在提前 404 拦截，Patch
+	// 与发布一个都不触发。与上方 builtin 停用守卫的 FindByID
 	// **相互独立不合并**——守卫仅 status=DISABLED 触发，二者条件域不相交（本任务
 	// 改名回读独立判断 req.RoleName != nil）。
 	var old *po.RolePO
@@ -159,11 +159,14 @@ func (s *RoleService) Update(ctx context.Context, id int64, req *dto.RoleUpdateR
 		return nil, err
 	}
 	// 改名事件发布（Patch 返回 nil 即已提交，D-02）：仅当本次请求带了角色名且回读
-	// 成功、新名≠旧行名时发布（源条件 `roleName != null && !roleName.equals(oldName)`
-	// 逐字移植，禁无条件发布——防"仅改备注/档位"触发三表冗余同步）。RolePO.RoleName
-	// 为非指针 string 列（DDL NOT NULL），无需空值兜底。Publish 失败上抛 500
-	// （D-03：客户端重试经幂等 UPDATE 自愈，沿 casbin 双轨纪律）。
-	if old != nil && req.RoleName != nil && *req.RoleName != old.RoleName {
+	// 成功即发布（CR-01 修订：**不设**源 `roleName != null && !roleName.equals(oldName)`
+	// 的新≠旧短路——主行已提交后重试同一请求时旧行已是新名，守卫恒假、事件永不
+	// 重发，D-03「重试幂等自愈」被证伪；显式带名即发布，幂等 UPDATE 使同名重发
+	// 退化为 no-op。"仅改备注/档位"（不带角色名）仍零发布，非无条件发布）。RolePO
+	// .RoleName 为非指针 string 列（DDL NOT NULL），无需空值兜底。Publish 失败上抛
+	// 500（D-03：客户端重试同一请求必重发事件，幂等 UPDATE 自愈，沿 casbin 双轨
+	// 纪律）。
+	if old != nil && req.RoleName != nil {
 		evt := event.NameChangedEvent{
 			Type:    event.RoleNameChanged,
 			ID:      id,
@@ -171,7 +174,7 @@ func (s *RoleService) Update(ctx context.Context, id int64, req *dto.RoleUpdateR
 			NewName: *req.RoleName,
 		}
 		if err := s.pub.Publish(ctx, evt); err != nil {
-			return nil, err // → 500（D-03：同步 UPDATE 失败可观察，重试幂等自愈）
+			return nil, err // → 500（D-03：同步 UPDATE 失败可观察，重试必重发自愈）
 		}
 	}
 	// 运行期策略同步（仅 status 显式传入时触发；Patch 成功后执行，失败上抛 500

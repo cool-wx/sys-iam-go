@@ -3,7 +3,11 @@
 // （冗余名称列确定性 UPDATE）。发布时序契约（D-02，对源"事务内发布 + REQUIRES_NEW"
 // 死锁形态的显式修正）：service 层业务写提交成功之后发布，handler 于发布者调用栈
 // 内同步执行并各自开独立事务——任一 handler 失败 Publish 返回错误、API 500，客户端
-// 重试触发 `<> newName` 幂等 UPDATE 自愈（D-03，沿 Phase 3 D-13 双轨纪律）。
+// 重试同一请求必重发事件并经 `<> newName` 幂等 UPDATE 自愈（D-03，沿 Phase 3 D-13
+// 双轨纪律；CR-01 修订：发布条件**不设**源「新名≠旧名」短路——主行已提交后重试
+// 同一请求时旧行已是新名，新≠旧守卫恒假、事件永不重发，自愈路径不可达；各发布域
+// 改为「请求显式带名即发布」，幂等 UPDATE 使同名重发退化为廉价 no-op。该偏离源
+// `!realName.equals(oldName)` 等条件的裁决在案 05-CONTEXT.md D-03 修订）。
 package event
 
 import "context"

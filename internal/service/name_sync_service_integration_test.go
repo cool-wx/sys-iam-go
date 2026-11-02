@@ -46,10 +46,12 @@ func startServiceDB(t *testing.T) *gorm.DB {
 
 // ---- role 域四形态 ----
 
-// TestNameChangePublishRole role 改名发布条件四形态（T-5-04 缓解单测面，源
+// TestNameChangePublishRole role 改名发布条件四形态（T-5-04 缓解单测面；源
 // RoleApplicationService.editRole 条件 `roleName != null && !roleName.equals(oldName)`
-// 逐字移植的行为锁定）：(a) 改名 → 恰 1 条事件且载荷=DB 旧行+请求新值；(b) 仅改
-// remark → 零发布；(c) 新名==旧行名 → 零发布；(d) 目标不存在 → 404 且零发布。
+// 经 CR-01 修订——保留显式带名门、去除新≠旧短路，恢复 D-03「重试幂等自愈」）：
+// (a) 改名 → 恰 1 条事件且载荷=DB 旧行+请求新值；(b) 仅改 remark（不带角色名）→
+// 零发布；(c) 新名==旧行名 → 仍发布恰 1 条事件（幂等 UPDATE 使其退化为 no-op——
+// 主行已提交后重试须能补同步）；(d) 目标不存在 → 404 且零发布。
 func TestNameChangePublishRole(t *testing.T) {
 	ctx := context.Background()
 	db := startServiceDB(t)
@@ -76,10 +78,12 @@ func TestNameChangePublishRole(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, pub.events, 1, "仅改 remark 不得新增事件")
 
-	// (c) 新名==旧行名 → 零发布（源按值变化检测，同名提交非改名）
+	// (c) 新名==旧行名 → 仍发布恰 1 条事件（CR-01：显式带名即发布——主行已提交
+	// 后重试同一请求必须重发，幂等 `<> newName` UPDATE 使本次同步退化为 no-op）
 	_, err = svc.Update(ctx, id, &dto.RoleUpdateReq{RoleName: strPtr("巡检员乙")})
 	require.NoError(t, err)
-	require.Len(t, pub.events, 1, "新名==旧行名不得新增事件")
+	require.Len(t, pub.events, 2, "新名==旧行名仍发布（幂等 no-op 同步——CR-01 重试自愈契约）")
+	assert.Equal(t, "巡检员乙", pub.events[1].NewName, "重发载荷 NewName 取请求值")
 
 	// (d) 目标不存在 → 404 域错误且零发布（回读提前拦，Patch 与发布都不触发）
 	_, err = svc.Update(ctx, 990001, &dto.RoleUpdateReq{RoleName: strPtr("幽灵角色")})
@@ -88,13 +92,14 @@ func TestNameChangePublishRole(t *testing.T) {
 	require.ErrorAs(t, err, &ec)
 	assert.Equal(t, errcode.CodeNotFound, ec.Code, "不存在目标必须译 404/10300")
 	assert.Contains(t, ec.Msg, "角色不存在")
-	require.Len(t, pub.events, 1, "404 路径不得新增事件")
+	require.Len(t, pub.events, 2, "404 路径不得新增事件")
 }
 
 // ---- menu 域四形态 ----
 
 // TestNameChangePublishMenu menu 改名发布条件四形态（源 MenuApplicationService.editMenu
-// 条件 `menu.getName() != null && !menu.getName().equals(oldName)` 的行为锁定）。
+// 条件 `menu.getName() != null && !menu.getName().equals(oldName)` 经 CR-01 修订
+// ——保留显式带名门、去除新≠旧短路，恢复 D-03「重试幂等自愈」）。
 func TestNameChangePublishMenu(t *testing.T) {
 	ctx := context.Background()
 	db := startServiceDB(t)
@@ -121,10 +126,11 @@ func TestNameChangePublishMenu(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, pub.events, 1, "仅改 remark 不得新增事件")
 
-	// (c) 新名==旧行名 → 零发布
+	// (c) 新名==旧行名 → 仍发布恰 1 条事件（CR-01：显式带名即发布，幂等 no-op 同步）
 	_, err = svc.Update(ctx, id, &dto.MenuUpdateReq{Name: strPtr("系统中心")})
 	require.NoError(t, err)
-	require.Len(t, pub.events, 1, "新名==旧行名不得新增事件")
+	require.Len(t, pub.events, 2, "新名==旧行名仍发布（幂等 no-op 同步——CR-01 重试自愈契约）")
+	assert.Equal(t, "系统中心", pub.events[1].NewName, "重发载荷 NewName 取请求值")
 
 	// (d) 目标不存在 → 404 且零发布
 	_, err = svc.Update(ctx, 990002, &dto.MenuUpdateReq{Name: strPtr("幽灵菜单")})
@@ -133,14 +139,15 @@ func TestNameChangePublishMenu(t *testing.T) {
 	require.ErrorAs(t, err, &ec)
 	assert.Equal(t, errcode.CodeNotFound, ec.Code)
 	assert.Contains(t, ec.Msg, "菜单不存在")
-	require.Len(t, pub.events, 1, "404 路径不得新增事件")
+	require.Len(t, pub.events, 2, "404 路径不得新增事件")
 }
 
 // ---- dictType 域四形态 ----
 
 // TestNameChangePublishDictType dictType 改名发布条件四形态（源
 // DictApplicationService.editDictType 条件 `updated && !Objects.equals(oldName, newName)
-// && newName != null` 的行为锁定——updated 前置在 Go 形态下由 Patch 返回 nil 等价成立）。
+// && newName != null` 经 CR-01 修订——保留显式带名门、去除新≠旧短路，恢复 D-03
+// 「重试幂等自愈」；updated 前置在 Go 形态下由 Patch 返回 nil 等价成立）。
 func TestNameChangePublishDictType(t *testing.T) {
 	ctx := context.Background()
 	db := startServiceDB(t)
@@ -166,10 +173,11 @@ func TestNameChangePublishDictType(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, pub.events, 1, "仅改 remark 不得新增事件")
 
-	// (c) 新名==旧行名 → 零发布
+	// (c) 新名==旧行名 → 仍发布恰 1 条事件（CR-01：显式带名即发布，幂等 no-op 同步）
 	_, err = svc.UpdateDictType(ctx, id, &dto.DictTypeUpdateReq{DictName: strPtr("故障类别")})
 	require.NoError(t, err)
-	require.Len(t, pub.events, 1, "新名==旧行名不得新增事件")
+	require.Len(t, pub.events, 2, "新名==旧行名仍发布（幂等 no-op 同步——CR-01 重试自愈契约）")
+	assert.Equal(t, "故障类别", pub.events[1].NewName, "重发载荷 NewName 取请求值")
 
 	// (d) 目标不存在 → 404 且零发布
 	_, err = svc.UpdateDictType(ctx, 990003, &dto.DictTypeUpdateReq{DictName: strPtr("幽灵类型")})
@@ -178,15 +186,17 @@ func TestNameChangePublishDictType(t *testing.T) {
 	require.ErrorAs(t, err, &ec)
 	assert.Equal(t, errcode.CodeNotFound, ec.Code)
 	assert.Contains(t, ec.Msg, "字典类型不存在")
-	require.Len(t, pub.events, 1, "404 路径不得新增事件")
+	require.Len(t, pub.events, 2, "404 路径不得新增事件")
 }
+
 // ==== Task 2 RED:追加到 internal/service/name_sync_service_integration_test.go 的内容 ====
 
 // ---- user 域四形态（realName 发布条件，05-02 Task 2）----
 
 // TestNameChangePublishUserRealName user 改真名发布条件四形态（源
 // UserApplicationService.editUser 条件 `realName != null && !realName.equals(oldRealName)`
-// 的行为锁定；与 role/menu/dict 三域测试同构）。
+// 经 CR-01 修订——保留显式带名门、去除新≠旧短路，恢复 D-03「重试幂等自愈」；
+// 与 role/menu/dict 三域测试同构）。
 func TestNameChangePublishUserRealName(t *testing.T) {
 	ctx := context.Background()
 	db := startServiceDB(t)
@@ -223,10 +233,12 @@ func TestNameChangePublishUserRealName(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, pub.events, 1, "仅改 phone 不得新增事件")
 
-	// (c) 新真名==旧真名 → 零发布
+	// (c) 新真名==旧真名 → 仍发布恰 1 条事件（CR-01：显式带名即发布，幂等 no-op
+	// 同步——主行已提交后重试同一请求必须重发，26 条冗余列才能补拉齐）
 	_, err = svc.Update(ctx, id, &dto.UpdateUserReq{RealName: strPtr("新真名")})
 	require.NoError(t, err)
-	require.Len(t, pub.events, 1, "新真名==旧真名不得新增事件")
+	require.Len(t, pub.events, 2, "新真名==旧真名仍发布（幂等 no-op 同步——CR-01 重试自愈契约）")
+	assert.Equal(t, "新真名", pub.events[1].NewName, "重发载荷 NewName 取请求值")
 
 	// (d) 目标不存在 → 404 且零发布（回读提前拦，Patch 与发布都不触发）
 	_, err = svc.Update(ctx, 990004, &dto.UpdateUserReq{RealName: strPtr("幽灵真名")})
@@ -235,5 +247,5 @@ func TestNameChangePublishUserRealName(t *testing.T) {
 	require.ErrorAs(t, err, &ec)
 	assert.Equal(t, errcode.CodeNotFound, ec.Code)
 	assert.Contains(t, ec.Msg, "用户不存在")
-	require.Len(t, pub.events, 1, "404 路径不得新增事件")
+	require.Len(t, pub.events, 2, "404 路径不得新增事件")
 }

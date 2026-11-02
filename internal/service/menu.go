@@ -74,12 +74,15 @@ func (s *MenuService) Create(ctx context.Context, req *dto.MenuCreateReq) (*dto.
 // 语义）；不显式传则不动父列。落库后回读返回最新契约。审计由 repo.Patch 显式并入
 // （ENG-02）。
 //
-// 改名同步（Phase 5 SYNC-01/02，源 MenuApplicationService.editMenu 发布条件逐字
-// 移植）：请求显式带 name 时先回读旧行（行不存在提前拦为 404，照 Get 同款译域）；
-// Patch 成功（单语句已提交——「提交后发布」由代码顺序天然满足，D-02）之后，仅当
-// 新名≠旧行名时发布 MenuNameChanged（源条件 `menu.getName() != null &&
-// !menu.getName().equals(oldName)`，禁无条件发布）；Publish 失败上抛 500（D-03，
-// 客户端重试经幂等 UPDATE 自愈）。
+// 改名同步（Phase 5 SYNC-01/02，源 MenuApplicationService.editMenu 的 oldName 取值
+// 前置同构；CR-01 修订：**不设**源条件 `menu.getName() != null &&
+// !menu.getName().equals(oldName)` 的新≠旧短路——主行已提交后重试同一请求时旧行
+// 已是新名，新≠旧守卫恒假、事件永不重发，D-03「重试幂等自愈」被证伪；显式带 name
+// 即发布，幂等 UPDATE 使同名重发退化为 no-op）：请求显式带 name 时先回读旧行
+// （行不存在提前拦为 404，照 Get 同款译域）；Patch 成功（单语句已提交——「提交后
+// 发布」由代码顺序天然满足，D-02）之后发布 MenuNameChanged（显式带名门保留，
+// "仅改备注"不带 name 仍零发布，非无条件发布）；Publish 失败上抛 500（D-03，
+// 客户端重试同一请求必重发事件，幂等 UPDATE 自愈）。
 func (s *MenuService) Update(ctx context.Context, id int64, req *dto.MenuUpdateReq) (*dto.MenuResp, error) {
 	// 改名同步回读：仅当请求显式带菜单名时回读旧行（源 oldName 取值前置）；
 	// 行不存在提前 404 拦截，Patch 与发布一个都不触发。
@@ -160,23 +163,22 @@ func (s *MenuService) Update(ctx context.Context, id int64, req *dto.MenuUpdateR
 		}
 		return nil, err
 	}
-	// 改名事件发布（Patch 返回 nil 即已提交，D-02）：新名≠旧行名才发布——oldName
-	// 取回读行值、NULL 兜底 ""（源 oldName != null ? oldName : "" 同款）。
+	// 改名事件发布（Patch 返回 nil 即已提交，D-02；CR-01 修订：显式带名即发布、
+	// 不设新≠旧短路——重试自愈契约见上注）：oldName 取回读行值、NULL 兜底 ""
+	// （源 oldName != null ? oldName : "" 同款，仅载荷信息非 UPDATE 条件）。
 	if old != nil && req.Name != nil {
 		oldName := ""
 		if old.Name != nil {
 			oldName = *old.Name
 		}
-		if *req.Name != oldName {
-			evt := event.NameChangedEvent{
-				Type:    event.MenuNameChanged,
-				ID:      id,
-				OldName: oldName,
-				NewName: *req.Name,
-			}
-			if err := s.pub.Publish(ctx, evt); err != nil {
-				return nil, err // → 500（D-03：同步 UPDATE 失败可观察，重试幂等自愈）
-			}
+		evt := event.NameChangedEvent{
+			Type:    event.MenuNameChanged,
+			ID:      id,
+			OldName: oldName,
+			NewName: *req.Name,
+		}
+		if err := s.pub.Publish(ctx, evt); err != nil {
+			return nil, err // → 500（D-03：同步 UPDATE 失败可观察，重试必重发自愈）
 		}
 	}
 	return s.Get(ctx, id)
