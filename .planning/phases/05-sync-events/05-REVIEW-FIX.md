@@ -35,7 +35,7 @@ verification_env: isolated worktree（gsd-reviewfix/05-2224515，fast-forward �
 
 ## Fixed Issues
 
-### CR-01: D-03「客户端重试幂等自愈」契约被发布守卫证伪
+### CR-01: D-03「客户端重试幂等自愈」契约被发布守卫证伪——Publish 失败后重试永不重发事件，14 表冗余列永久陈旧
 
 **Files modified:** `internal/event/event.go`, `internal/service/user.go`, `internal/service/role.go`, `internal/service/dept.go`, `internal/service/menu.go`, `internal/service/dict.go`, `internal/service/name_sync_service_integration_test.go`, `.planning/phases/05-sync-events/05-CONTEXT.md`
 **Commit:** df9a63c
@@ -50,7 +50,7 @@ verification_env: isolated worktree（gsd-reviewfix/05-2224515，fast-forward �
 3. **裁决在案**：05-CONTEXT.md D-03 追加修订记录（偏离源按值变化检测语义的裁决理由与边界）。
 4. **行为锁定测试同步更新**：name_sync_service_integration_test.go 四个发布条件测试的形态 (c) 从「新名==旧行名 → 零发布」改为「仍发布恰 1 条事件（幂等 no-op 同步）」，形态 (d) 计数随之 +1；测试文档注释注明 CR-01 修订。
 
-### WR-01: 同实体并发改名可乱序应用同步事件
+### WR-01: 同实体并发改名可乱序应用同步事件——冗余列终值可落后于主行且无自愈
 
 **Files modified:** `internal/event/event.go`
 **Commit:** bfbc6fd
@@ -58,7 +58,7 @@ verification_env: isolated worktree（gsd-reviewfix/05-2224515，fast-forward �
 
 **Applied fix:** 在 event.go 包注释追加「已知限制」段：同实体并发改名的多个同步事件无顺序保证（handler 执行序不受主行提交序约束、UPDATE 无旧名 CAS，后到旧名可覆盖先到的新名，冗余列终值可落后至该实体下次改名，或任一显式带当前名的请求经 CR-01 幂等重发拉齐）；封闭方案路径（旧名 CAS + NULL 双形态 / 按实体 ID 进程内串行化）注明须重新过 SYNC-02 prohibition 评审。**竞态本体未封闭**——按评审「至少如实记录」形态处置，与源 REQUIRES_NEW 形态同险，单机低并发场景接受；如需封闭请在后续 phase 立项。
 
-### WR-02: 空串真名可直达 Update 并触发 26 列清空事件
+### WR-02: 空串真名可直达 Update 并触发 26 列清空事件，与 sys_user_role.username 展示名回退语义冲突
 
 **Files modified:** `internal/service/user.go`, `internal/model/dto/user.go`
 **Commit:** 411b574
@@ -83,28 +83,28 @@ verification_env: isolated worktree（gsd-reviewfix/05-2224515，fast-forward �
 
 **本节为 out-of-scope 记录**（fix_scope=critical_warning，IN findings 不修复，逐项如实登记）：
 
-### IN-01: listeners.go 包注释「35 条 UPDATE」计数悬空（实为 34）
+### IN-01: listeners.go 包注释「35 条 UPDATE」计数悬空——删除事件后实为 34 条
 
 **File:** `internal/event/listeners.go:22-23`
 **Reason:** out of scope（Info，fix_scope=critical_warning）
 **Original issue:** SyncHandlers 包级注释「35 条 UPDATE 逐条落齐」在删除 OnUsernameChanged 后应更新为 34。
 
-### IN-02: event.go 包注释「6 个同步 handler」计数悬空（实为 5）
+### IN-02: event.go 包注释「6 个同步 handler」计数悬空——实为 5 个
 
 **File:** `internal/event/event.go:2`
 **Reason:** out of scope（Info）；注：CR-01/WR-01 重写该注释块时刻意保留原句未动，未顺手修复。
 
-### IN-03: app.go 装配注释「全部 6 个同步 handler 注册」计数悬空
+### IN-03: app.go 装配注释「全部 6 个同步 handler 注册」计数悬空（文件在三文件清单之外，跨模块核查发现）
 
 **File:** `internal/app/app.go:159-160`
 **Reason:** out of scope（Info）
 
-### IN-04: user.go `pub` 字段注释「字段暂存不用」已失真
+### IN-04: user.go 字段注释「字段暂存不用」已失真——pub 挂点已实装
 
 **File:** `internal/service/user.go:40-43`
 **Reason:** out of scope（Info）；注：CR-01 触碰同文件其余段落，该注释块保持原样未动。
 
-### IN-05: Update 的 Patch 缺行路径未译域消息（404「数据不存在」vs「用户不存在: {id}」）
+### IN-05: Update 的 Patch 缺行路径未译域消息——404 文案「数据不存在」与其余路径「用户不存在: {id}」不一致（上轮 WR-01 遗留，仍在）
 
 **File:** `internal/service/user.go:193-195`
 **Reason:** out of scope（Info，上轮 WR-01 遗留降记）
