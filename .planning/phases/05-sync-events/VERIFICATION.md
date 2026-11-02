@@ -26,6 +26,7 @@
 - 源 `editUser` 签名不含 username（登录锚点创建后不可改），`UsernameChangedEvent` 全源码树仅事件类定义与监听器方法两处、**无任何 publish 调用点**——源内死代码。
 - Go 侧一致：`UserService.Update` 白名单刻意不含 username/password（internal/service/user.go 注释在案）；事件类型 + `OnUsernameChanged` handler 照源补齐契约形态（05-01），user.Update 不设发布点。
 - 结论：SYNC-01 字面"6 事件"中 username 事件的"无触发路径"是**源语义的原样移植**，非遗漏。
+- **UAT 裁决落地（2026-11-02，用户拍板）**：username 不可修改，**去除 UsernameChanged 事件**——事件常量、`OnUsernameChanged` handler、RegisterAll 注册行已删除（提交见 git log "feat(05): remove UsernameChanged event"），SYNC-01 口径改为 **5 个名称变更事件**（REQUIREMENTS.md/ROADMAP.md goal 已同步）；realName 的 `sys_user_role.username` 列写入（源命名错位）不受影响。
 
 ### Q2：sys_role_dept.role_name 纳入 RoleName 同步面为 Go 增量扩展
 

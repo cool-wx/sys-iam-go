@@ -11,17 +11,18 @@ import "context"
 // Type 事件类型（值取源 eventType 字符串原文）。
 type Type string
 
-// 6 个名称变更事件类型常量（与源 DomainEvent 子类 eventType 逐一对应）。
+// 5 个名称变更事件类型常量（与源 DomainEvent 子类 eventType 逐一对应）。
+// 源 UsernameChangedEvent 为死代码（全源树无 publish，username 系登录锚点不可改），
+// 经 UAT Q1 裁决不移植其契约（2026-11-02）。
 const (
 	DeptNameChanged     Type = "DEPT_NAME_CHANGED"
 	DictTypeNameChanged Type = "DICT_TYPE_NAME_CHANGED"
 	MenuNameChanged     Type = "MENU_NAME_CHANGED"
 	RoleNameChanged     Type = "ROLE_NAME_CHANGED"
-	UsernameChanged     Type = "USERNAME_CHANGED"
 	RealNameChanged     Type = "USER_REAL_NAME_CHANGED"
 )
 
-// NameChangedEvent 6 事件共用载荷（源事件类均为 aggregateRootId+oldName+newName
+// NameChangedEvent 5 事件共用载荷（源事件类均为 aggregateRootId+oldName+newName
 // 三元组）。UPDATE 以 ID 为锚不依赖 OldName——载荷仅服务端构造（查库旧值 + 请求
 // 新值），无客户端直传字段（T-5-03 accept）。
 type NameChangedEvent struct {

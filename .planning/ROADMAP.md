@@ -115,7 +115,7 @@ Plans:
 - [x] 04-04-PLAN.md — Fault 域 CRUD + FaultType 枚举 + Excel 三键 upsert 导入（8 列契约/整批事务/ImportResult/构造等价回测）（FAUL-01/02）
 
 ### Phase 5: 名称同步事件与验收收尾
-**Goal**: 6 个名称变更事件的冗余字段同步全部生效（横跨 8 个域，须等所有域 CRUD 稳定后统一实现），并完成全量验收回归
+**Goal**: 5 个名称变更事件的冗余字段同步全部生效（横跨 8 个域，须等所有域 CRUD 稳定后统一实现；源 UsernameChangedEvent 系死代码经 UAT Q1 裁决不移植，2026-11-02），并完成全量验收回归
 **Mode:** mvp
 **Depends on**: Phase 4
 **Requirements**: SYNC-01, SYNC-02

@@ -30,14 +30,15 @@ func NewSyncHandlers(db *gorm.DB) *SyncHandlers {
 	return &SyncHandlers{db: db}
 }
 
-// RegisterAll 向 dispatcher 注册全部 6 个 handler（app.New 装配期一次调用）。
+// RegisterAll 向 dispatcher 注册全部 5 个 handler（app.New 装配期一次调用）。
+// 源 UsernameChangedEvent 系死代码（无 publish 调用点，username 为登录锚点不可
+// 改），经 UAT Q1 裁决不移植（2026-11-02）。
 func RegisterAll(d *Dispatcher, db *gorm.DB) {
 	h := NewSyncHandlers(db)
 	d.Register(DeptNameChanged, h.OnDeptNameChanged)
 	d.Register(DictTypeNameChanged, h.OnDictTypeNameChanged)
 	d.Register(MenuNameChanged, h.OnMenuNameChanged)
 	d.Register(RoleNameChanged, h.OnRoleNameChanged)
-	d.Register(UsernameChanged, h.OnUsernameChanged)
 	d.Register(RealNameChanged, h.OnUserRealNameChanged)
 }
 
@@ -97,22 +98,9 @@ func (h *SyncHandlers) OnRoleNameChanged(ctx context.Context, evt NameChangedEve
 	})
 }
 
-// OnUsernameChanged 登录名变更同步（源 RealNameSyncListener.onUsernameChanged，1 条）：
-// sys_user_role.username（user_id 锚）。
-//
-// **本 handler 在源内即死代码语义：无任何发布点。** 源 UsernameChangedEvent 全树
-// 无 publish 调用（username 为登录锚点，创建后不可改，源 editUser 签名不含
-// username）；Go 侧 UserService.Update 白名单刻意不含 username（user.go 注释在
-// 案）。handler 与事件类型照源补齐契约（Q1 裁决），不发明触发路径——防"6 事件"
-// 契约缺一。
-//
-// 注意同列双语义防混：本 handler 写的是**登录名**；OnUserRealNameChanged 对同一
-// sys_user_role.username 列写的是**展示名**（源命名错位，见彼处注释）。
-func (h *SyncHandlers) OnUsernameChanged(ctx context.Context, evt NameChangedEvent) error {
-	return h.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return tx.Model(&po.UserRolePO{}).Where("user_id = ? AND username <> ?", evt.ID, evt.NewName).Update("username", evt.NewName).Error
-	})
-}
+// （源 RealNameSyncListener.onUsernameChanged 的登录名同步 handler 未移植：源
+// UsernameChangedEvent 全树无 publish 调用——死代码，username 为登录锚点不可改，
+// 经 UAT Q1 裁决去除，2026-11-02。）
 
 // OnUserRealNameChanged 用户真名变更同步（源 RealNameSyncListener 主路径，
 // 14 张表 26 条 UPDATE，同一 Transaction 闭包内——照源 REQUIRES_NEW 单事务形态）：
@@ -121,8 +109,8 @@ func (h *SyncHandlers) OnUsernameChanged(ctx context.Context, evt NameChangedEve
 //     sys_file 共 12 表：create_by_name + update_by_name 各 1 条（审计操作人列，
 //     create_by_id/update_by_id 锚）；
 //   - sys_user_role.username 1 条（user_id 锚）——**列名 username 实存展示名
-//     realName**（源命名错位原样移植，勿"修正"列语义）；与 OnUsernameChanged 同列
-//     不同值两语义（彼处写登录名、此处写展示名），双向注释防混；
+//     realName**（源命名错位原样移植，勿"修正"列语义；源另有同列写登录名的
+//     onUsernameChanged，因事件无发布点未移植——Q1 裁决）；
 //   - sys_operation_log.real_name 1 条（user_id 锚）——独立业务列非审计列
 //     （该表刻意不内嵌 BaseWithOperator，po/operation_log.go 实证）。
 func (h *SyncHandlers) OnUserRealNameChanged(ctx context.Context, evt NameChangedEvent) error {
@@ -135,8 +123,8 @@ func (h *SyncHandlers) OnUserRealNameChanged(ctx context.Context, evt NameChange
 			return err
 		}
 		// 2/14 sys_user_role.username：列名 username、写入值为展示名（源命名错位，
-		// 与 OnUsernameChanged 写登录名互为两语义——双向注释防混，prohibition
-		// 明文禁"顺手修正"）
+		// prohibition 明文禁"顺手修正"；源同列写登录名的 onUsernameChanged 因事件
+		// 无发布点未移植——Q1 裁决）
 		if err := tx.Model(&po.UserRolePO{}).Where("user_id = ? AND username <> ?", evt.ID, evt.NewName).Update("username", evt.NewName).Error; err != nil {
 			return err
 		}

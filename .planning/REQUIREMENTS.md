@@ -92,7 +92,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 名称同步事件（SYNC）
 
-- [x] **SYNC-01**: 6 个名称变更事件（dept/dictType/menu/role/username/realName）同步关联表（realName 波及 14 张表）
+- [x] **SYNC-01**: 5 个名称变更事件（dept/dictType/menu/role/realName）同步关联表（realName 波及 14 张表）（2026-11-02 UAT Q1 裁决：源 UsernameChangedEvent 系死代码，事件契约不移植——username 为登录锚点不可改）
 - [x] **SYNC-02**: 事件事务提交后发布、handler 独立事务执行（防死锁时序）、UPDATE 带 `!= newName` 条件（NULL 语义锁定测试）
 
 ### 工程化与横切（ENG）

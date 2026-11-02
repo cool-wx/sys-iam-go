@@ -39,7 +39,7 @@ type UserService struct {
 	enf          *authz.Enforcer
 	// pub 改真名事件发布依赖（Phase 5 SYNC-01）：本 plan 一次改齐构造签名，
 	// UserRealNameChanged 发布挂点在 05-02 实装——字段暂存不用。UsernameChanged
-	// 无发布点（源死代码语义，username 为登录锚点不可改，Q1 裁决）。
+	// 事件经 UAT Q1 裁决整体移除（username 为登录锚点不可改，源死代码）。
 	pub event.Publisher
 }
 
@@ -197,8 +197,8 @@ func (s *UserService) Update(ctx context.Context, id int64, req *dto.UpdateUserR
 	// 成功、新真名≠旧真名时发布（源条件 `realName != null &&
 	// !realName.equals(oldRealName)` 逐字移植）。UserPO.RealName 为 *string——旧行
 	// NULL 兜底 ""（源 oldName != null ? oldName : "" 同款）。**不改白名单**
-	// （username/password 刻意排除——username 为登录锚点不可改，UsernameChanged 无
-	// 发布点系源死代码语义，Q1 裁决）；**不动 internal/auth**（D-04：会话快照照源
+	// （username/password 刻意排除——username 为登录锚点不可改，UsernameChanged
+	// 事件经 UAT Q1 裁决整体移除）；**不动 internal/auth**（D-04：会话快照照源
 	// 不刷新，下次登录生效）。Publish 失败上抛 500（D-03：客户端重试经幂等 UPDATE
 	// 自愈，沿 casbin 双轨纪律）。
 	if old != nil && req.RealName != nil {
