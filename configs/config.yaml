@@ -6,7 +6,7 @@ server:
   port: 8080
 
 mysql:
-  dsn: "root:root123@tcp(127.0.0.1:3306)/sys_iam?charset=utf8mb4&parseTime=True&loc=Asia%2FShanghai"
+  dsn: "root:dckj@yf175@tcp(127.0.0.1:3306)/sys-iam-go?charset=utf8mb4&parseTime=True&loc=Asia%2FShanghai"
   max_open_conns: 20
   max_idle_conns: 5
   conn_max_lifetime: 30m
@@ -15,7 +15,7 @@ mysql:
 # env 覆盖：IAM_REDIS_ADDR=10.0.0.9:6379、IAM_REDIS_PASSWORD=...、IAM_REDIS_DB=1
 redis:
   addr: "127.0.0.1:6379"
-  password: ""
+  password: "1"
   db: 0
 
 # auth 会话参数。session_timeout 缺省 720h = Sa-Token 官方默认 30d 代理值——源 Nacos
@@ -42,9 +42,9 @@ storage:
     root: ./data/files
   s3:
     endpoint: http://localhost:9000
-    access_key: "rustfsadmin"
-    secret_key: "rustfssecret"
-    bucket: tims
+    access_key: "admin"
+    secret_key: "admin"
+    bucket: iam
     secure: false
 
 log:
