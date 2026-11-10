@@ -20,7 +20,7 @@ import (
 // 默认值（配置文件缺失/键缺省时使用，工控机取值见研究 P14）。
 const (
 	DefaultPort            = 8080
-	DefaultDSN             = "root:root123@tcp(127.0.0.1:3306)/sys_iam?charset=utf8mb4&parseTime=True&loc=Asia%2FShanghai"
+	DefaultDSN             = "root:dckj@yf175@tcp(127.0.0.1:3306)/sys_iam?charset=utf8mb4&parseTime=True&loc=Asia%2FShanghai"
 	DefaultMaxOpenConns    = 20
 	DefaultMaxIdleConns    = 5
 	DefaultConnMaxLifetime = 30 * time.Minute
