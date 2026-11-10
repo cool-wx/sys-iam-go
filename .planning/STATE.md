@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-02, Phase 5 transition)
 Phase: 05
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-11-02 - Completed quick task 261102-o50: 修改整个项目的注释，去除注释噪声（如 D-07 之类决策编号不应出现在正常项目代码中）
+Last activity: 2026-11-10 - Completed quick task 261110-mec: 数据库表清理对齐 GORM Models（补建 sys_role_dept/casbin_rule，DROP 94 张未用表，库达 17 表终态，零代码改动）
 
 Progress: [██████████] 100%
 
@@ -152,6 +152,7 @@ None yet.
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 261110-mec | 数据库表清理对齐 GORM Models：补建 sys_role_dept/casbin_rule（各 8 列），DROP 94 张未用表（动态清单+双安全门），库达 17 表终态，零代码改动 | 2026-11-10 | —（纯 DDL 零代码改动） | [261110-mec-audit-db-tables-vs-gorm-models-drop-unus](./quick/261110-mec-audit-db-tables-vs-gorm-models-drop-unus/) |
 | 261102-o50 | 修改整个项目的注释，去除注释噪声（如 D-07 之类决策编号不应出现在正常项目代码中） | 2026-11-02 | e2f6399 | [261102-o50-d-07](./quick/261102-o50-d-07/) |
 
 ## Deferred Items
