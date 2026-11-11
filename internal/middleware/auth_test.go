@@ -184,7 +184,7 @@ func TestBearerToken(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, "abc", tok)
 
-	_, ok = BearerToken("bearer abc") // 前缀大小写敏感（RFC 7235 scheme 大小写不敏感的宽容实现不引入——源/前端均用标准 Bearer）
+	_, ok = BearerToken("bearer abc") // 前缀大小写敏感（RFC 7235 scheme 大小写不敏感的宽容实现不引入，前后端均用标准 Bearer）
 	assert.False(t, ok)
 	_, ok = BearerToken("")
 	assert.False(t, ok)

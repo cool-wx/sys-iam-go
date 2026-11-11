@@ -86,7 +86,7 @@ func TestDeptNameSync(t *testing.T) {
 	// --- 同名重放（修订语义）：显式带名即发布——同名 PUT 仍发布 1 条事件，
 	// handler 幂等 UPDATE（`冗余列 <> newName`）把陈旧哨兵值拉齐为新名（自愈直证；
 	// 旧守卫「新名==旧行名不发布」下此请求零发布、哨兵值保持——该语义经
-	// 裁决废弃，与 service 层 name_sync_service_integration_test.go 形态 (c) 同款对齐）---
+	// 与 service 层 name_sync_service_integration_test.go 形态 (c) 一致）---
 	execMust(t, checkDB, "UPDATE sys_user SET dept_name = ? WHERE id = ?", "哨兵值", userID)
 	status, body = putDept(deptA, `{"deptName":"研发三部"}`)
 	require.Equal(t, http.StatusOK, status, "同名重放失败: %s", body)
@@ -244,7 +244,7 @@ func assertColNull(t *testing.T, db *gorm.DB, msg string, query string, args ...
 
 // TestRealNameSync14Tables 用户改真名 → 14 张表冗余列全部同步为新真名（
 // realName 事件全量面，26 条 UPDATE 逐表断言非抽样）：sys_user 双审计列、
-// sys_user_role.username（**值为新真名——展示名语义**，源命名错位原样移植）、
+// sys_user_role.username（**值为新真名——展示名语义**，既有库列约定）、
 // 11 张 BaseWithOperator 域表 create_by_name/update_by_name、
 // sys_operation_log.real_name（user_id 锚独立业务列）。锚用户 = 种子 admin
 // （realName='管理员'）——API 建行即以 admin 为操作人；admin 未触达的表行 SQL 直插
@@ -293,7 +293,7 @@ func TestRealNameSync14Tables(t *testing.T) {
 		"SELECT create_by_name AS col FROM sys_user WHERE id = ?", u2)
 	assertCol(t, checkDB, "管理员甲", "改名后 sys_user.update_by_name 同步（表 1/14）",
 		"SELECT update_by_name AS col FROM sys_user WHERE id = ?", u2)
-	// 列名 username 实存展示名（源 UserApplicationService 命名错位原样移植，勿"修正"）
+	// 列名 username 实存展示名（既有库列约定，勿"修正"）
 	assertCol(t, checkDB, "管理员甲", "改名后 sys_user_role.username 同步（表 2/14——列名 username、值=展示名 realName，源命名错位语义）",
 		"SELECT username AS col FROM sys_user_role WHERE user_id = ?", adminID)
 	assertCol(t, checkDB, "管理员甲", "改名后 sys_operation_log.real_name 同步（表 14/14，user_id 锚）",

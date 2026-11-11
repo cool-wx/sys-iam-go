@@ -40,7 +40,7 @@ func TestUsageStatusUnmarshalUnknownRejects(t *testing.T) {
 }
 
 func TestUsageStatusUnmarshalNullFallsBack(t *testing.T) {
-	// null/空串兜底保留（源 fromValue 读路径语义；指针 DTO 字段遇 JSON null 实际
+	// null/空串兜底保留（读路径兜底契约；指针 DTO 字段遇 JSON null 实际
 	// 不进 UnmarshalJSON，由 binding required 拦截——此处锁非指针用法契约）
 	for _, raw := range []string{`null`, `""`} {
 		var s types.UsageStatus

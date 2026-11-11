@@ -285,14 +285,14 @@ func TestRoleListFilter(t *testing.T) {
 	require.Len(t, listEnv.Data.Items, 2)
 	assert.Equal(t, "查询甲", listEnv.Data.Items[0].RoleName)
 	assert.Equal(t, "查询乙", listEnv.Data.Items[1].RoleName)
-	// id 升序（源特例 orderByAsc(id)；雪花单调递增 → 创建序即 id 序）
+	// id 升序（本域 id ASC 排序特例；雪花单调递增 → 创建序即 id 序）
 	aNum, _ := strconv.ParseInt(idA, 10, 64)
 	bNum, _ := strconv.ParseInt(idB, 10, 64)
 	assert.Less(t, aNum, bNum, "fixture 前置：甲 id 应小于乙 id")
 	assert.Equal(t, idA, listEnv.Data.Items[0].ID, "items 必须按 id 升序")
 	assert.Equal(t, idB, listEnv.Data.Items[1].ID, "items 必须按 id 升序")
 
-	// --- trim 语义：空格包裹的 roleName 仍命中（源 selectPage 先 trim 再 LIKE）---
+	// --- trim 语义：空格包裹的 roleName 仍命中（先 trim 再 LIKE）---
 	status, body = doAuthRequest(t, token, "GET", ts.URL+"/api/v1/roles?roleName="+url.QueryEscape(" 查询 "), "")
 	require.Equal(t, http.StatusOK, status, "body=%s", body)
 	var trimEnv struct {
@@ -494,7 +494,7 @@ func TestRoleAssignMenusDisabledRejected(t *testing.T) {
 	assert.Contains(t, rejEnv.Message, "角色已停用", "body=%s", body)
 	assert.Contains(t, rejEnv.Message, roleID, "message 应含停用角色 id: body=%s", body)
 
-	// 零写证明：p 行零复活；sys_role_menu 保持停用前关联（业务表不动，事实源语义）
+	// 零写证明：p 行零复活；sys_role_menu 保持停用前关联（业务表不动，事实依据）
 	require.Equal(t, int64(0), countRolePRows(), "被拒请求不得把 p 行写回（封口直证）")
 	var rmCnt int64
 	require.NoError(t, checkDB.Raw("SELECT COUNT(*) FROM sys_role_menu WHERE role_id = ?", roleNum).Scan(&rmCnt).Error)

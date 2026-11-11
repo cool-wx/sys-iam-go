@@ -1,6 +1,6 @@
 // RequirePerm 中间件单元测试（fake Authorizer + httptest，无 build tag 免容器）。
 // 表格驱动四分支：identity 缺失 401、未授权 403/10200「无权限」、enforcer 故障
-// 500 fail-closed、命中放行 200（照 auth_test.go 风格）。
+// 500 fail-closed、命中放行 200（与 auth_test.go 同风格）。
 package middleware
 
 import (

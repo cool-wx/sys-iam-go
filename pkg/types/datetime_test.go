@@ -43,7 +43,7 @@ func TestCSTLocation(t *testing.T) {
 }
 
 // TestLocalDateTimeUnmarshalJSON 请求侧反序列化（与 MarshalJSON 对称）：
-// 主格式 yyyy-MM-dd HH:mm:ss（源 DATE_TIME_FORMAT）；RFC3339 兜底；空串置零值；
+// 主格式 yyyy-MM-dd HH:mm:ss（出网契约格式）；RFC3339 兜底；空串置零值；
 // 非法格式报错不静默。
 func TestLocalDateTimeUnmarshalJSON(t *testing.T) {
 	var t1 types.LocalDateTime

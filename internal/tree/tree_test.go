@@ -1,7 +1,5 @@
-// Package tree_test 泛型树构建器行为规格（TDD RED 先行，纯逻辑无 Docker）。
-// 全部用例直证源系统服务层 buildTree 语义（DeptApplicationService.java:89-107 /
-// MenuApplicationService.java:97-115，孤儿提升为根；实体静态 buildTree 是孤儿
-// 丢弃语义且全仓库零调用的死代码——勿仿，02-RESEARCH 1.4 死代码警告）。
+// Package tree_test 泛型树构建器行为规格（纯逻辑无 Docker）。
+// 全部用例直证树装配语义（nil/0 父 id 归根、孤儿提升为根、环不可达静默不产出）。
 package tree_test
 
 import (
@@ -26,7 +24,7 @@ type node struct {
 // pidOf 取 int64 指针的小工具（构造 parentID）。
 func pidOf(v int64) *int64 { return &v }
 
-// attachNode 服务层 attach 回调的等价物：children 值切片 → 指针切片挂进节点。
+// attachNode 服务层 attach 回调的测试替身：children 值切片 → 指针切片挂进节点。
 // 叶子节点以空切片被调用一次——回调内借此把 Children 归一化为非 nil（JSON 出口 []）。
 func attachNode(n *node, children []node) {
 	n.attached++
@@ -47,7 +45,7 @@ func build(nodes []node) []node {
 }
 
 // TestBuildEmptyListReturnsEmptyNonNil 空列表输入：返回空且非 nil（JSON 出口 []
-// 而非 null，空输入边界在树端点的等价要求）。
+// 而非 null，空输入边界契约）。
 func TestBuildEmptyListReturnsEmptyNonNil(t *testing.T) {
 	roots := build(nil)
 	require.NotNil(t, roots, "空输入必须返回非 nil 切片")
@@ -83,8 +81,7 @@ func TestBuildTwoGenerations(t *testing.T) {
 	assert.Empty(t, grandchild.Children)
 }
 
-// TestBuildNilParentPromotedToRoot parentId=nil：提升为根（源 buildTree
-// `pid == null → roots.add` 逐字语义）。
+// TestBuildNilParentPromotedToRoot parentId=nil：提升为根（nil 即无父，直接归根）。
 func TestBuildNilParentPromotedToRoot(t *testing.T) {
 	nodes := []node{{ID: 7, ParentID: nil}}
 	roots := build(nodes)
@@ -92,7 +89,7 @@ func TestBuildNilParentPromotedToRoot(t *testing.T) {
 	assert.Equal(t, int64(7), roots[0].ID)
 }
 
-// TestBuildZeroParentPromotedToRoot parentId=0：提升为根（源 `pid == 0L → roots.add`）。
+// TestBuildZeroParentPromotedToRoot parentId=0：提升为根（0 亦按根处理）。
 func TestBuildZeroParentPromotedToRoot(t *testing.T) {
 	nodes := []node{{ID: 8, ParentID: pidOf(0)}}
 	roots := build(nodes)
@@ -101,8 +98,7 @@ func TestBuildZeroParentPromotedToRoot(t *testing.T) {
 }
 
 // TestBuildOrphanParentPromotedToRoot parentId 指向不存在节点：提升为根
-// （验收语义直证——源服务层 `map.get(pid) == null → roots.add(dept)`；
-// 实体死代码的"孤儿丢弃"语义在此被排除）。真根与孤儿同现于根层。
+// （孤儿提升语义直证——父索引未命中即归根，不丢弃）。真根与孤儿同现于根层。
 func TestBuildOrphanParentPromotedToRoot(t *testing.T) {
 	nodes := []node{
 		{ID: 1},                       // 真根
@@ -120,9 +116,9 @@ func TestBuildOrphanParentPromotedToRoot(t *testing.T) {
 
 // TestBuildCycleDoesNotHang 环引用（A.parent=B、B.parent=A）不死循环：
 // Build 必须在有限时间返回（直证——无递归父链遍历，环不可达即终止）。
-// 环引用双方 parent 均命中节点索引（非 map 未命中），按源服务层语义与 plan 实现
-// 规格（"map 未命中 id → 归入 roots"）均不归根：输出树只含真根，环节点静默不产出
-// （与源一致——环即脏数据，源 buildTree 同样将其排除在 roots 之外）。
+// 环引用双方 parent 均命中节点索引（非 map 未命中），不满足
+// 归根条件（"map 未命中 id → 归入 roots"）：输出树只含真根，环节点静默不产出
+// （环即脏数据，被排除在 roots 之外）。
 func TestBuildCycleDoesNotHang(t *testing.T) {
 	nodes := []node{
 		{ID: 1},                       // 真根
@@ -142,7 +138,7 @@ func TestBuildCycleDoesNotHang(t *testing.T) {
 }
 
 // TestBuildPreservesChildOrder 子节点顺序与输入序一致（repo 已按 sort ASC 供给——
-// 输入序即展示序的契约；源 list orderByAsc(sort) 后 forEach 保序收集）。
+// 输入序即展示序的契约；repo 按 sort ASC 供给保序收集）。
 func TestBuildPreservesChildOrder(t *testing.T) {
 	nodes := []node{
 		{ID: 1},

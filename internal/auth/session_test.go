@@ -24,7 +24,7 @@ func newTestManager(t *testing.T) (*SessionManager, *miniredis.Miniredis, *redis
 
 // TestSessionLoginResolve 登录→校验往返：token 为 64 hex 字符（256-bit 熵）；
 // Resolve 返回正确 Identity——含 roles JSON 往返与 realName 非空白优先/空白回退
-// userName（等价源 SaTokenConfig.java:120-137 语义）。
+// userName（审计操作人取值语义）。
 func TestSessionLoginResolve(t *testing.T) {
 	sm, mr, _ := newTestManager(t)
 	ctx := context.Background()
@@ -218,7 +218,7 @@ func TestKickoutAPIKeyRevokesSessionAndMapping(t *testing.T) {
 	// 会话即刻失效（认证中间件 401 语义）
 	_, err = sm.Resolve(ctx, token)
 	require.ErrorIs(t, err, ErrSessionNotFound, "撤销后 key 的存量会话必须 DEL")
-	// 索引已 SRem（经 go-redis 客户端断言，缺失键 = 空集语义，TestKickoutCleansIndexAndDeadTokens 同款）
+	// 索引已 SRem（经 go-redis 客户端断言，缺失键 = 空集语义，与 TestKickoutCleansIndexAndDeadTokens 一致）
 	members, err := rdb.SMembers(ctx, keyUserTokensPrefix+"31").Result()
 	require.NoError(t, err)
 	assert.Empty(t, members, "user-tokens 索引必须 SRem 撤销的 token")

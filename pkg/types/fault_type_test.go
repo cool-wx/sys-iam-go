@@ -10,9 +10,9 @@ import (
 	"github.com/cool-wx/sys-iam-go/pkg/types"
 )
 
-// FaultType 契约测试（照 Gender/MenuType 既有契约形态）：
-// 读侧 name|int 双形态 + 未知值兜底 UNKNOWN（源 FaultTypeEnum.fromValue/fromInfo
-// 逐字语义）；ParseFaultType 中文/int 串双形态（Excel 报警类型列解析依赖）。
+// FaultType 契约测试（与 Gender/MenuType 契约形态一致）：
+// 读侧 name|int 双形态 + 未知值兜底 UNKNOWN；
+// ParseFaultType 中文/int 串双形态（Excel 报警类型列解析依赖）。
 
 func TestFaultTypeUnmarshalThreeForms(t *testing.T) {
 	cases := []struct {
@@ -40,7 +40,7 @@ func TestFaultTypeUnmarshalThreeForms(t *testing.T) {
 }
 
 func TestFaultTypeUnmarshalUnknownFallsBackUnknown(t *testing.T) {
-	// 未知值兜底 UNKNOWN 且永不返回 error（含 null）——源 fromValue 逐字语义
+	// 未知值兜底 UNKNOWN 且永不返回 error（含 null）——兜底契约
 	for _, raw := range []string{`"99"`, `99`, `"WEIRD"`, `null`, `"消息"`} {
 		var ft types.FaultType
 		require.NoError(t, json.Unmarshal([]byte(raw), &ft), "输入 %s 不允许报错", raw)
@@ -66,7 +66,7 @@ func TestFaultTypeMarshalName(t *testing.T) {
 }
 
 func TestParseFaultTypeDualForms(t *testing.T) {
-	// int 串四值 + 中文文案四值；未知值兜底 3 不报错（源 fromInfo 语义）
+	// int 串四值 + 中文文案四值；未知值兜底 3 不报错（兜底契约）
 	cases := []struct {
 		in   string
 		want int8

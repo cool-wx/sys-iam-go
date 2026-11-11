@@ -1,8 +1,8 @@
 //go:build integration
 
-// File 域集成测试（源 FileUploadHashDedupTest 蓝本直译）：判重五语义
-// （同分类同内容 400 源消息 + 零副作用 / 异分类放行 / 未分类 IS NULL 分支 / 异内容
-// 放行 / 分类不存在 404 源消息）、下载流式（Content-Length + 逐字节一致）、删除
+// File 域集成测试：判重五语义
+// （同分类同内容 400 固定文案 + 零副作用 / 异分类放行 / 未分类 IS NULL 分支 / 异内容
+// 放行 / 分类不存在 404 固定文案）、下载流式（Content-Length + 逐字节一致）、删除
 // 宽容链、文件分类树（孤儿提升 + parent_name 冗余 + 上级分类不存在 404）。
 package handler_test
 
@@ -64,9 +64,9 @@ func fileRows(t *testing.T, dsn string) int64 {
 	return cnt
 }
 
-// TestFileUploadDedupFiveSemantics 上传判重五语义（源 FileUploadHashDedupTest
-// 蓝本直译）：①同分类同内容拒绝（400 源消息 + 零副作用）②异分类放行 ③异内容
-// 放行 ④未分类 IS NULL 分支判重命中 ⑤分类不存在 404 源消息。
+// TestFileUploadDedupFiveSemantics 上传判重五语义：①同分类同内容拒绝（400 固定
+// 文案 + 零副作用）②异分类放行 ③异内容
+// 放行 ④未分类 IS NULL 分支判重命中 ⑤分类不存在 404 固定文案。
 func TestFileUploadDedupFiveSemantics(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
 	token := adminToken()
@@ -105,7 +105,7 @@ func TestFileUploadDedupFiveSemantics(t *testing.T) {
 	require.NotNil(t, up1.Data.FileHash)
 	assert.Len(t, *up1.Data.FileHash, 32, "MD5 hex 必须为 32 字符")
 
-	// --- ② 同分类同内容异名 f2 → 400 源消息 + 零副作用（DB 0 新行 + 存储无新对象）---
+	// --- ② 同分类同内容异名 f2 → 400 固定文案 + 零副作用（DB 0 新行 + 存储无新对象）---
 	status, body = doUpload(t, token, ts.URL+"/api/v1/files/upload", "f2.txt", contentX, catA)
 	require.Equal(t, http.StatusBadRequest, status, "同分类同内容必须拒绝: body=%s", body)
 	var dupEnv struct {
@@ -147,7 +147,7 @@ func TestFileUploadDedupFiveSemantics(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &dupEnv))
 	assert.Contains(t, dupEnv.Message, "文件已存在：f6.txt（内容 MD5 重复", "IS NULL 分支拒绝消息: body=%s", body)
 
-	// --- ⑥ 不存在分类 id 上传 → 404「文件分类不存在: {id}」源消息 ---
+	// --- ⑥ 不存在分类 id 上传 → 404「文件分类不存在: {id}」固定文案 ---
 	status, body = doUpload(t, token, ts.URL+"/api/v1/files/upload", "f7.txt", contentY, "99999")
 	require.Equal(t, http.StatusNotFound, status, "分类不存在必须 404: body=%s", body)
 	require.NoError(t, json.Unmarshal(body, &dupEnv))
@@ -275,7 +275,7 @@ type fileCategoryTreeNode struct {
 }
 
 // TestFileCategoryTree 文件分类树：两层级嵌套 + parent_name 冗余 +
-// 孤儿提升为根 + 上级分类不存在 404 源消息 + 叶子 children 空数组非 null。
+// 孤儿提升为根 + 上级分类不存在 404 固定文案 + 叶子 children 空数组非 null。
 // 孤儿经 SQL 直插（API create 会被父校验拦截——正确行为，菜单树测试同构先例）。
 func TestFileCategoryTree(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
@@ -303,7 +303,7 @@ func TestFileCategoryTree(t *testing.T) {
 	require.NotNil(t, row.ParentName, "合法 parentId 时 parent_name 必须冗余落库")
 	assert.Equal(t, "分类A", *row.ParentName, "parent_name 必须为服务端查库冗余值")
 
-	// --- create 带不存在的 parentId：404 +「上级分类不存在: 888」源消息 ---
+	// --- create 带不存在的 parentId：404 +「上级分类不存在: 888」固定文案 ---
 	status, body := doAuthRequest(t, token, "POST", ts.URL+"/api/v1/file-categories",
 		`{"categoryName":"孤儿分类","parentId":888}`)
 	require.Equal(t, http.StatusNotFound, status, "父不存在应 404（CodeNotFound 拍板）: body=%s", body)
@@ -360,7 +360,7 @@ func TestFileCategoryTree(t *testing.T) {
 	assert.Nil(t, clearedEnv.Data.ParentID, "移根后 parentId 必须为 null（根唯一形态）")
 	assert.Nil(t, clearedEnv.Data.ParentName, "显式移至根后 parent_name 必须清空")
 
-	// --- delete 根分类（先删孤儿恢复两节点态）：删除带子节点的分类仍成功（源缺口按源保留）---
+	// --- delete 根分类（先删孤儿恢复两节点态）：删除带子节点的分类仍成功（无引用检查）---
 	status, body = doAuthRequest(t, token, "DELETE", ts.URL+"/api/v1/file-categories/990101", "")
 	require.Equal(t, http.StatusOK, status, "body=%s", body)
 	status, body = doAuthRequest(t, token, "GET", ts.URL+"/api/v1/file-categories/"+rootID, "")

@@ -46,9 +46,8 @@ func startServiceDB(t *testing.T) *gorm.DB {
 
 // ---- role 域四形态 ----
 
-// TestNameChangePublishRole role 改名发布条件四形态（防误发布单测面；源
-// RoleApplicationService.editRole 条件 `roleName != null && !roleName.equals(oldName)`
-// 经契约修订——保留显式带名门、去除新≠旧短路，恢复「重试幂等自愈」）：
+// TestNameChangePublishRole role 改名发布条件四形态（防误发布单测面；
+// 发布条件为「显式带名即发布」，不设新≠旧短路，保证「重试幂等自愈」）：
 // (a) 改名 → 恰 1 条事件且载荷=DB 旧行+请求新值；(b) 仅改 remark（不带角色名）→
 // 零发布；(c) 新名==旧行名 → 仍发布恰 1 条事件（幂等 UPDATE 使其退化为 no-op——
 // 主行已提交后重试须能补同步）；(d) 目标不存在 → 404 且零发布。
@@ -97,9 +96,8 @@ func TestNameChangePublishRole(t *testing.T) {
 
 // ---- menu 域四形态 ----
 
-// TestNameChangePublishMenu menu 改名发布条件四形态（源 MenuApplicationService.editMenu
-// 条件 `menu.getName() != null && !menu.getName().equals(oldName)` 经契约修订
-// ——保留显式带名门、去除新≠旧短路，恢复「重试幂等自愈」）。
+// TestNameChangePublishMenu menu 改名发布条件四形态（发布条件为
+// 「显式带名即发布」，不设新≠旧短路，保证「重试幂等自愈」）。
 func TestNameChangePublishMenu(t *testing.T) {
 	ctx := context.Background()
 	db := startServiceDB(t)
@@ -144,10 +142,9 @@ func TestNameChangePublishMenu(t *testing.T) {
 
 // ---- dictType 域四形态 ----
 
-// TestNameChangePublishDictType dictType 改名发布条件四形态（源
-// DictApplicationService.editDictType 条件 `updated && !Objects.equals(oldName, newName)
-// && newName != null` 经契约修订——保留显式带名门、去除新≠旧短路，恢复
-// 「重试幂等自愈」；updated 前置在 Go 形态下由 Patch 返回 nil 等价成立）。
+// TestNameChangePublishDictType dictType 改名发布条件四形态（发布条件为
+// 「显式带名即发布」，不设新≠旧短路，保证
+// 「重试幂等自愈」；行已变更前置由 Patch 返回 nil 承载）。
 func TestNameChangePublishDictType(t *testing.T) {
 	ctx := context.Background()
 	db := startServiceDB(t)
@@ -189,13 +186,12 @@ func TestNameChangePublishDictType(t *testing.T) {
 	require.Len(t, pub.events, 2, "404 路径不得新增事件")
 }
 
-// ==== Task 2 RED:追加到 internal/service/name_sync_service_integration_test.go 的内容 ====
+// ==== user 域四形态（realName 发布条件）追加用例 ====
 
 // ---- user 域四形态（realName 发布条件）----
 
-// TestNameChangePublishUserRealName user 改真名发布条件四形态（源
-// UserApplicationService.editUser 条件 `realName != null && !realName.equals(oldRealName)`
-// 经契约修订——保留显式带名门、去除新≠旧短路，恢复「重试幂等自愈」；
+// TestNameChangePublishUserRealName user 改真名发布条件四形态（发布条件为
+// 「显式带名即发布」，不设新≠旧短路，保证「重试幂等自愈」；
 // 与 role/menu/dict 三域测试同构）。
 func TestNameChangePublishUserRealName(t *testing.T) {
 	ctx := context.Background()

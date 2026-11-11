@@ -93,7 +93,7 @@ func TestRevokeSuperAdminImmediate(t *testing.T) {
 }
 
 // TestHasRoleGLayer HasRole g 层读原语直证：g 行存在 → true；删 g 行后
-// 下一调用即 false——判据源是 enforcer 实时策略而非任何快照（回收即刻生效）；
+// 下一调用即 false——判据是 enforcer 实时策略而非任何快照（回收即刻生效）；
 // 未持有角色 / 无 g 行用户 → false 且无 error。
 func TestHasRoleGLayer(t *testing.T) {
 	e := newMemSynced(t)

@@ -4,12 +4,12 @@
 // 覆盖：
 //   - TestDictTypeCRUD：类型 CRUD 全链 + uk_dict_type 1062 翻译（400/10400
 //     「字典类型已存在」）+ update 零值保护
-//   - TestDictDataWithTypeCheck：类型存在性前置校验（404/10300 源消息原文）+
+//   - TestDictDataWithTypeCheck：类型存在性前置校验（404/10300 固定文案）+
 //     dict_type_name 服务端冗余写
 //   - TestDictDataFilterByType：dict_type_id 可选过滤分支
 //   - TestConfigCRUDAndKey：config CRUD + key/{key} 字符串本体查询 + uk_config_key
 //     1062 翻译
-//   - TestShiftFullListNoPaging：全量数组直出无分页 envelope（源行为直译）+ CRUD
+//   - TestShiftFullListNoPaging：全量数组直出无分页 envelope + CRUD
 //   - TestDictRoutePerm：无 token 401 / 无 perm 用户 403 / admin 200 三断言
 package handler_test
 
@@ -151,7 +151,7 @@ func TestDictTypeCRUD(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &updDupEnv))
 	assert.Equal(t, 10400, updDupEnv.Code, "body=%s", body)
 	assert.Equal(t, "字典类型已存在", updDupEnv.Message, "body=%s", body)
-	_ = otherID // 冲突源行保留至测试结束（隔离容器逐用例清库）
+	_ = otherID // 冲突行保留至测试结束（隔离容器逐用例清库）
 
 	// delete → get 404
 	status, body = doAuthRequest(t, token, "DELETE", ts.URL+"/api/v1/dict-types/"+int64ToStr(int64(created.ID)), "")
@@ -166,7 +166,7 @@ func TestDictTypeCRUD(t *testing.T) {
 // TestDictDataWithTypeCheck 字典数据类型校验与冗余写：
 // 先建类型 → create data 断言 resp 与 DB 行的 dict_type_name 冗余值 →
 // 对不存在 typeId create data → 404 code 10300 消息「字典类型不存在: {id}」
-// （源消息原文 DictApplicationService:87）。
+// （固定文案）。
 func TestDictDataWithTypeCheck(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
 	token := adminToken()
@@ -377,7 +377,7 @@ type shiftRespBody struct {
 	Status    *string `json:"status"`
 }
 
-// TestShiftFullListNoPaging 排班全量直出（源行为直译）+ CRUD：
+// TestShiftFullListNoPaging 排班全量直出 + CRUD：
 // create 3 条 → GET /api/v1/shifts 断言 data 为长度 3 数组且响应无 items/total
 // 包装 → PUT 改 start_time 后 Get 回读更新生效。status 经 UsageStatus 枚举
 // 枚举纪律：create 恒服务端默认 "ENABLED"；update 未知枚举值 400/10401 不静默
@@ -392,7 +392,7 @@ func TestShiftFullListNoPaging(t *testing.T) {
 		require.Equal(t, http.StatusOK, status, "create shift 失败: body=%s", body)
 	}
 
-	// list：data 直接是数组（无 items/total/page/size 包装——源直译）。
+	// list：data 直接是数组（无 items/total/page/size 包装——接口契约）。
 	// data 反序列化为数组成功 + 无分页键字段，即证无 envelope（对象包装会在此失败）
 	status, body := doAuthRequest(t, token, "GET", ts.URL+"/api/v1/shifts", "")
 	require.Equal(t, http.StatusOK, status, "body=%s", body)

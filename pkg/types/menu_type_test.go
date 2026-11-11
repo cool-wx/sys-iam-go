@@ -10,8 +10,8 @@ import (
 	"github.com/cool-wx/sys-iam-go/pkg/types"
 )
 
-// MenuType 契约测试（照 Gender/UsageStatus 既有契约形态）：
-// 读侧 name|int 双形态 + 未知值兜底 MENU（源 MenuType.fromValue 逐字语义）。
+// MenuType 契约测试（与 Gender/UsageStatus 契约形态一致）：
+// 读侧 name|int 双形态 + 未知值兜底 MENU。
 
 func TestMenuTypeUnmarshalThreeForms(t *testing.T) {
 	cases := []struct {

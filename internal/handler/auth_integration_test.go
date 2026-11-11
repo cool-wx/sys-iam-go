@@ -1,7 +1,7 @@
 //go:build integration
 
 // 认证链路集成测试（真实 MySQL + Redis 双容器）。
-// 覆盖：存量 Hutool BCrypt $2a$ 哈希零迁移登录（兼容性活体直证）、登录→访问→
+// 覆盖：存量 bcrypt $2a$ 哈希零迁移登录（兼容性活体直证）、登录→访问→
 // 登出→401 端到端、白名单四路径收紧、防枚举两路径逐字节相同、禁用
 // 10502、畸形 hash 401 非 500。
 package handler_test
@@ -19,8 +19,8 @@ import (
 	"github.com/cool-wx/sys-iam-go/pkg/ids"
 )
 
-// 本库 admin 用户真实存量 Hutool BCrypt 哈希（明文 admin123）——Go x/crypto/bcrypt
-// 兼容性已在研究阶段实测（02-RESEARCH：三源活体代证），此处作为 fixture 直证零迁移。
+// 本库 admin 用户真实存量 bcrypt $2a$ 哈希（明文 admin123）——Go x/crypto/bcrypt
+// 可直接验证该存量哈希（标准 modular crypt format），此处作为 fixture 直证零迁移。
 const (
 	testAdminHash     = "$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2"
 	testAdminPass     = "admin123"
@@ -44,7 +44,7 @@ func seedUser(t *testing.T, dsn, username, passwordHash, realName string, status
 }
 
 // seedApiKey 直插 sys_api_key 行（apikey-login 测试种子自举；userID/expireTime
-// nil → NULL 列——未关联用户/永不过期两种源语义）。
+// nil → NULL 列——未关联用户/永不过期两种形态）。
 func seedApiKey(t *testing.T, dsn, apiKey, username string, userID *int64, expireTime *string, status int8) int64 {
 	t.Helper()
 	db := openCheckDB(t, dsn)
@@ -107,8 +107,8 @@ func seedUserWithDeptCreator(t *testing.T, dsn, username, passwordHash, realName
 	return id
 }
 
-// attachRoleToUser 直插 sys_user_role 关联行（username 列测试种子不较真——源命名
-// 错位语义与登录快照无关）。必须在被测用户登录【之前】调用——roles 是登录时快照。
+// attachRoleToUser 直插 sys_user_role 关联行（username 列测试种子不较真——该列
+// 命名错位语义与登录快照无关）。必须在被测用户登录【之前】调用——roles 是登录时快照。
 func attachRoleToUser(t *testing.T, dsn string, userID, roleID int64, roleName string) {
 	t.Helper()
 	db := openCheckDB(t, dsn)
@@ -181,7 +181,7 @@ func TestApiKeyLoginFlow(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &unknownEnvelope))
 	assert.Equal(t, 10503, unknownEnvelope.Code)
 
-	// user_id NULL key → 10504（源"API Key 未关联用户"）
+	// user_id NULL key → 10504（"API Key 未关联用户"）
 	seedApiKey(t, dsn, "ak-orphan-key", "orphan-owner", nil, nil, 1)
 	status, body = apikeyLogin(t, ts, "ak-orphan-key")
 	require.Equal(t, http.StatusUnauthorized, status, "body=%s", body)

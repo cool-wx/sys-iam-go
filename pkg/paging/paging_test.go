@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestParseClamp 分页参数钳位五断言（源 PageHelper 语义）：
+// TestParseClamp 分页参数钳位五断言（钳位语义）：
 // 缺省 1/15、<1 钳位、size 上限 100、非法输入兜底、合法值原样。
 func TestParseClamp(t *testing.T) {
 	cases := []struct {

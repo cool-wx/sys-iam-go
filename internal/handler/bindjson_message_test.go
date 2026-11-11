@@ -42,7 +42,7 @@ func (r *jsonBodyReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-// serveBindJSON 构造挂全局 BodyLimit 的 POST 路由（等价 router.go 装配形态），
+// serveBindJSON 构造挂全局 BodyLimit 的 POST 路由（与 router.go 装配形态一致），
 // 下游 handler 直调 bindJSON，返回响应 envelope JSON 文本。
 func serveBindJSON(t *testing.T, bodyBytes int, contentType string) string {
 	t.Helper()

@@ -1,9 +1,8 @@
 //go:build integration
 
 // Fault 域集成测试：CRUD 全链（服务端默认值 -1/3 直查 DB 断言 +
-// 零值保护 + perm 三断言）与 Excel 三键 upsert 导入（构造等价回测，裁决：
-// 真导出文件不可得，按源 @ExcelProperty 列序构造——列序表 04-RESEARCH
-// Implementation Guidance「Excel 列序表」，照抄不重排）。
+// 零值保护 + perm 三断言）与 Excel 三键 upsert 导入（构造对等回测：
+// 真导出文件不可得，按契约 8 列列序构造，照抄不重排）。
 package handler_test
 
 import (
@@ -41,8 +40,8 @@ type faultImportEnvelope struct {
 	} `json:"data"`
 }
 
-// faultImportHeaders 契约表头 8 列（测试构造器与 service 同源契约——文案与列序
-// 均照 04-RESEARCH Implementation Guidance 列序表逐字，不发明格式）。
+// faultImportHeaders 契约表头 8 列（测试构造器与 service 共用契约——文案与列序
+// 均照契约逐字，不发明格式）。
 var faultImportHeaders = []string{"故障代码", "故障变量", "触发位", "报警类型", "故障描述", "故障原因", "故障位置", "解决方法"}
 
 // buildFaultXlsx 构造契约格式 xlsx 字节流（fallback 落地）：首行 8 列契约
@@ -134,11 +133,11 @@ func TestFaultImportUpsert(t *testing.T) {
 	assert.Equal(t, int64(0), cntEmpty, "name 空行不得入库")
 }
 
-// TestFaultImportLocationNullNoDedup location NULL 判重照源语义锁定（Q2 裁定
-// 直证，prohibition 断言形态）：同一三键（name=V2/bit=1/location 空）连续导入
+// TestFaultImportLocationNullNoDedup location NULL 判重语义锁定（断言形态）：
+// 同一三键（name=V2/bit=1/location 空）连续导入
 // 两次 → 两次均 insertCount=1 → 库中 V2 两行。location 为 NULL 时 eq 判重恒
-// 不中、反复 INSERT 是源已接受的既有行为（04-RESEARCH 重点 1 三键查询 NULL
-// 边界陷阱）——**这是语义锁定测试，非缺陷**：勿改 service 为 IS NULL 双分支
+// 不中、反复 INSERT 是既定的 eq 直传行为（三键查询 NULL 边界特性）
+// ——**这是语义锁定测试，非缺陷**：勿改 service 为 IS NULL 双分支
 // 使本测试变红。
 func TestFaultImportLocationNullNoDedup(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
@@ -266,7 +265,7 @@ func TestFaultImportYf175aData(t *testing.T) {
 	require.NoError(t, err)
 	require.Greater(t, len(srcRows), 1, "数据源必须含数据行")
 
-	// 按列头名称定位源列（序号/备注等冗余列丢弃；映射即 8 列契约的子集）
+	// 按列头名称定位列（序号/备注等冗余列丢弃；映射即 8 列契约的子集）
 	srcIdx := map[string]int{}
 	for i, h := range srcRows[0] {
 		srcIdx[h] = i

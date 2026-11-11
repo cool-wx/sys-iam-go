@@ -629,7 +629,7 @@ func TestCreateUserDuplicateUsername(t *testing.T) {
 
 // TestCreateUserValidation 完整错误面：缺必填 → 400 + 10401；gender=99 未知枚举
 // → 不 500（兜底 UNKNOWN 落库）；请求体携带未知额外字段 → 不 400（宽容输入，
-// 源 FAIL_ON_UNKNOWN_PROPERTIES=false 语义）。
+// 宽容反序列化契约）。
 func TestCreateUserValidation(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
 

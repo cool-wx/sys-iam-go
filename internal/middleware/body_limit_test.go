@@ -61,7 +61,7 @@ func TestBodyLimitMultipartBoundedOnNonUploadRoutes(t *testing.T) {
 	assert.ErrorAs(t, err, &mbe, "超限必须是 MaxBytesError（bindJSON 10401 文案路径）")
 }
 
-// TestBodyLimitMultipartUploadRouteDoubleCap 双层封顶叠加直证（等价 upload/import
+// TestBodyLimitMultipartUploadRouteDoubleCap 双层封顶叠加直证（模拟 upload/import
 // 路由形态 BodyLimit + BodyLimitWithMB(MaxMultipartMB)）：内层生效值不变——
 // 20MB 内完整可读（合法大上传不回归），超 20MB 仍 MaxBytesError。
 func TestBodyLimitMultipartUploadRouteDoubleCap(t *testing.T) {

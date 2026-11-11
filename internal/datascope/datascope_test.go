@@ -77,7 +77,7 @@ func TestCollectSubtreeIDsOrphanAbsent(t *testing.T) {
 }
 
 // TestCollectSubtreeIDsCycleFinite 父子环（A.parent=B、B.parent=A）不死循环且
-// 输出有限集：visited 集防环直证（2s 超时纪律照 tree_test）。
+// 输出有限集：visited 集防环直证（2s 超时纪律与 tree_test 一致）。
 func TestCollectSubtreeIDsCycleFinite(t *testing.T) {
 	depts := []po.DeptPO{
 		deptNode(10, pidOf(11)), // 环 A

@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// hexKeyRe 32 位小写 hex（等价源 UUID 去连字符熵）。
+// hexKeyRe 32 位小写 hex（128-bit 熵）。
 var hexKeyRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 // apiKeyEnvelope create/get 响应解包形状（无 omitempty 契约）。
@@ -38,7 +38,7 @@ type apiKeyEnvelope struct {
 }
 
 // TestApiKeyCRUD CRUD 主链路：create 明文 key 32 hex；带不存在 userId
-// 400「用户不存在: {id}」；带有效 userId username 冗余 = user.Username（源语义取
+// 400「用户不存在: {id}」；带有效 userId username 冗余 = user.Username（取
 // username 非 realName）；PUT status 停用后其余列不动（仅 status 单列语义直证）；
 // list 分页 envelope；delete 后 GET 404。另含六组路由 GET 无 token 401 遍历
 // （白名单外无遗漏）。

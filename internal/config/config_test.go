@@ -117,7 +117,7 @@ func TestEnvOverrideRedisAndSessionTimeout(t *testing.T) {
 }
 
 func TestDefaultsRedisAndSessionTimeout(t *testing.T) {
-	// 默认值：redis.addr=127.0.0.1:6379、timeout=720h（Sa-Token 30d 代理值）
+	// 默认值：redis.addr=127.0.0.1:6379、timeout=720h（30 天）
 	cfg, err := config.Load(filepath.Join(t.TempDir(), "absent.yaml"), false)
 	require.NoError(t, err)
 	assert.Equal(t, "127.0.0.1:6379", cfg.Redis.Addr)
@@ -181,7 +181,7 @@ func TestInvalidPoolConfigRejected(t *testing.T) {
 
 func TestDefaultsStorage(t *testing.T) {
 	// storage 段默认值：driver=local、local.root=./data/files
-	// （相对工作目录，systemd WorkingDirectory 联动）、s3 四参数照源默认形态
+	// （相对工作目录，systemd WorkingDirectory 联动）、s3 四参数默认形态
 	// （endpoint 带 scheme http://localhost:9000、bucket tims——现场可配）。
 	cfg, err := config.Load(filepath.Join(t.TempDir(), "absent.yaml"), false)
 	require.NoError(t, err)

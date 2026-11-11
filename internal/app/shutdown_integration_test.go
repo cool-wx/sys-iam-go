@@ -219,7 +219,7 @@ func TestGracefulShutdownDrains(t *testing.T) {
 		}
 	}()
 
-	// SIGTERM 等价全路径：摘流 → 15s 排空 → 关连接
+	// SIGTERM 全路径模拟：摘流 → 15s 排空 → 关连接
 	stopStart := time.Now()
 	application.Stop()
 	elapsed := time.Since(stopStart)

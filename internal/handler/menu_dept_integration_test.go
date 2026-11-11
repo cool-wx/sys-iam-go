@@ -51,7 +51,7 @@ func mustCreate(t *testing.T, token, url, body string) string {
 
 // TestMenuCRUD 菜单 CRUD 全链：create→get→patch→delete + 父校验 400
 // 分支 + 不存在 id 404 + pri 组 401 保护 + MenuType 未知值兜底 + parent_name 服务端
-// 冗余（非请求体可伪造）+ 删除带子节点菜单仍成功（源缺口按源保留）。
+// 冗余（非请求体可伪造）+ 删除带子节点菜单仍成功（无子菜单引用检查）。
 func TestMenuCRUD(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
 	token := adminToken()
@@ -144,11 +144,11 @@ func TestMenuCRUD(t *testing.T) {
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/menus/99001", `{"name":"x"}`)
 	require.Equal(t, http.StatusNotFound, status, "body=%s", body)
 
-	// --- delete 带子节点的根菜单：仍成功（源缺口按源保留——无子菜单引用检查）---
+	// --- delete 带子节点的根菜单：仍成功（无子菜单引用检查）---
 	status, body = doAuthRequest(t, token, "DELETE", ts.URL+"/api/v1/menus/"+rootID, "")
 	require.Equal(t, http.StatusOK, status, "删除带子节点的菜单仍必须成功（源缺口按源保留）: body=%s", body)
 
-	// --- 删除后 get：404 + 域消息「菜单不存在: {id}」（源消息原文，code/HTTP 契约同主链）---
+	// --- 删除后 get：404 + 域消息「菜单不存在: {id}」（固定文案，code/HTTP 契约同主链）---
 	status, body = doAuthRequest(t, token, "GET", ts.URL+"/api/v1/menus/"+rootID, "")
 	require.Equal(t, http.StatusNotFound, status, "删除后 get 应 404: body=%s", body)
 	var menuNfEnv struct {
@@ -206,7 +206,7 @@ func TestMenuTree(t *testing.T) {
 }
 
 // TestDeptCRUD 部门 CRUD 全链：create→get→patch→delete + 父校验
-// 400「上级部门不存在」分支 + 不存在 id 404 + 删除带子节点部门仍成功（源缺口按源保留）。
+// 400「上级部门不存在」分支 + 不存在 id 404 + 删除带子节点部门仍成功（无引用检查）。
 func TestDeptCRUD(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
 	token := adminToken()
@@ -268,7 +268,7 @@ func TestDeptCRUD(t *testing.T) {
 	status, body = doAuthRequest(t, token, "PUT", ts.URL+"/api/v1/depts/"+childID, `{"deptName":"研发中心"}`)
 	require.Equal(t, http.StatusOK, status, "body=%s", body)
 
-	// --- delete 带子节点的部门：仍成功（源缺口按源保留）---
+	// --- delete 带子节点的部门：仍成功（无引用检查）---
 	status, body = doAuthRequest(t, token, "DELETE", ts.URL+"/api/v1/depts/"+rootID, "")
 	require.Equal(t, http.StatusOK, status, "删除带子节点的部门仍必须成功（源缺口按源保留）: body=%s", body)
 
@@ -286,8 +286,8 @@ func TestDeptCRUD(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, status, "body=%s", body)
 }
 
-// TestDeptTreeOrphanPromotion 部门树孤儿提升（验收明文）：parentId 指向
-// 不存在节点的部门提升为根层——源服务层 buildTree 语义（非实体死代码的孤儿丢弃）。
+// TestDeptTreeOrphanPromotion 部门树孤儿提升：parentId 指向
+// 不存在节点的部门提升为根层（孤儿提升语义）。
 func TestDeptTreeOrphanPromotion(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
 	token := adminToken()

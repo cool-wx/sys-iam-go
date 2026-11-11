@@ -37,8 +37,8 @@ func newTestWriter(t *testing.T, capacity int, sink Sink) *OpLogWriter {
 	return w
 }
 
-// TestMaskSensitiveEightFields 8 敏感字段逐字段掩码（源正则逐字保真——
-// 源需求清单「7 字段」为计数笔误，以源 8 字段为准）+ 混合体普通字段原样。
+// TestMaskSensitiveEightFields 8 敏感字段逐字段掩码（与生产正则一致）+
+// 混合体普通字段原样。
 func TestMaskSensitiveEightFields(t *testing.T) {
 	// 逐字段：{"<field>":"x"} → {"<field>":"******"}（键名保留）
 	fields := []string{
@@ -66,7 +66,7 @@ func TestMaskSensitiveEightFields(t *testing.T) {
 	assert.NotContains(t, out, `"r1"`, "敏感值明文残留")
 }
 
-// TestMaskSensitiveNonStringUntouched 非字符串值不掩码（源语义：正则只匹配带
+// TestMaskSensitiveNonStringUntouched 非字符串值不掩码（正则只匹配带
 // 双引号的字符串值形态——数字/布尔/null 原样保留）。
 func TestMaskSensitiveNonStringUntouched(t *testing.T) {
 	cases := []string{
@@ -303,7 +303,7 @@ func TestOplogEntryAssembly(t *testing.T) {
 }
 
 // TestOplogIdentityFromContext identity 注入时 UserID/RealName 取会话值
-// （等价认证中间件 WithIdentity 前置注入形态）。
+// （认证中间件 WithIdentity 前置注入形态）。
 func TestOplogIdentityFromContext(t *testing.T) {
 	var got []po.OperationLogPO
 	w := newTestWriter(t, opLogChanSize, func(ctx context.Context, entries []po.OperationLogPO) error {
@@ -341,8 +341,8 @@ func TestOplogFailedRequestStatusZero(t *testing.T) {
 	assert.Equal(t, "字典类型已存在", *got[0].ErrorMsg)
 }
 
-// TestOplogErrorMsgTruncatedTo500Runes errorMsg 超 500 rune 截断（源 substring
-// 语义）；resp.Fail 是唯一 error 源（gin errors 最后一条）。
+// TestOplogErrorMsgTruncatedTo500Runes errorMsg 超 500 rune 截断；
+// resp.Fail 是唯一 error 注入点（gin errors 最后一条）。
 func TestOplogErrorMsgTruncatedTo500Runes(t *testing.T) {
 	long := strings.Repeat("错", 600) // 600 rune > 500
 	got := runOplog(t, newTestWriter(t, opLogChanSize, nil), http.MethodPost,
@@ -358,8 +358,7 @@ func TestOplogErrorMsgTruncatedTo500Runes(t *testing.T) {
 	assert.True(t, strings.HasPrefix(*got[0].ErrorMsg, strings.Repeat("错", errorMsgMaxRunes)))
 }
 
-// TestOplogPanicPathRecorded handler 链 panic 穿透时 entry 仍组装（defer + 源
-// finally 语义）：status=0 + 固定 errorMsg；panic 继续上抛（不吞——Recovery 兜底）。
+// TestOplogPanicPathRecorded handler 链 panic 穿透时 entry 仍组装（defer 语义）：status=0 + 固定 errorMsg；panic 继续上抛（不吞——Recovery 兜底）。
 func TestOplogPanicPathRecorded(t *testing.T) {
 	var got []po.OperationLogPO
 	w := newTestWriter(t, opLogChanSize, func(ctx context.Context, entries []po.OperationLogPO) error {
@@ -419,7 +418,7 @@ func TestOplogMaxBytesReplayRoundTrip(t *testing.T) {
 	var downstreamErr error
 	router := gin.New()
 	w.Start() // Flush 同步语义依赖 worker 消费者
-	// 前置手动包 MaxBytesReader（等价全局 BodyLimit 中间件效果，limit 1024）
+	// 前置手动包 MaxBytesReader（模拟全局 BodyLimit 中间件效果，limit 1024）
 	router.POST("/api/v1/x",
 		func(c *gin.Context) {
 			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1024)

@@ -76,7 +76,7 @@ func flushOpLogs(t *testing.T) {
 }
 
 // latestOlogByModule 直查 sys_operation_log 最新一条指定 module 的日志行
-// （绕过 API，验证真实落库内容；checkDB 形态照 user_integration_test 先例）。
+// （绕过 API，验证真实落库内容；checkDB 形态与 user_integration_test 一致）。
 func latestOlogByModule(t *testing.T, dsn, module string) *po.OperationLogPO {
 	t.Helper()
 	checkDB, err := gorm.Open(gormmysql.Open(dsn), &gorm.Config{
@@ -198,7 +198,7 @@ func TestOpLogFailedRequestRecorded(t *testing.T) {
 }
 
 // TestOpLogLoginNullIdentity 未登录路由（login 自身）落库且 user_id NULL
-// （identity 缺失分支；错误密码 401 也记录——源语义）。
+// （identity 缺失分支；错误密码 401 也记录）。
 func TestOpLogLoginNullIdentity(t *testing.T) {
 	ts, dsn, _, _ := newTestApp(t)
 
@@ -234,7 +234,7 @@ func TestOpLogListPagination(t *testing.T) {
 
 	// 无参缺省：items 长度 10、page=1、size=10（1/10 特例直证）。容器内共 14 条
 	// 日志：13 条 dict 写操作 + 1 条 adminToken() 的 login（AuthController——login
-	// 路由同样被记录，源保真）；翻页排序断言用 ?module=DictType 纯 dict 子集
+	// 路由同样被记录）；翻页排序断言用 ?module=DictType 纯 dict 子集
 	status, body := doAuthRequest(t, token, "GET", ts.URL+"/api/v1/logs", "")
 	require.Equal(t, http.StatusOK, status, "body=%s", body)
 	var env ologEnvelope
@@ -302,9 +302,9 @@ func TestOpLogListPagination(t *testing.T) {
 		"第二页首条必须旧于第一页末条（create_time 倒序翻页不漂移）")
 }
 
-// TestOlogSurvivesStop 『SIGTERM 后日志完整落库』一体化直证（
-// Task 2）：写操作入队后【不手动调 FlushOpLogs】直接调真实 App.Stop()——Stop 即
-// SIGTERM 处理路径的进程内等价（沿 TestGracefulShutdownDrains 先例），其内部
+// TestOlogSurvivesStop 『SIGTERM 后日志完整落库』一体化直证：
+// 写操作入队后【不手动调 FlushOpLogs】直接调真实 App.Stop()——Stop 即
+// SIGTERM 处理路径的进程内模拟（与 TestGracefulShutdownDrains 一致），其内部
 // srv.Shutdown 之后含 FlushOpLogs 排空（app.go Stop 次序契约），随后断言
 // 日志行已完整落库。Stop 对 oplog 连续 Flush 两次的幂等面同证：
 // 落库由 Stop 内 Flush 完成、行为正确，双 Flush 属幂等冗余，无需另改。

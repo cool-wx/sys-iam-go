@@ -104,8 +104,8 @@ func userRoleCount(t *testing.T, db *gorm.DB, userID int64) int64 {
 
 // TestUserRolesAssignReplace 角色分配全量替换语义：分配两角色 →
 // GET 返回 2 角色 → 再分配 1 角色 → GET 反映全量替换（重分配不叠加）→ PUT 空数组 →
-// GET 空 []。DB 行断言：sys_user_role.username 列存 realName（源命名与内容不符
-// 原样移植）、role_name 冗余为角色名。
+// GET 空 []。DB 行断言：sys_user_role.username 列存 realName（列名与内容不符
+// 的既有库约定）、role_name 冗余为角色名。
 func TestUserRolesAssignReplace(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
 	token := adminToken()
@@ -126,7 +126,7 @@ func TestUserRolesAssignReplace(t *testing.T) {
 	assert.Equal(t, "角色甲", got[roleA])
 	assert.Equal(t, "角色乙", got[roleB])
 
-	// DB 行：username 列 = realName（「装配名」非空白优先，源命名错位原样移植）、
+	// DB 行：username 列 = realName（「装配名」非空白优先，既有库列约定）、
 	// role_name 冗余
 	checkDB := openCheckDB(t, dsn)
 	type urRow struct {
@@ -218,7 +218,7 @@ func TestUserRolesBuiltinAssignGuard(t *testing.T) {
 	assert.Equal(t, int64(1), gRows, "特权分配后 g 行必须同步写入")
 }
 
-// TestUserRolesBuiltinAssignGuardRevokedSession 回归：守卫判据源是 enforcer
+// TestUserRolesBuiltinAssignGuardRevokedSession 回归：守卫判据为 enforcer
 // g 层实时状态而非会话 roles 快照。REVIEW 攻击链逐步直证——受害者持 super_admin +
 // editor（editor 带 system:user:edit p 行）登录（会话快照装配含 super_admin）→
 // 管理员仅回收 super_admin（SyncUserRoles 删 g 行，会话不踢、快照不刷新）→ 同一
@@ -354,7 +354,7 @@ func TestAssignRolesDisabledRoleRejected(t *testing.T) {
 }
 
 // TestUserRolesInvalidRole 分配含不存在 roleId：400 + 消息精确含
-// 「角色不存在: [逗号拼接]」式串（缺失集合式，格式照源）；校验前置不动存量。
+// 「角色不存在: [逗号拼接]」式串（缺失集合式）；校验前置不动存量。
 func TestUserRolesInvalidRole(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
 	token := adminToken()
@@ -518,7 +518,7 @@ func TestDeleteBuiltinUser409(t *testing.T) {
 // TestDeleteUserCleansRelations 普通用户删除清理关联：分配角色后 DELETE → 200、
 // sys_user_role 该 user_id 行数 0、casbin g 行（用户→角色）同步清零（预清
 // 模式回归——预清在事务前执行，删除成功即策略已撤）、GET 404 域消息（先删关联
-// 再删用户，源顺序）。
+// 再删用户，事务内顺序）。
 func TestDeleteUserCleansRelations(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
 	token := adminToken()
