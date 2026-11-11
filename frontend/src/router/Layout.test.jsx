@@ -7,7 +7,9 @@
  * ③ 再切换仍折叠：②之后再点「系统管理」→ 其展开且「日志管理」也折叠；
  * ④ 点击收起：点击当前已展开分组的标题 → 全部分组收起（零展开合法——约束是「最多一个」）；
  * ⑤ 叶子导航不受扰：展开「日志管理」后点叶子「操作日志」→ 该项获得选中态、无渲染崩溃，
- *    且所属分组保持展开（路由变化不折叠用户手动展开态）。
+ *    且所属分组保持展开（路由变化不折叠用户手动展开态）；
+ * ⑥ 权限派生落地（缺陷守门）：空权限挂载 → menuPermissions 结果写入 store 且不丢快照 user
+ *    （StrictMode 双执行下取消/守卫曾致刷新后派生永不落地、菜单恒空）。
  *
  * api/iam.js mock：Layout 挂载的 menuPermissions() 请求在 jsdom 无后端，mock 掉保证
  * 手风琴断言纯 DOM；其余导出经 importOriginal 透传（import.meta.glob 急切拉起的
@@ -15,7 +17,7 @@
  */
 import '@testing-library/jest-dom/vitest'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { App as AntApp } from 'antd'
 import { MemoryRouter } from 'react-router'
 
@@ -52,6 +54,7 @@ function renderLayout(initialEntries = ['/system/users']) {
 describe('Layout 手风琴菜单', () => {
   beforeEach(() => {
     menuPermissionsMock.mockReset().mockResolvedValue([])
+    localStorage.removeItem('iam.user')
     // user 非空短路会话恢复 effect（不发请求）；perm 模块级 Set 同步写入——菜单过滤数据源。
     // 覆盖两个现存分组：系统管理（七页 list 串）+ 日志管理（system:log:list）。
     useAuthStore.getState().loginSuccess(
@@ -107,5 +110,24 @@ describe('Layout 手风琴菜单', () => {
     expect(item).toHaveClass('ant-menu-item-selected')
     // 路由变化不自动折叠/展开分组——保持用户手动状态
     expect(expandedOf('日志管理')).toBe('true')
+  })
+
+  it('⑥ 权限派生落地（缺陷守门）：空权限挂载 → menuPermissions 结果必须写入 store 且不丢快照 user', async () => {
+    // 整页刷新路径：store 空、仅 sessionStorage 用户快照在——派生结果若被
+    // cancelled cleanup / ref 守卫丢弃（StrictMode 双执行下曾致刷新菜单恒空），
+    // 本用例红。写入幂等全局态，无取消逻辑。
+    useAuthStore.setState({ user: null, permissions: [] })
+    localStorage.setItem('iam.user', JSON.stringify({ realName: '快照用户' }))
+    menuPermissionsMock.mockResolvedValue(['system:log:list', 'system:user:list'])
+
+    renderLayout()
+
+    // 派生落地：权限写入 + 快照 user 保留（与此刻 store user 合并写入）
+    await waitFor(() =>
+      expect(useAuthStore.getState().permissions).toEqual(['system:log:list', 'system:user:list']),
+    )
+    expect(useAuthStore.getState().user).toEqual({ realName: '快照用户' })
+    // 菜单随之渲染（派生前空菜单）
+    await waitFor(() => expect(screen.getByText('日志管理')).toBeInTheDocument())
   })
 })

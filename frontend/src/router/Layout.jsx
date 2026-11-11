@@ -6,7 +6,7 @@
  * 端点），权限表经 menuPermissions() 从 menus/tree 重派生（仅 UX 显隐层，
  * 安全边界在后端 RequirePerm）。
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { App, Button, Layout as AntLayout, Menu, Space } from 'antd'
 import { LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons'
 import { Outlet, useLocation, useNavigate } from 'react-router'
@@ -50,22 +50,23 @@ export default function Layout() {
   }, [user, loginSuccess])
 
   // 会话恢复第二步：权限表重派生（每次挂载重拉，不落存储防陈旧放大）。派生完成时与
-  // 此刻 store 中的 user 合并一次性写入——「先回填昵称再派生」若分两次 state 写入，
-  // user/permissions 引用变化会触发本 effect cleanup 取消在途请求，派生永不落地。
-  // derivedOnce 防零权限用户（或无 system:menu:list 被 403）的空数组新引用重复拉取。
-  const permsDerivedOnce = useRef(false)
+  // 此刻 store 中的 user 合并一次性写入。
+  //
+  // 刻意不设 cancelled cleanup 与 ref 单次守卫——「刷新后菜单恒空」缺陷的修复
+  // （浏览器实测：刷新后两次 GET /menus/tree 相隔 6ms 均 200，但权限派生结果未落地）：
+  // main.jsx 开启 StrictMode，dev 下 effect 双执行——首跑 cleanup 把取消位置真，
+  // StrictMode 重挂载的重跑又被 ref 守卫拦截（ref 在双执行模拟中不复位），在途
+  // 结果被无条件丢弃，权限永不落地。此处写入目标是幂等全局态（perm 模块模块级
+  // Set + zustand set），重复应用无害——StrictMode 双跑双落地安全。
+  // 无循环风险：空 perms 经 loginSuccess 落 EMPTY_PERMS 同一引用，effect 依赖
+  // 不变不重跑；非空则上方 length 守卫拦截。
   useEffect(() => {
-    if (permsDerivedOnce.current || permissions.length) return
-    permsDerivedOnce.current = true
-    let cancelled = false
+    if (permissions.length) return
     menuPermissions()
       .then((perms) => {
-        if (!cancelled) loginSuccess(useAuthStore.getState().user, perms || [])
+        loginSuccess(useAuthStore.getState().user, perms || [])
       })
       .catch(() => {})
-    return () => {
-      cancelled = true
-    }
   }, [permissions, loginSuccess])
 
   // 菜单：PAGES 过滤无权限项后按 group 分组（分组= submenu 标题中文，叶子 key=路由 path）
