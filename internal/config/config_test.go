@@ -20,7 +20,7 @@ func writeConfig(t *testing.T, content string) string {
 }
 
 func TestEnvOverrideThreeStepChain(t *testing.T) {
-	// P5：IAM_ 前缀覆盖必须真实落到对应配置路径（TrimPrefix→ToLower→下划线转点）
+	// IAM_ 前缀覆盖必须真实落到对应配置路径（TrimPrefix→ToLower→下划线转点）
 	path := writeConfig(t, "server:\n  port: 8080\n")
 	t.Setenv("IAM_SERVER_PORT", "18080")
 

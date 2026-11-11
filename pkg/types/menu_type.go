@@ -24,7 +24,7 @@ func (m MenuType) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON 接受 "DIR"/"0"/0、"MENU"/"1"/1 与 "BUTTON"/"2"/2；未知值兜底
-// MenuMenu 且不返回 error（含 null）——源 fromValue 逐字语义（P7）。
+// MenuMenu 且不返回 error（含 null）——源 fromValue 逐字语义。
 func (m *MenuType) UnmarshalJSON(b []byte) error {
 	switch str := strings.Trim(string(b), `"`); str {
 	case "DIR", "0":

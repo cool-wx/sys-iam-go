@@ -11,7 +11,7 @@ import (
 )
 
 // MenuType 契约测试（照 Gender/UsageStatus 既有契约形态）：
-// 读侧 name|int 双形态 + 未知值兜底 MENU（源 MenuType.fromValue 逐字语义，P7）。
+// 读侧 name|int 双形态 + 未知值兜底 MENU（源 MenuType.fromValue 逐字语义）。
 
 func TestMenuTypeUnmarshalThreeForms(t *testing.T) {
 	cases := []struct {

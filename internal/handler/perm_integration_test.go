@@ -326,7 +326,7 @@ func TestPermRouteLockdown(t *testing.T) {
 //
 // 补充断言：多角色取宽（档 2+档 5 并存 → 全量，max 聚合）；无有效档位 fail-closed
 // （仅 NULL 档角色持 list perm → 本人档——纯无角色被 RequirePerm 403 挡在授权层，
-// 本断言是其经授权面的可观察形态）；total 与 items 行数一致（P15 同过滤闭包）；
+// 本断言是其经授权面的可观察形态）；total 与 items 行数一致（同过滤闭包）；
 // 档位变更即时（PUT /roles/:id 改 dataScope 2→5 后同一 token 下一请求即全量，
 // 表驱动实时查询无缓存）。
 func TestUserDataScope(t *testing.T) {

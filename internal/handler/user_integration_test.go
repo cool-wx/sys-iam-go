@@ -524,7 +524,7 @@ func TestGetUserInvalidId(t *testing.T) {
 
 // TestListUsersPaging 分页 envelope 契约：GET ?page=1&size=2 → data 内
 // {items,total,page,size}，items 长度 2、total 3、items[0] 为最新行
-// （ORDER BY create_time DESC, id DESC 稳定排序，P15）。
+// （ORDER BY create_time DESC, id DESC 稳定排序）。
 func TestListUsersPaging(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
 
@@ -612,7 +612,7 @@ func TestListUsersEdgeParams(t *testing.T) {
 }
 
 // TestCreateUserDuplicateUsername 重复 POST 同 username：uk_username 唯一索引
-// 1062 → gorm.ErrDuplicatedKey → HTTP 400 + code 10400（P4）。
+// 1062 → gorm.ErrDuplicatedKey → HTTP 400 + code 10400。
 func TestCreateUserDuplicateUsername(t *testing.T) {
 	ts, dsn, adminToken, _ := newTestApp(t)
 

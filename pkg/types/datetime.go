@@ -1,6 +1,6 @@
 // Package types 定义 JSON 出网契约类型（时间无时区格式、枚举 name|int 双形态）。
 // 这些类型只进 DTO 层——PO 层一律用原生类型，让 GORM 永远看不到自定义类型
-// （研究 Pattern 1：根治 Valuer/Scanner 陷阱）。
+// （规避 Valuer/Scanner 陷阱）。
 package types
 
 import (
@@ -19,7 +19,7 @@ var (
 )
 
 // CST 返回 Asia/Shanghai 时区（进程内缓存）。
-// main 已内嵌 time/tzdata（P2：工控机无 /usr/share/zoneinfo 也可解析）；
+// main 已内嵌 time/tzdata（工控机无 /usr/share/zoneinfo 也可解析）；
 // 此处 FixedZone 兜底保证即便 tzdata 缺失也恒为 UTC+8 墙钟，不静默漂移。
 func CST() *time.Location {
 	cstOnce.Do(func() {

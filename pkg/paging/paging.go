@@ -1,6 +1,6 @@
 // Package paging 定义全库统一的分页横切件：参数钳位与分页 envelope 数据结构
-// （等价源 PageHelper 缺省 1/15、<1 钳位语义，P15；分页形状为后续所有列表域模板：
-// data 内 {items,total,page,size}，顶层无 total，Anti-Pattern 5）。
+// （等价源 PageHelper 缺省 1/15、<1 钳位语义；分页形状为后续所有列表域模板：
+// data 内 {items,total,page,size}，顶层无 total）。
 package paging
 
 import (

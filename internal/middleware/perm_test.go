@@ -129,7 +129,7 @@ func TestRequirePermMiddleware(t *testing.T) {
 }
 
 // TestRequirePermEnforcerErrorLogs enforcer 故障分支必须 slog.Error 留痕（回归）：
-// 授权链故障是 IAM P0 事件，全站无差别 500 时日志必须含根因可归因三键——
+// 授权链故障是 IAM 的最高严重级事件，全站无差别 500 时日志必须含根因可归因三键——
 // 消息、sub（userID 十进制串）、perm 串、error 原文；不得含敏感值（token/请求体）。
 func TestRequirePermEnforcerErrorLogs(t *testing.T) {
 	var buf bytes.Buffer
