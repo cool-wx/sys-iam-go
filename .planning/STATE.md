@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 current_phase: 05
 status: completed
 stopped_at: Phase 05 complete — all phases complete
-last_updated: "2026-11-02T10:37:13.215Z"
-last_activity: 2026-11-02
+last_updated: "2026-11-11T07:00:17.976Z"
+last_activity: 2026-11-11
 last_activity_desc: Phase 05 complete
-state_head: e2f639967866aeea609cc0a07a3756971fe31c40
+state_head: 9c4afa78c04c376bbd25c5e5468cc657bc6552c6
 progress:
   total_phases: 5
   completed_phases: 5
@@ -156,6 +156,7 @@ None yet.
 | 261111-f4f | 注释规范化清理：29 文件 42 处删「P 加数字」阶段编号与 Pattern/范式名引用，改写为功能化描述，三道 grep 门归零（基线 30/5/7→0），零代码逻辑改动 | 2026-11-11 | 5db3629, 4f72f04 | [261111-f4f-p16-p5](./quick/261111-f4f-p16-p5/) |
 | 261110-mec | 数据库表清理对齐 GORM Models：补建 sys_role_dept/casbin_rule（各 8 列），DROP 94 张未用表（动态清单+双安全门），库达 17 表终态，零代码改动 | 2026-11-10 | —（纯 DDL 零代码改动） | [261110-mec-audit-db-tables-vs-gorm-models-drop-unus](./quick/261110-mec-audit-db-tables-vs-gorm-models-drop-unus/) |
 | 261102-o50 | 修改整个项目的注释，去除注释噪声（如 D-07 之类决策编号不应出现在正常项目代码中） | 2026-11-02 | e2f6399 | [261102-o50-d-07](./quick/261102-o50-d-07/) |
+| 5 | relation.go 按关联表拆分为 relation_user_role/relation_role_menu/relation_role_dept 三文件 | 2026-11-11 | 9c4afa7 | — |
 
 ## Deferred Items
 
