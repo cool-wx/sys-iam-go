@@ -1,13 +1,28 @@
 // sys_user_role（用户-角色关联）数据访问：角色装配投影（RoleRef）、datascope
 // 档位投影（RoleScope）、casbin g 行对账原料（UserRule）与恢复重建原料、
 // AssignRoles 全删重建、user/role 删除级联清理。
+// RelationRepo 单一结构承载三张关联表，按表拆文件——结构定义与构造在本文件；
+// 另两张表：sys_role_menu（角色-菜单）见 relation_role_menu.go、
+// sys_role_dept（角色-范围部门）见 relation_role_dept.go。
 package repository
 
 import (
 	"context"
 
+	"gorm.io/gorm"
+
 	"github.com/cool-wx/sys-iam-go/internal/model/po"
 )
+
+// RelationRepo 关联表数据访问（只读最小面；写路径随 Wave 2/3 角色分配需求扩展）。
+type RelationRepo struct {
+	db *gorm.DB
+}
+
+// NewRelationRepo 构造（db 可为 *gorm.DB 或事务 tx）。
+func NewRelationRepo(db *gorm.DB) *RelationRepo {
+	return &RelationRepo{db: db}
+}
 
 // RoleRef 角色引用（JOIN 投影）：登录会话 roles 装配与用户详情角色装配共用。
 type RoleRef struct {
