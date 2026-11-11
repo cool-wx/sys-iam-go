@@ -20,11 +20,10 @@ func NewOperationLogService(repo *repository.OperationLogRepo) *OperationLogServ
 	return &OperationLogService{repo: repo}
 }
 
-// List 操作日志分页列表（无 dataScope——本阶段零应用）。module/operation/
+// List 操作日志分页列表（无 dataScope）。module/operation/
 // realName 为 like 模糊条件（空串=不过滤）。分页参数已由 handler 经
-// paging.ParseWithDefaults 钳位（缺省 1/10——源 LogQuery DTO 字段默认值例外；
-// 畸形输入统一归缺省 10，源对显式 <1 钳位到 15 的差异仅影响畸形请求
-// 纠偏值，已裁定不维护双默认）。
+// paging.ParseWithDefaults 钳位（本域缺省 1/10 例外；畸形输入统一归
+// 缺省 10，与全局 1/15 的差异仅影响畸形请求纠偏值）。
 func (s *OperationLogService) List(ctx context.Context, page, size int, module, operation, realName string) (*paging.PageData[dto.OlogResp], error) {
 	items, total, err := s.repo.List(ctx, page, size, repository.OlogListFilter{
 		Module:    module,

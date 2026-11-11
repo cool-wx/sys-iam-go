@@ -1,12 +1,12 @@
-// Package middleware 操作日志中间件（等价源 OperationLogAspect）：
-// 声明制挂载（路由注册处显式声明 module/operation，等价源 @OperationLog
-// 注解心智模型）+ body 缓存回放 + chan 异步落库 + 优雅关停 drain
+// Package middleware 操作日志中间件：
+// 声明制挂载（路由注册处显式声明 module/operation）+ body 缓存回放 +
+// chan 异步落库 + 优雅关停 drain
 // + 8 敏感字段掩码。
 //
-// 有意偏离源两处（留档）：
-//   - 源为同步落库（finally 中 save）→ 本版 chan 异步：chan 满丢弃优于请求阻塞
+// 设计要点两处：
+//   - chan 异步落库：chan 满丢弃优于请求阻塞
 //     （丢弃是设计而非缺陷——纪律：Enqueue 绝不阻塞业务请求）；
-//   - 源 AOP 切点含读操作 → 本版仅显式声明的写操作路由记录（收紧）。
+//   - 仅显式声明的写操作路由记录（读操作不记）。
 //
 // 威胁缓解面：掩码先于截断（截断不切出掩码边界新明文）；chan 满
 // select-default 丢弃 + worker 落库错误仅 Warn 不反压 + 容量 512 × params 截断
@@ -46,20 +46,19 @@ const (
 	// 中的 drain 段），通常毫秒级完成。
 	opLogFlushTimeout = 5 * time.Second
 	// params 按字节截断上限：MySQL TEXT 64KB 边界内（严格模式超长 INSERT 直接
-	// 报错会整条丢日志，故先掩码后截断——顺序 prohibition）。
+	// 报错会整条丢日志，故先掩码后截断——顺序固定）。
 	paramsMaxBytes = 60_000
-	// errorMsg 按 rune 截断上限（源 substring(0, min(500, len)) 语义）。
+	// errorMsg 按 rune 截断上限（500 rune）。
 	errorMsgMaxRunes = 500
 )
 
-// sensitiveRe 掩码正则——**逐字照源 OperationLogAspect.java:27-28**：捕获组为
+// sensitiveRe 掩码正则：捕获组为
 // password/oldPassword/newPassword/secretKey/apiKey/token/accessToken/refreshToken
-// 八字段名（核对修正：源需求清单「7 字段」为计数笔误，以源正则
-// 8 字段为准），只匹配带双引号的字符串值形态（数字/布尔/null 值不匹配——源语义）。
+// 八字段名，只匹配带双引号的字符串值形态（数字/布尔/null 值不匹配，不掩码）。
 // RE2 线性引擎无回溯 ReDoS 面（结构性免疫依据）。
 var sensitiveRe = regexp.MustCompile(`"(password|oldPassword|newPassword|secretKey|apiKey|token|accessToken|refreshToken)"\s*:\s*"[^"]*"`)
 
-// maskReplacement 替换值：键名保留（$1）、值统一 ******（源 ReplaceAllString 语义）。
+// maskReplacement 替换值：键名保留（$1）、值统一 ******。
 const maskReplacement = `"${1}":"******"`
 
 // MaskSensitive 掩码 JSON 文本中 8 个敏感字段的字符串值为 ******。非 JSON 输入
@@ -224,12 +223,12 @@ type errReader struct{ err error }
 func (r errReader) Read([]byte) (int, error) { return 0, r.err }
 
 // Oplog 操作日志中间件（声明制挂载）：module/operation 由路由注册处显式
-// 声明（等价源 @OperationLog 注解元数据）；挂载次序固定在 RequirePerm 之后
-// handler 之前（鉴权失败不产生日志——与源 AOP 在授权后切入语义一致）。
+// 声明；挂载次序固定在 RequirePerm 之后
+// handler 之前（鉴权失败不产生日志——日志仅记录已授权的写操作）。
 //
 // body 处理：仅非 multipart Content-Type 缓存 body 并 NopCloser 回放
-// （handler 可重读）；multipart 跳过缓存、params 记空串——对齐源 params 过滤
-// 跳过 MultipartFile，且避免 20MB 上传全量缓存造成内存放大（纪律要求）。
+// （handler 可重读）；multipart 跳过缓存、params 记空串——multipart 内容
+// 不进 params，且避免 20MB 上传全量缓存造成内存放大（纪律要求）。
 func Oplog(w *OpLogWriter, module, operation string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -251,7 +250,7 @@ func Oplog(w *OpLogWriter, module, operation string) gin.HandlerFunc {
 		}
 		success := false
 		defer func() {
-			// defer 组装（源 finally save 语义）：handler 链 panic 穿透时也记录
+			// defer 组装：handler 链 panic 穿透时也记录
 			//（success 恒 false → status=0 + 固定 errorMsg；响应由上游 Recovery 兜底）。
 			w.Enqueue(assembleEntry(c, start, module, operation, cached, isMultipart, success))
 		}()
@@ -266,23 +265,23 @@ func assembleEntry(c *gin.Context, start time.Time, module, operation string, ca
 		Module:    &module,
 		Operation: &operation,
 	}
-	// identity 从请求 ctx 取（认证中间件注入；未登录路由如 login 自身为 nil——源语义）
+	// identity 从请求 ctx 取（认证中间件注入；未登录路由如 login 自身为 nil）
 	if id, ok := auth.FromContext(c.Request.Context()); ok {
 		uid, name := id.UserID, id.Name
 		entry.UserID = &uid
 		entry.RealName = &name
 	}
-	// method 形如 "POST /api/v1/dict-types"（源 request.getMethod()+" "+getRequestURI）
+	// method 形如 "POST /api/v1/dict-types"（HTTP 方法 + 请求路径拼接）
 	method := c.Request.Method + " " + c.Request.URL.Path
 	entry.Method = &method
-	// params：multipart 记空串（源过滤跳过 MultipartFile）；否则掩码先于截断
+	// params：multipart 记空串（multipart 内容不进 params）；否则掩码先于截断
 	params := ""
 	if !isMultipart {
 		params = truncateBytes(MaskSensitive(string(cached)), paramsMaxBytes)
 	}
 	entry.Params = &params
-	// ip：RemoteAddr 经 SplitHostPort 取 host（失败原样存——源 getRemoteAddr 纯
-	// IP 形态对齐，Open Question Q4 拍板源保真不用 ClientIP/XFF）
+	// ip：RemoteAddr 经 SplitHostPort 取 host（失败原样存，仅取纯 IP 部分、
+	// 不用 ClientIP/XFF 代理链解析）
 	ip := c.Request.RemoteAddr
 	if host, _, err := net.SplitHostPort(ip); err == nil {
 		ip = host
@@ -358,7 +357,7 @@ func truncateBytes(s string, n int) string {
 	return s
 }
 
-// truncateRunes 按 rune 截断（errorMsg 500——源 substring 按 char 语义对齐）。
+// truncateRunes 按 rune 截断（errorMsg 上限 500 rune）。
 func truncateRunes(s string, n int) string {
 	runes := []rune(s)
 	if len(runes) <= n {

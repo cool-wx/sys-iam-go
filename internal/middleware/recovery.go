@@ -1,5 +1,5 @@
 // Package middleware panic 兜底中间件：统一 envelope 500 固定文案。
-// panic 详情（含堆栈）只进 slog，不出网（防泄漏，等价源 GlobalExceptionHandler 兜底语义）。
+// panic 详情（含堆栈）只进 slog，不出网（防泄漏）。
 package middleware
 
 import (

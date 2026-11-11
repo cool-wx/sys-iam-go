@@ -1,4 +1,4 @@
-// Package handler 文件分类域 HTTP handler（五方法照 dept handler 同构；树端点
+// Package handler 文件分类域 HTTP handler（五方法与 dept handler 同构；树端点
 // 静态段 tree 与 :id 参数段共存，静态优先）。
 package handler
 

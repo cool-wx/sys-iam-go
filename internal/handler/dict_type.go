@@ -1,5 +1,5 @@
 // Package handler 字典类型域 HTTP handler（薄层三段式：bind/parse → svc → envelope；
-// 路径参数统一走 parseID 通用解析，照 menu.go 先例）。
+// 路径参数统一走 parseID 通用解析）。
 package handler
 
 import (

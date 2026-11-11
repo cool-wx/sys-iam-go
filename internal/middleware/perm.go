@@ -19,7 +19,7 @@ import (
 //
 // 错误三分支（fail-closed，形态照 RequireRoles）：
 //   - identity 缺失 → 401（防御性分支，正常装配不可达）；
-//   - enforcer 故障 → 500 Abort 绝不放行（fail-closed，认证中间件同款纪律——
+//   - enforcer 故障 → 500 Abort 绝不放行（fail-closed，与认证中间件同一纪律——
 //     enforcer 故障不得变成 fail-open）；
 //   - 未命中 → 403/10200 ErrForbidden Abort（与 RequireRoles 同码）。
 //

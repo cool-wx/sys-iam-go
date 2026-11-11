@@ -67,7 +67,7 @@ func (h *RoleHandler) Get(c *gin.Context) {
 }
 
 // List 处理 GET /api/v1/roles：query page/size 经 paging.Parse 钳位 + roleName
-// 条件（trim LIKE + id ASC，源特例）→ service → envelope。
+// 条件（trim LIKE + id ASC 特例排序）→ service → envelope。
 func (h *RoleHandler) List(c *gin.Context) {
 	page, size := paging.Parse(c.Query("page"), c.Query("size"))
 	data, err := h.svc.List(c.Request.Context(), page, size, c.Query("roleName"))

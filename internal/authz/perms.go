@@ -80,7 +80,7 @@ const (
 
 	// dict 域（sys_menu 实证：105 列表/1051 详情/1052 新增/1053 编辑/1054 删除；
 	// perm 串核对结论：dict/config/log 三域菜单项齐全）。
-	// dictData 共用同五串（源 dictData 与 dictType 共用 dict:* 权限，不新增权限档）
+	// dictData 路由共用同五串（与 dictType 共用 dict:* 权限，不新增权限档）
 	PermDictTypeAdd    = "system:dict:add"
 	PermDictTypeEdit   = "system:dict:edit"
 	PermDictTypeQuery  = "system:dict:query"
@@ -94,7 +94,7 @@ const (
 	PermConfigList   = "system:config:list"
 	PermConfigRemove = "system:config:remove"
 
-	// log 域（sys_menu 实证：list 单档——源 /log 仅 list/export 两端点且共用 list 档）
+	// log 域（sys_menu 实证：list 单档——/log 域仅 list/export 两端点且共用 list 档）
 	PermLogList = "system:log:list"
 
 	// file 域（sys_menu 实证 7 串齐全，id 107-1076：list/query/add/edit/remove/
@@ -109,7 +109,7 @@ const (
 
 	// shift 域（发明串，Q2 已知边界——sys_menu 无任何 shift:* 前缀菜单项
 	// [sys_menu 核对结论：零行]，assignMenus 无法给其他角色授权
-	// 此域，v1 仅 super_admin 可用（matcher 豁免），照 auth/apiKey 域先例）
+	// 此域，v1 仅 super_admin 可用（matcher 豁免），与 auth/apiKey 域同一策略）
 	PermShiftAdd    = "system:shift:add"
 	PermShiftEdit   = "system:shift:edit"
 	PermShiftQuery  = "system:shift:query"

@@ -1,8 +1,8 @@
 // Package service 故障域业务逻辑：CRUD + 分页列表（code 索引列 eq
 // 过滤）+ 服务端默认值 bit_index=-1/type=3（GORM nil 指针显式写 NULL 会绕过 DB
 // 列默认——默认值语义由本层承担，不依赖 DDL DEFAULT）。Excel 三键 upsert 导入
-// 见 fault_import.go。无 builtin 守卫（源 fault 域无 builtin 概念，
-// 04-RESEARCH 横切发现 5）；无唯一索引无 1062 分支。
+// 见 fault_import.go。无 builtin 守卫（fault 域无 builtin 概念）；
+// 无唯一索引无 1062 分支。
 package service
 
 import (
@@ -21,7 +21,7 @@ import (
 )
 
 // FaultService 故障域服务。db 供 Excel 导入显式事务（SkipDefaultTransaction 下
-// 唯一事务边界——照 RoleService 持 db 构造形态）。
+// 唯一事务边界）。
 type FaultService struct {
 	db   *gorm.DB
 	repo *repository.FaultInfoRepo
@@ -33,7 +33,7 @@ func NewFaultService(db *gorm.DB, repo *repository.FaultInfoRepo) *FaultService 
 }
 
 // Create 创建故障信息：bitIndex 未传服务端默认 -1、type 未传默认 3(UNKNOWN)
-// （源字段默认值语义——DDL DEFAULT -1/3 仅为兜底，GORM nil 指针显式写 NULL 会
+// （字段默认值语义——DDL DEFAULT -1/3 仅为兜底，GORM nil 指针显式写 NULL 会
 // 绕过列默认，故服务端承担）。审计字段由 PO 钩子填充。
 func (s *FaultService) Create(ctx context.Context, req *dto.FaultCreateReq) (*dto.FaultResp, error) {
 	m := &po.FaultInfoPO{
@@ -123,8 +123,8 @@ func (s *FaultService) Get(ctx context.Context, id int64) (*dto.FaultResp, error
 	return dto.ToFaultResp(m), nil
 }
 
-// List 分页条件查询：code 非空时 idx_code 索引列 eq 直传过滤（无 like——源
-// list 无特殊条件研究未记录则不发明）；envelope 照 paging.PageData 契约。
+// List 分页条件查询：code 非空时 idx_code 索引列 eq 直传过滤（无 like，
+// 无其他特殊条件）；envelope 为 paging.PageData 契约。
 func (s *FaultService) List(ctx context.Context, page, size int, code string) (*paging.PageData[dto.FaultResp], error) {
 	faults, total, err := s.repo.List(ctx, page, size, code)
 	if err != nil {
@@ -137,7 +137,7 @@ func (s *FaultService) List(ctx context.Context, page, size int, code string) (*
 	return &paging.PageData[dto.FaultResp]{Items: items, Total: total, Page: page, Size: size}, nil
 }
 
-// Delete 删除故障信息：直接物理删（源 deleteFault 语义，无存在性前置校验）。
+// Delete 删除故障信息：直接物理删（无存在性前置校验）。
 func (s *FaultService) Delete(ctx context.Context, id int64) error {
 	return s.repo.Delete(ctx, id)
 }

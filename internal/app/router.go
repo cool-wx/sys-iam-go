@@ -40,8 +40,8 @@ type handlers struct {
 //   - 既有 users 四路由 + menus/depts 全套业务路由（复数资源
 //     路由 + 树端点独立；gin 静态段 tree 与 :id 参数段共存，静态优先）；
 //   - 操作日志：全部写路由逐条声明制挂 Oplog
-//     中间件（module/operation 元数据随路由注册声明，等价源 @OperationLog
-//     注解心智模型；叠加次序固定 RequirePerm 之后 handler 之前，鉴权失败不产生
+//     中间件（module/operation 元数据随路由注册声明；
+//     叠加次序固定 RequirePerm 之后 handler 之前，鉴权失败不产生
 //     日志）；GET /api/v1/logs 查询路由挂 PermLogList（读写分离——查询路由不记
 //     操作日志）。
 func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, az authz.Authorizer, logger *slog.Logger, ologW *middleware.OpLogWriter) *gin.Engine {
@@ -60,7 +60,7 @@ func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, az authz.Au
 	pub := engine.Group("/")
 	pub.GET("/healthz", h.Liveness)
 	pub.GET("/readyz", h.Readiness)
-	// auth 域写路由记操作日志（源存量实证 login 被记录——保真；login 未登录
+	// auth 域写路由记操作日志（login/apiKeyLogin 登录动作亦被记录；login 未登录
 	// identity 为 NULL，集成断言分支）
 	pub.POST("/api/v1/auth/login", middleware.Oplog(ologW, "AuthController", "login"), hs.Auth.Login)
 	pub.POST("/api/v1/auth/apikey-login", middleware.Oplog(ologW, "AuthController", "apiKeyLogin"), hs.Auth.ApikeyLogin)
@@ -120,8 +120,8 @@ func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, az authz.Au
 	pri.GET("/api/v1/roles/:id/scopes", middleware.RequirePerm(az, authz.PermRoleQuery), hs.Roles.GetScopes)
 	pri.PUT("/api/v1/roles/:id/scopes", middleware.RequirePerm(az, authz.PermRoleEdit), middleware.Oplog(ologW, "RoleController", "assignScopes"), hs.Roles.AssignScopes)
 
-	// API Key 域五路由：CRUD + status 子资源（源 editApiKey
-	// 仅 status 单列语义）。至此五域路由全量注册（六组齐备）；
+	// API Key 域五路由：CRUD + status 子资源（仅 status 单列更新）。
+	// 至此五域路由全量注册（六组齐备）；
 	// 三条写路由记操作日志
 	pri.POST("/api/v1/api-keys", middleware.RequirePerm(az, authz.PermApiKeyAdd), middleware.Oplog(ologW, "ApiKeyController", "create"), hs.ApiKeys.Create)
 	pri.GET("/api/v1/api-keys/:id", middleware.RequirePerm(az, authz.PermApiKeyQuery), hs.ApiKeys.Get)
@@ -138,7 +138,7 @@ func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, az authz.Au
 	pri.DELETE("/api/v1/dict-types/:id", middleware.RequirePerm(az, authz.PermDictTypeRemove), middleware.Oplog(ologW, "DictTypeController", "delete"), hs.DictTypes.Delete)
 
 	// 字典数据域五路由：与字典类型同构；共用 PermDictType* 五串
-	// （源 dictData 与 dictType 共用 dict:* 权限，不新增权限档）；三条写路由记操作日志
+	// （与 dictType 共用 dict:* 权限，不新增权限档）；三条写路由记操作日志
 	pri.POST("/api/v1/dict-datas", middleware.RequirePerm(az, authz.PermDictTypeAdd), middleware.Oplog(ologW, "DictDataController", "create"), hs.DictDatas.Create)
 	pri.PUT("/api/v1/dict-datas/:id", middleware.RequirePerm(az, authz.PermDictTypeEdit), middleware.Oplog(ologW, "DictDataController", "update"), hs.DictDatas.Update)
 	pri.GET("/api/v1/dict-datas/:id", middleware.RequirePerm(az, authz.PermDictTypeQuery), hs.DictDatas.Get)
@@ -155,7 +155,7 @@ func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, az authz.Au
 	pri.GET("/api/v1/configs", middleware.RequirePerm(az, authz.PermConfigList), hs.Configs.List)
 	pri.DELETE("/api/v1/configs/:id", middleware.RequirePerm(az, authz.PermConfigRemove), middleware.Oplog(ologW, "SysConfigController", "delete"), hs.Configs.Delete)
 
-	// 排班域五路由：CRUD；list 全量无分页（源行为直译）。
+	// 排班域五路由：CRUD；list 全量无分页（接口契约如此，勿统一为分页）。
 	// shift 域 perm 串为发明串（sys_menu 无对应项）——v1 仅 super_admin 可用
 	// （matcher 豁免，auth/apiKey 域先例）；三条写路由记操作日志
 	pri.POST("/api/v1/shifts", middleware.RequirePerm(az, authz.PermShiftAdd), middleware.Oplog(ologW, "ShiftController", "create"), hs.Shifts.Create)
@@ -165,7 +165,7 @@ func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, az authz.Au
 	pri.DELETE("/api/v1/shifts/:id", middleware.RequirePerm(az, authz.PermShiftRemove), middleware.Oplog(ologW, "ShiftController", "delete"), hs.Shifts.Delete)
 
 	// 文件域四路由：upload 叠加 20MB 路由级独立
-	// 上限（与全局 multipart 兜底同值 MaxMultipartMB，单一事实源——内层
+	// 上限（与全局 multipart 兜底同值 MaxMultipartMB，唯一常量依据——内层
 	// 生效值不变，仍为大 payload 实际封顶；
 	// download 挂 PermFileDownload——菜单存在此串非 super_admin 专属）。
 	// file 域 perm 串 sys_menu 齐备（7 项），实际可经角色授权；upload/delete 记
@@ -177,7 +177,7 @@ func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, az authz.Au
 
 	// 文件分类域五路由：CRUD + 树端点（静态段 tree 与 :id 参数段共存；
 	// 树即列表档挂 PermFileList，GET :id 为 query 档——fileCategory 与 file 域
-	// 源共用 file:* 权限，不新增权限档）；三条写路由记操作日志
+	// 与 file 域共用 file:* 权限，不新增权限档）；三条写路由记操作日志
 	pri.POST("/api/v1/file-categories", middleware.RequirePerm(az, authz.PermFileAdd), middleware.Oplog(ologW, "FileCategoryController", "create"), hs.FileCategories.Create)
 	pri.PUT("/api/v1/file-categories/:id", middleware.RequirePerm(az, authz.PermFileEdit), middleware.Oplog(ologW, "FileCategoryController", "update"), hs.FileCategories.Update)
 	pri.GET("/api/v1/file-categories/tree", middleware.RequirePerm(az, authz.PermFileList), hs.FileCategories.Tree)
@@ -191,7 +191,7 @@ func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, az authz.Au
 	// 故障域五路由：CRUD；list 分页 1/15 + code 索引列
 	// eq 直传过滤。fault 域 perm 串为发明串（sys_menu 无对应项，研究核对
 	// 结论）——v1 仅 super_admin 可用（matcher 豁免，shift 域先例）；三条写路由
-	// 记操作日志（module=FaultInfoController 源类简名）
+	// 记操作日志（module=FaultInfoController）
 	pri.POST("/api/v1/faults", middleware.RequirePerm(az, authz.PermFaultAdd), middleware.Oplog(ologW, "FaultInfoController", "create"), hs.Faults.Create)
 	pri.PUT("/api/v1/faults/:id", middleware.RequirePerm(az, authz.PermFaultEdit), middleware.Oplog(ologW, "FaultInfoController", "update"), hs.Faults.Update)
 	pri.GET("/api/v1/faults/:id", middleware.RequirePerm(az, authz.PermFaultQuery), hs.Faults.Get)
@@ -199,7 +199,7 @@ func newRouter(h *health.State, hs handlers, authMw gin.HandlerFunc, az authz.Au
 	pri.DELETE("/api/v1/faults/:id", middleware.RequirePerm(az, authz.PermFaultRemove), middleware.Oplog(ologW, "FaultInfoController", "delete"), hs.Faults.Delete)
 	// Excel 导入（静态段 import 与 :id 参数段共存静态优先——与 files/upload
 	// 同构）：独立 20MB 体积上限（与全局 multipart 兜底同值 MaxMultipartMB，
-	// 单一事实源）→ 权限 → 日志 → handler 次序；multipart 无 body
+	// 同值 MaxMultipartMB 唯一常量依据）→ 权限 → 日志 → handler 次序；multipart 无 body
 	// 缓存，Oplog params 空串
 	pri.POST("/api/v1/faults/import", middleware.BodyLimitWithMB(middleware.MaxMultipartMB), middleware.RequirePerm(az, authz.PermFaultImport), middleware.Oplog(ologW, "FaultInfoController", "import"), hs.Faults.Import)
 

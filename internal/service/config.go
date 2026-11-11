@@ -90,7 +90,7 @@ func (s *ConfigService) Get(ctx context.Context, id int64) (*dto.ConfigResp, err
 }
 
 // GetByKey 按 config_key 读取配置：未命中译为 404/10300「配置不存在: {key}」
-// （源 getByKey 语义，消息按域惯例命名）。
+// （消息按域惯例命名）。
 func (s *ConfigService) GetByKey(ctx context.Context, key string) (*po.SysConfigPO, error) {
 	m, err := s.repo.FindByKey(ctx, key)
 	if err != nil {
@@ -115,7 +115,7 @@ func (s *ConfigService) List(ctx context.Context, page, size int) (*paging.PageD
 	return &paging.PageData[dto.ConfigResp]{Items: out, Total: total, Page: page, Size: size}, nil
 }
 
-// Delete 删除配置：直接物理删（源 deleteConfig 语义）。
+// Delete 删除配置：直接物理删。
 func (s *ConfigService) Delete(ctx context.Context, id int64) error {
 	return s.repo.Delete(ctx, id)
 }

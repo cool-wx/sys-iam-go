@@ -43,7 +43,7 @@ type App struct {
 	ologW  *middleware.OpLogWriter
 }
 
-// New 装配全部依赖：GORM 连接（绝不 AutoMigrate，schema 沿用源库）、连接池
+// New 装配全部依赖：GORM 连接（绝不 AutoMigrate，schema 沿用既有库）、连接池
 // 工控机参数、Redis 会话存储（Ping fail-fast）、健康状态、认证路由。成功返回可
 // Run 的 App。
 func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
@@ -51,7 +51,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 		Logger:                 gormlogger.Default.LogMode(gormlogger.Warn),
 		SkipDefaultTransaction: true, // service 层显式 Transaction，关隐式事务
 		TranslateError:         true, // MySQL 1062 → gorm.ErrDuplicatedKey
-		// 不配置 AutoMigrate —— schema 沿用源库（CLAUDE.md 锁定）
+		// 不配置 AutoMigrate —— schema 沿用既有库，禁止运行期改表
 	})
 	if err != nil {
 		return nil, fmt.Errorf("open mysql: %w", err)
@@ -131,8 +131,8 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 
 	sessionMgr := auth.NewSessionManager(rdb, cfg.Auth.SessionTimeout)
 
-	// FileStorage 构造：插在 service 构造之前（照 enforcer/
-	// Redis Ping fail-fast 先例，存储基建不可用拒绝启动）；driver=local 时构造链
+	// FileStorage 构造：插在 service 构造之前（与 enforcer/
+	// Redis Ping fail-fast 同一纪律，存储基建不可用拒绝启动）；driver=local 时构造链
 	// 不触碰 minio（延迟形态），driver=s3 时构造内 EnsureBucket fail-fast。
 	storageCtx, storageCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	fileStorage, err := storage.New(storageCtx, cfg.Storage)
@@ -158,8 +158,8 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	// sink 注入 repo.InsertBatch——批量写收口数据访问层；chan 满丢弃不阻塞业务。
 	ologW := middleware.NewOpLogWriterWithSink(ologRepo.InsertBatch, logger)
 	ologW.Start()
-	// 名称同步事件装配：基建先于消费者（照 ologW
-	// 先例）——dispatcher 构造 + 全部 6 个同步 handler 注册；5 个名称域 service 经
+	// 名称同步事件装配：基建先于消费者（同 ologW
+	// 先做后用的次序）——dispatcher 构造 + 全部 6 个同步 handler 注册；5 个名称域 service 经
 	// Publisher 接口注入（Dispatcher 实现该接口），发布时序契约见 internal/event。
 	dispatcher := event.NewDispatcher()
 	event.RegisterAll(dispatcher, db)

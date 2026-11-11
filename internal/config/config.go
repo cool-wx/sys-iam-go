@@ -28,9 +28,8 @@ const (
 	DefaultLogLevel        = "info"
 	// DefaultRedisAddr 本机 Redis 默认端点（工控机单机部署：MySQL/Redis 同机）。
 	DefaultRedisAddr = "127.0.0.1:6379"
-	// DefaultSessionTimeout 会话 TTL 默认 720h = Sa-Token 官方默认 30d 代理值。
-	// 源 Nacos craft-satoken.yaml 实际值不可得（rnacos 空实例实证），
-	// 现场可经 IAM_AUTH_SESSION_TIMEOUT env 校正（Nacos 缺口已文档化）。
+	// DefaultSessionTimeout 会话 TTL 默认 720h（30 天）。
+	// 现场可经 IAM_AUTH_SESSION_TIMEOUT env 校正。
 	DefaultSessionTimeout = 720 * time.Hour
 
 	// StorageDriverLocal / StorageDriverS3 storage.driver 合法值域。
@@ -39,9 +38,9 @@ const (
 	// DefaultStorageLocalRoot 本地存储根目录默认值：相对工作目录，
 	// systemd WorkingDirectory 联动；绝对路径可配。
 	DefaultStorageLocalRoot = "./data/files"
-	// DefaultStorageS3* S3 段默认值（照源 RustfsProperties.java:14-33 默认形态：
-	// endpoint http://localhost:9000、bucket tims；凭证 rustfsadmin/rustfssecret
-	// 为源默认值——现场部署必须替换，与本机 rustfs 容器实际 admin/admin 无关；
+	// DefaultStorageS3* S3 段默认值（endpoint http://localhost:9000、bucket tims；
+	// 凭证 rustfsadmin/rustfssecret 为开发默认值——现场部署必须替换，与本机
+	// rustfs 容器实际 admin/admin 无关；
 	// 集成测试用容器实际值经 env 覆盖注入）。
 	DefaultStorageS3Endpoint  = "http://localhost:9000"
 	DefaultStorageS3AccessKey = "rustfsadmin"

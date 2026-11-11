@@ -1,5 +1,5 @@
 // Package auth 定义请求身份（identity）在 context 中的传播。
-// 等价源 UserContext ThreadLocal → context.Context；私有类型 key 防跨包冲突。
+// 身份经 context.Context 携带；私有类型 key 防跨包冲突。
 package auth
 
 import "context"

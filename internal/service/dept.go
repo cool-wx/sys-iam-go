@@ -27,9 +27,9 @@ func NewDeptService(repo *repository.DeptRepo, pub event.Publisher) *DeptService
 	return &DeptService{repo: repo, pub: pub}
 }
 
-// Create 创建部门：DTO→PO（服务端默认值 status=ENABLED——对齐 DDL default 与源
-// MP null-skip 语义）；parentId 非 nil 且非 0 时校验父存在并冗余 parentName
-// （源 addDept resolveParentName 同构语义）。
+// Create 创建部门：DTO→PO（服务端默认值 status=ENABLED——对齐 DDL default）；
+// parentId 非 nil 且非 0 时校验父存在并冗余 parentName
+// （服务端查库装配）。
 func (s *DeptService) Create(ctx context.Context, req *dto.DeptCreateReq) (*dto.DeptResp, error) {
 	d := &po.DeptPO{
 		DeptName: req.DeptName,
@@ -54,20 +54,19 @@ func (s *DeptService) Create(ctx context.Context, req *dto.DeptCreateReq) (*dto.
 }
 
 // Update 更新部门（部分更新）：白名单 deptName/parentId/sort/status/remark；
-// parentId 显式传入时联动父校验 + parentName 重冗余（源 editDept 同构语义）。
+// parentId 显式传入时联动父校验 + parentName 重冗余（服务端查库装配）。
 // 落库后回读返回最新契约；审计由 repo.Patch 显式并入。
 //
-// 改名同步（源 DeptApplicationService.editDept 的 oldName 取值
-// 前置同构；契约修订：**不设**源「新名≠旧名」短路——主行已提交后重试同一请求时
+// 改名同步（**不设**「新名≠旧名」短路——主行已提交后重试同一请求时
 // 旧行已是新名，新≠旧守卫恒假、事件永不重发——「重试幂等自愈」被证伪；显式带
 // deptName 即发布，幂等 UPDATE 使同名重发退化为 no-op）：请求显式带 deptName 时先
-// 回读旧行（同时把"行不存在"提前拦为 404，照 Get 同款译域）；Patch 成功
+// 回读旧行（同时把"行不存在"提前拦为 404）；Patch 成功
 // （SkipDefaultTransaction 下单语句已提交——「提交后发布」由代码顺序天然满足，
 // 发布语句绝不放在 Patch 之前或事务闭包内）之后发布 DeptNameChanged（显式带名门
 // 保留，"仅改备注"不带 deptName 仍零发布，非无条件发布）；Publish 失败上抛 500
 // （客户端重试同一请求必重发事件，幂等 UPDATE 自愈，沿 casbin 双轨纪律）。
 func (s *DeptService) Update(ctx context.Context, id int64, req *dto.DeptUpdateReq) (*dto.DeptResp, error) {
-	// 发布条件需要旧名：仅当请求显式带部门名时回读旧行（源 oldName 取值前置）；
+	// 发布条件需要旧名：仅当请求显式带部门名时回读旧行；
 	// 行不存在提前 404 拦截，Patch 与发布一个都不触发。
 	var old *po.DeptPO
 	if req.DeptName != nil {
@@ -88,12 +87,10 @@ func (s *DeptService) Update(ctx context.Context, id int64, req *dto.DeptUpdateR
 		pid := int64(*req.ParentID)
 		if pid == 0 {
 			// 显式移至根：parent_id 落 NULL + parent_name 清 NULL——根 = parent_id
-			// NULL 成为唯一形态（与 Create 根同形态；源自身 Create
-			// null / Update 0 不对称，此处为 Go 内一致性修正、显式偏离源）。存量
+			// NULL 成为唯一形态（与 Create 根同形态）。存量
 			// parent_id=0 行不迁移：tree.Build/ensureNotDescendant/resolveParent
 			// 对 nil/0 双形态兼容，读侧零回归。GORM Updates(map) 显式 nil 写 NULL
-			//（与同分支 parent_name 清 NULL 同款，源 MP null-skip 残留旧值的有意
-			// 修正，同菜单域）。
+			//（与同分支 parent_name 清 NULL 一致，显式置空防旧值残留，同菜单域）。
 			cols["parent_id"] = nil
 			cols["parent_name"] = nil
 		} else {
@@ -128,9 +125,9 @@ func (s *DeptService) Update(ctx context.Context, id int64, req *dto.DeptUpdateR
 		}
 		return nil, err
 	}
-	// 改名事件发布（Patch 返回 nil 即已提交；契约修订：显式带名即发布、
+	// 改名事件发布（Patch 返回 nil 即已提交；显式带名即发布、
 	// 不设新≠旧短路——重试自愈契约见上注）：oldName 取回读行值、NULL 兜底 ""
-	// （源 oldName != null ? oldName : "" 同款，仅载荷信息非 UPDATE 条件）。
+	// （仅载荷信息非 UPDATE 条件）。
 	if old != nil && req.DeptName != nil {
 		oldName := ""
 		if old.DeptName != nil {
@@ -149,7 +146,7 @@ func (s *DeptService) Update(ctx context.Context, id int64, req *dto.DeptUpdateR
 	return s.Get(ctx, id)
 }
 
-// Get 部门详情：未命中译为 404/10300「部门不存在: {id}」（源 editDept 消息原文；
+// Get 部门详情：未命中译为 404/10300「部门不存在: {id}」（固定文案；
 // code/HTTP 契约全库统一）。
 func (s *DeptService) Get(ctx context.Context, id int64) (*dto.DeptResp, error) {
 	d, err := s.repo.FindByID(ctx, id)
@@ -162,7 +159,7 @@ func (s *DeptService) Get(ctx context.Context, id int64) (*dto.DeptResp, error) 
 	return dto.ToDeptResp(d), nil
 }
 
-// List 部门全量列表（无分页——树与源 list 语义；ORDER BY sort ASC 由 repo 承担）。
+// List 部门全量列表（无分页——树查询需要完整数据集；ORDER BY sort ASC 由 repo 承担）。
 func (s *DeptService) List(ctx context.Context) ([]*dto.DeptResp, error) {
 	items, err := s.repo.List(ctx)
 	if err != nil {
@@ -176,8 +173,8 @@ func (s *DeptService) List(ctx context.Context) ([]*dto.DeptResp, error) {
 }
 
 // Tree 部门树：List 全量 → tree.Build → []DeptTreeResp。
-// 孤儿（parentId 为 nil/0/指向不存在节点）均提升为根——验收明文
-// （源服务层 buildTree 语义，非实体死代码的孤儿丢弃语义）。
+// 孤儿（parentId 为 nil/0/指向不存在节点）均提升为根——树查询语义
+// 由 internal/tree 泛型构建器统一定义。
 func (s *DeptService) Tree(ctx context.Context) ([]*dto.DeptTreeResp, error) {
 	items, err := s.repo.List(ctx)
 	if err != nil {
@@ -212,8 +209,7 @@ func (s *DeptService) Tree(ctx context.Context) ([]*dto.DeptTreeResp, error) {
 	return out, nil
 }
 
-// Delete 删除部门：直接物理删。与源一致**不加子部门/用户引用检查**（源缺口按源
-// 保留：DeptApplicationService.removeById 直接删）。
+// Delete 删除部门：直接物理删。**不校验子部门/用户引用**——删除仍成功，
 func (s *DeptService) Delete(ctx context.Context, id int64) error {
 	return s.repo.Delete(ctx, id)
 }
@@ -240,7 +236,7 @@ func (s *DeptService) ensureNotDescendant(ctx context.Context, pid, id int64) er
 	return nil
 }
 
-// resolveParent 父校验（源 resolveParentName 逐字语义）：父不存在或父 dept_name
+// resolveParent 父校验：父不存在或父 dept_name
 // 为 NULL 均报 400「上级部门不存在: {pid}」；parentName 只信服务端查库值。
 func (s *DeptService) resolveParent(ctx context.Context, pid int64) (*po.DeptPO, error) {
 	parent, err := s.repo.FindByID(ctx, pid)
@@ -251,7 +247,7 @@ func (s *DeptService) resolveParent(ctx context.Context, pid int64) (*po.DeptPO,
 		return nil, err
 	}
 	if parent.DeptName == nil {
-		// 源：parent == null || parent.getDeptName() == null 同样拒绝
+		// 父 dept_name 为 NULL 与父不存在同样拒绝
 		return nil, errcode.New(errcode.CodeInvalidParam, fmt.Sprintf("上级部门不存在: %d", pid))
 	}
 	return parent, nil

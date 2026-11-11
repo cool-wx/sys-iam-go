@@ -1,6 +1,6 @@
-// SessionManager：Redis token-session 管理器（等价源 Sa-Token 服务端会话模式——
-// 随机 token ↔ Redis 会话 Hash，非 JWT）。Redis key 约定为全项目契约（全部域
-// 依赖），本文件为唯一事实源。
+// SessionManager：Redis token-session 管理器（随机 token ↔ Redis 会话 Hash，
+// 非 JWT）。Redis key 约定为全项目契约（全部域
+// 依赖），本文件为唯一事实依据。
 package auth
 
 import (
@@ -108,8 +108,7 @@ func (sm *SessionManager) Login(ctx context.Context, payload SessionPayload) (st
 
 // Resolve 校验 token 并活跃续期：命中即 EXPIRE 重置为完整 timeout（两次
 // 访问间隔只要小于 timeout，会话永不自然过期）；未命中返回 ErrSessionNotFound。
-// Identity.Name 按 realName 非空白优先、回退 userName（等价源 SaTokenConfig.java:
-// 120-137 审计操作人语义）。
+// Identity.Name 按 realName 非空白优先、回退 userName（审计操作人语义）。
 func (sm *SessionManager) Resolve(ctx context.Context, token string) (Identity, error) {
 	sessionKey := keySessionPrefix + token
 	vals, err := sm.rdb.HGetAll(ctx, sessionKey).Result()
@@ -164,7 +163,7 @@ func (sm *SessionManager) Logout(ctx context.Context, token string) error {
 }
 
 // KickoutUser 踢下线：SMembers 反查索引 → 逐 token Exists——live 会话
-// DEL、索引内全部 SRem（死 token 惰性清理：Sa-Token 同结构亦有死键堆积，靠此收敛）。
+// DEL、索引内全部 SRem（死 token 惰性清理，防止索引无限增长）。
 func (sm *SessionManager) KickoutUser(ctx context.Context, userID int64) error {
 	userTokensKey := keyUserTokensPrefix + strconv.FormatInt(userID, 10)
 	tokens, err := sm.rdb.SMembers(ctx, userTokensKey).Result()
@@ -232,8 +231,8 @@ func (sm *SessionManager) UnbindAPIKey(ctx context.Context, apiKey string) error
 }
 
 // KickoutAPIKey 撤销指定 API Key 已签发的存量会话（用户轴
-// 同构语义在 apikey 轴的有意安全增强——源系统停用/删除 key 不踢 Sa-Token 会话，
-// 此处偏离源行为，由 ApiKeyService 注释声明裁决依据）：经 iam:apikey-token:{apiKey}
+// 同构语义在 apikey 轴的有意安全增强——key 停用/删除时其存量
+// 会话必须主动撤销，裁决依据见 ApiKeyService 注释）：经 iam:apikey-token:{apiKey}
 // 映射反查 token → DEL 会话 + SREM 用户 token 索引 + DEL 映射（单 MULTI/EXEC 原子块，
 // Logout+UnbindAPIKey 合体形状）。幂等——映射不存在（key 从未经 apikey-login 签发过
 // 会话）返回 nil；映射指向死 token 的历史残留同样收敛（DEL/SREM 均 no-op，仅剩映射

@@ -1,4 +1,4 @@
-// 认证域服务：登录编排（等价源 AuthApplicationService 六步链）与登出。
+// 认证域服务：登录编排（六步链）与登出。
 package service
 
 import (
@@ -43,13 +43,13 @@ func NewAuthService(userRepo *repository.UserRepo, relationRepo *repository.Rela
 // （非 ENABLED → 10502，仅密码正确后暴露）④角色装配（会话 roles 载荷，permissions
 // 不放）⑤发会话 ⑥出响应。
 //
-// 顺序偏离声明（修复记录）：源 AuthApplicationService.java:52-60 状态校验先于
-// bcrypt——照抄会让"禁用账号 + 任意密码（无需正确）"返回 10502 且不消耗 bcrypt
+// 顺序偏离声明（有意行为）：状态校验后置于
+// bcrypt——前置会让"禁用账号 + 任意密码（无需正确）"返回 10502 且不消耗 bcrypt
 // 耗时，攻击者凭响应码/响应时间即可把禁用账号从"不存在/启用存在"中完整枚举
 // （防枚举目标被绕过 + 第二重时间侧信道）。Go 版有意将状态校验移到 bcrypt
 // 成功之后：密码错误一律统一 10501，验证通过后才暴露 10502——禁用语义对持正确
 // 密码的本人仍然可见（状态语义保真），枚举面与不存在账号归零。此为安全目标
-// （防枚举）对源顺序保真的有意覆盖，非漂移。
+// （防枚举）做出的有意取舍，非漂移。
 func (s *AuthService) Login(ctx context.Context, req *dto.LoginReq) (*dto.LoginResp, error) {
 	u, err := s.userRepo.FindByUsername(ctx, derefStr(req.Username))
 	if err != nil {
@@ -69,7 +69,7 @@ func (s *AuthService) Login(ctx context.Context, req *dto.LoginReq) (*dto.LoginR
 	}
 	if u.Status == nil || *u.Status != 1 {
 		// 非 ENABLED（含 NULL fail-closed）：密码正确后才返回独立错误码 10502，
-		// 消息照源"用户已被禁用"（防禁用名单枚举）
+		// 消息固定为"用户已被禁用"（防禁用名单枚举）
 		return nil, errcode.ErrUserDisabled
 	}
 	return s.completeLogin(ctx, u)
@@ -80,7 +80,7 @@ func (s *AuthService) Logout(ctx context.Context, token string) error {
 	return s.sm.Logout(ctx, token)
 }
 
-// ApikeyLogin API Key 登录（分支顺序与消息照源 AuthApplicationService.java:63-77）：
+// ApikeyLogin API Key 登录（六分支语义）：
 // ①key 无效/停用/过期 → 10503（拒绝前经反查键撤销其存量会话，
 // ——尽力而为不阻断 10503）②apiKey→token 映射命中且会话存活且关联
 // 用户仍 ENABLED → 复用同一 token（会话内 roles 即权威快照，不重查重装配）③未关联

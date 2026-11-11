@@ -48,7 +48,7 @@ func (h *FileHandler) Upload(c *gin.Context) {
 //	attachment; filename*=UTF-8'' + url.PathEscape
 //
 // ——RFC 5987 形态承载中文与特殊字符，PathEscape 对 CR/LF 与控制字符百分号编码，
-// 头注入面天然消除，恒 attachment 不以同源 inline 渲染（缓解面）。
+// 头注入面天然消除，恒 attachment 不以同站 inline 渲染（缓解面）。
 func (h *FileHandler) Download(c *gin.Context) {
 	id, ok := parseID(c, "无效的文件 ID")
 	if !ok {

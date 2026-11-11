@@ -1,5 +1,5 @@
 // Package handler 字典数据域 HTTP handler（薄层三段式；list 支持 dict_type_id
-// 可选过滤——源 list?dictTypeId= 语义）。
+// 可选过滤，不传返回全量分页）。
 package handler
 
 import (

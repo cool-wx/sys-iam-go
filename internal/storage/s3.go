@@ -29,11 +29,10 @@ type S3Storage struct {
 }
 
 // NewS3Storage 构造并 EnsureBucket fail-fast：BucketExists 为假则 MakeBucket
-// （幂等可重入），失败上抛——等价源 @PostConstruct createBucket 启动语义
-// （FileApplicationService.java:45-48），存储基建不可用绝不静默启动。
+// （幂等可重入），失败上抛——存储基建不可用绝不静默启动。
 //
-// endpoint 规范化：配置值沿用源默认形态可带 scheme（http://localhost:9000，
-// RustfsProperties.java），而 minio.New 要求裸 host:port——此处剥离 scheme 且
+// endpoint 规范化：配置值可带 scheme（http://localhost:9000 默认形态），
+// 而 minio.New 要求裸 host:port——此处剥离 scheme 且
 // https:// 联动 Secure=true（显式 secure 配置仍优先覆盖 http:// 的 false 语义）。
 func NewS3Storage(ctx context.Context, cfg config.S3Config) (*S3Storage, error) {
 	endpoint := cfg.Endpoint

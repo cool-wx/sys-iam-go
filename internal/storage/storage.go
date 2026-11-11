@@ -3,9 +3,8 @@
 // 删除业务代码对两种后端无差别。
 //
 // 设计决策：
-//   - 接口面按源 File 域实际用到的最小面收敛（createBucket/upload/download/
-//     delete 四能力 → Put/GetStream/Delete 三方法；createBucket 收编进 S3Storage
-//     构造内 EnsureBucket——等价源 @PostConstruct createBucket 启动语义）。
+//   - 接口面按 File 域实际用到的最小面收敛（Put/GetStream/Delete 三方法；
+//     建桶收编进 S3Storage 构造内 EnsureBucket 启动语义）。
 //   - local 模式延迟形态：storage.New 的 local 分支只构造 LocalStorage，
 //     不触碰 minio-go 任何符号——工控机 local 部署零 S3 连接、minio 依赖不参与
 //     构造链；driver=s3 时启动 EnsureBucket fail-fast（桶不可建则拒绝启动）。
@@ -49,8 +48,8 @@ type FileStorage interface {
 }
 
 // New 按 driver 分派构造 FileStorage：local → LocalStorage（零 minio
-// 触碰）；s3 → S3Storage（构造内 EnsureBucket，失败 fail-fast 上抛——照 app.go
-// enforcer/Redis Ping 先例，存储基建不可用绝不静默启动）。
+// 触碰）；s3 → S3Storage（构造内 EnsureBucket，失败 fail-fast 上抛——存储基建
+// 不可用绝不静默启动，与 Redis Ping 同一纪律）。
 func New(ctx context.Context, cfg config.StorageConfig) (FileStorage, error) {
 	switch cfg.Driver {
 	case config.StorageDriverLocal:

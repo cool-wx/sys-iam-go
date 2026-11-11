@@ -39,7 +39,7 @@ type UserService struct {
 	enf          *authz.Enforcer
 	// pub 改真名事件发布依赖（UserRealNameChanged）：构造签名一次改齐，
 	// 发布时序契约见 internal/event 包注释——字段暂存不用。UsernameChanged
-	// 事件经 UAT Q1 裁决整体移除（username 为登录锚点不可改，源死代码）。
+	// 事件已移除（username 为登录锚点不可改，无变更路径）。
 	pub event.Publisher
 }
 
@@ -57,8 +57,8 @@ func NewUserService(db *gorm.DB, repo *repository.UserRepo, relationRepo *reposi
 	}
 }
 
-// validateDept 部门校验链（源 addUser/editUser 语义）：deptID==nil →
-// 「部门不能为空」；查不到 → 「部门不存在: {id}」（消息原文保留）。返回查库得到的
+// validateDept 部门校验链：deptID==nil →
+// 「部门不能为空」；查不到 → 「部门不存在: {id}」（固定文案）。返回查库得到的
 // 部门行（deptName 以查库值冗余，不信请求体——防伪造）。
 func (s *UserService) validateDept(ctx context.Context, deptID *ids.ID) (*po.DeptPO, error) {
 	if deptID == nil {
@@ -76,7 +76,7 @@ func (s *UserService) validateDept(ctx context.Context, deptID *ids.ID) (*po.Dep
 }
 
 // validateRealName 非空白真名校验：请求显式带真名时拒绝空串/全空白——
-// 真名是 26 条冗余列的同步源，空串会经 RealNameChanged 事件把 sys_user_role.username
+// 真名是 26 条冗余列的同步数据来源，空串会经 RealNameChanged 事件把 sys_user_role.username
 // 展示名、24 条审计操作人名列与 operation_log.real_name 全数清空，与 AssignRoles
 // 「realName 非空优先、回退 username」的回退语义冲突（同列同状态两种语义并存，
 // 审计/展示数据被一次合法请求静默抹除）。binding required 对 *string 仅查非 nil
@@ -90,10 +90,10 @@ func validateRealName(realName *string) error {
 }
 
 // Create 创建用户：DTO→PO（服务端默认值 Status=1/FirstLogin=true/Builtin=false，
-// 源 User.create() 语义；password bcrypt 哈希化入库——与源 Hutool BCrypt 同为标准
-// $2a$ 格式，存量哈希零迁移兼容），落库后 PO→DTO 返回。审计字段（双时间/四操作人/
-// ID）由 PO 钩子服务端填充，不接受请求体任何同名客户端字段。
-// deptId 必填且必须存在（源 addUser 校验链）；deptName 以查库值覆写——请求体
+// password bcrypt 哈希化入库——标准 $2a$ 格式，存量哈希零迁移兼容），落库后
+// PO→DTO 返回。审计字段（双时间/四操作人/ID）由 PO 钩子服务端填充，不接受
+// 请求体任何同名客户端字段。
+// deptId 必填且必须存在；deptName 以查库值覆写——请求体
 // deptName 键被忽略（服务端冗余不可由请求伪造）。
 func (s *UserService) Create(ctx context.Context, req *dto.UserCreateReq) (*dto.UserResp, error) {
 	// 空白真名前置拦截（见 validateRealName）：binding required 挡不住
@@ -110,7 +110,7 @@ func (s *UserService) Create(ctx context.Context, req *dto.UserCreateReq) (*dto.
 		RealName: req.RealName,
 		Phone:    req.Phone,
 		Email:    req.Email,
-		DeptName: dept.DeptName, // 服务端查库冗余（源 addUser 语义）
+		DeptName: dept.DeptName, // 服务端查库冗余
 	}
 	// 密码哈希化：明文绝不落库/出网；
 	// 生成失败收敛为内部错误（不 500 裸抛，纪律）。
@@ -152,7 +152,7 @@ func (s *UserService) Create(ctx context.Context, req *dto.UserCreateReq) (*dto.
 // 请求体之外的字段不可能进 map（白名单天然收敛）。落库后回读返回最新契约。
 // 审计（update_time/update_by）由 repo.Patch 显式并入，不接受客户端同名键。
 //
-// 白名单刻意不含 username/password 两列（源 editUser 不可改语义：用户名为登录锚点、
+// 白名单刻意不含 username/password 两列（不可改语义：用户名为登录锚点、
 // 密码走 reset-password 端点）与 dept_name 一列（dept_name 是服务端查库
 // 冗余，仅随 deptId 显式变更联动覆写为查库值——请求体 deptName 键被 DTO 白名单
 // 忽略，绝无客户端直写路径，"冗余不可伪造"truth 全覆盖）。
@@ -163,9 +163,8 @@ func (s *UserService) Update(ctx context.Context, id int64, req *dto.UpdateUserR
 	if err := validateRealName(req.RealName); err != nil {
 		return nil, err
 	}
-	// 改名同步回读（源 UserApplicationService.editUser 的 oldRealName
-	// 取值前置同构）：仅当请求显式带真名时回读旧行；行不存在提前 404 拦截（照
-	// userNotFound 译域），Patch 与发布一个都不触发。
+	// 改名同步回读：仅当请求显式带真名时回读旧行；行不存在提前 404 拦截
+	// （userNotFound 译域），Patch 与发布一个都不触发。
 	var old *po.UserPO
 	if req.RealName != nil {
 		var err error
@@ -201,13 +200,11 @@ func (s *UserService) Update(ctx context.Context, id int64, req *dto.UpdateUserR
 	if req.Gender != nil {
 		cols["gender"] = int8(*req.Gender)
 	}
-	// builtin 保留可写（裁决记录，注释-only 无行为变更）：用户域 builtin 白
-	// 名单 = 源语义保真——源 User.java:126-127 withEdit 链接受 builtin 参数
-	// （UserApplicationService.java:135 editUser 原样传入），Go 版照搬；刻意与角色
-	// 域不对称（角色域已收紧、偏离源 RoleApplicationService.java:77 可写语义
-	// ）——非遗漏，勿「对齐角色域」误改。残余锁死风险（system:user:edit + remove
-	// 组合可翻转唯一 super_admin 持有者 builtin=false 再删除）记录于
-	// 代码评审裁决留档。
+	// builtin 保留可写（有意行为）：用户域 builtin 白名单接受 builtin 参数写入，
+	// 刻意与角色域不对称（角色域已收紧、builtin 不可经 edit 翻转）——非遗漏，
+	// 勿「对齐角色域」误改。残余锁死风险（system:user:edit + remove
+	// 组合可翻转唯一 super_admin 持有者 builtin=false 再删除）已在安全评审中
+	// 知悉并接受。
 	if req.Builtin != nil {
 		cols["builtin"] = *req.Builtin
 	}
@@ -218,16 +215,14 @@ func (s *UserService) Update(ctx context.Context, id int64, req *dto.UpdateUserR
 		return nil, err
 	}
 	// 改名事件发布（Patch 返回 nil 即已提交）：仅当本次请求带了真名且回读
-	// 成功即发布（契约修订：**不设**源 `realName != null &&
-	// !realName.equals(oldRealName)` 中的新≠旧短路——主行已提交后客户端重试同一
+	// 成功即发布（**不设**新≠旧短路守卫——主行已提交后客户端重试同一
 	// 请求时旧行已是新名，新≠旧守卫恒假、事件永不重发，26 条冗余同步永不补执行，
 	// 「重试幂等自愈」契约被证伪；显式带名即发布，handler 幂等 UPDATE
-	// （`冗余列 <> newName`）使同名重发退化为廉价 no-op，重试自愈重新可达。该
-	// 偏离源语义的裁决已在事件契约修订中留档）。UserPO.RealName 为 *string
-	// ——旧行 NULL 兜底 ""（源 oldName != null ? oldName : "" 同款，OldName 仅载荷
+	// （`冗余列 <> newName`）使同名重发退化为廉价 no-op，重试自愈重新可达）。
+	// UserPO.RealName 为 *string——旧行 NULL 兜底 ""（OldName 仅载荷
 	// 信息非 UPDATE 条件）。**不改白名单**（username/password 刻意排除——username
-	// 为登录锚点不可改，UsernameChanged 事件经 UAT Q1 裁决整体移除）；**不动
-	// internal/auth**（会话快照照源不刷新，下次登录生效）。Publish 失败上抛
+	// 为登录锚点不可改，UsernameChanged 事件已移除）；**不动
+	// internal/auth**（会话快照不主动刷新，下次登录生效）。Publish 失败上抛
 	// 500（客户端重试同一请求必重发事件，幂等 UPDATE 自愈，沿 casbin 双轨
 	// 纪律）。
 	if old != nil && req.RealName != nil {
@@ -277,8 +272,7 @@ func (s *UserService) assembleRoles(ctx context.Context, users []po.UserPO) ([]d
 
 // List 用户列表：dataScope 档位解析（resolveScope）→ repo 分页过滤查询（Filter
 // 注入 Count/Find 同闭包）→ 角色两查询装配 → paging.PageData
-// envelope（排序与钳位由 repo/paging 承担）。role 条件过滤本阶段不做（源
-// selectPage 无 role 条件）。
+// envelope（排序与钳位由 repo/paging 承担）。本域不提供 role 条件过滤。
 func (s *UserService) List(ctx context.Context, page, size int) (*paging.PageData[dto.UserResp], error) {
 	filter, err := s.resolveScope(ctx)
 	if err != nil {
@@ -402,18 +396,18 @@ func (s *UserService) Get(ctx context.Context, id int64) (*dto.UserResp, error) 
 }
 
 // notFoundErr 行不存在译域消息（repo ErrNotFound 哨兵 → 404/10300「用户不存在: {id}」，
-// 源消息原文；code/HTTP 契约全库统一）。
+// code/HTTP 契约全库统一）。
 func userNotFound(id int64) *errcode.Error {
 	return errcode.New(errcode.CodeNotFound, fmt.Sprintf("用户不存在: %d", id))
 }
 
 // assignerIsSuperAdmin 判定当前操作者在 enforcer g 层是否实时持有 super_admin
-// （builtin 分配守卫判据；修复记录：判据源从会话 roles 快照改为 enforcer
+// （builtin 分配守卫判据；判据已从会话 roles 快照改为 enforcer
 // g 层实时判定）。初版判据遍历 identity.Roles——那是登录时装配的静态快照：
 // super_admin 被回收（SyncUserRoles 删 g 行）后存量会话未被踢、快照仍含该角色码，
 // 且会话滚动续期（持续活跃则永不过期）——旧会话可立即重新自分配 builtin 角色，
 // 回收操作被完全抵消且守卫无法自愈（攻击链）。g 层判据与豁免判据
-// 同源同轴：g 行删除即刻失去分配资格，回收不可被旧会话绕行。identity 缺失（防御
+// g 层判据与豁免判据同轴：g 行删除即刻失去分配资格，回收不可被旧会话绕行。identity 缺失（防御
 // 分支，正常装配不可达）返回 false fail-closed；enforcer 查询错误原样上抛
 // （调用方 500，绝不吞错静默放行/拒绝）。
 func (s *UserService) assignerIsSuperAdmin(ctx context.Context) (bool, error) {
@@ -426,15 +420,15 @@ func (s *UserService) assignerIsSuperAdmin(ctx context.Context) (bool, error) {
 
 // AssignRoles 分配用户角色（全量替换语义）：用户校验（「用户不存在:
 // {id}」）→ roleRepo.FindByIDs 前置全量校验（缺失集合译 400「角色不存在: [逗号拼接]」，
-// 消息格式照源；校验前置优于源"事务内先删后校验"，与 assignMenus 同决策）
+// 校验先于事务执行，与 assignMenus 同决策）
 // → builtin 提权守卫（请求含 builtin 角色时要求操作者在 enforcer g 层
 // 实时持有 super_admin，否则 403/10603 前置拦截零写调用）→ db.Transaction{ DeleteUserRolesByUserID +
 // BatchCreateUserRoles }——删旧插新同事务，杜绝"删后插前"窗口期。空数组=全回收
 // （合法语义）。
 //
 // 行冗余列：role_name=角色名；username 列存 **realName 非空白优先回退 username**
-// 的值——源 UserApplicationService.java:182-201 该列命名与内容不符（列名 username、
-// 内容为展示名），原样移植并在此注释（勿"修正"列内容）。
+// 的值——该列命名与内容不符（列名 username、内容为展示名），系既有库列约定，
+// 勿"修正"列内容。
 func (s *UserService) AssignRoles(ctx context.Context, userID int64, roleIDs []ids.ID) error {
 	u, err := s.repo.FindByID(ctx, userID)
 	if err != nil {
@@ -483,12 +477,12 @@ func (s *UserService) AssignRoles(ctx context.Context, userID int64, roleIDs []i
 	if len(missing) > 0 {
 		return errcode.New(errcode.CodeInvalidParam, "角色不存在: ["+strings.Join(missing, ", ")+"]")
 	}
-	// 停用角色写路径封口（前置拦截零写调用，RoleService.AssignMenus 同款）：
+	// 停用角色写路径封口（前置拦截零写调用）：
 	// 停用即 ClearRole 双清授权（停用语义），运行期 matcher 只看 casbin p/g 行、
 	// 无 status 概念——对停用角色再分配会经 SyncUserRoles 把 g 行写回，停用状态被
 	// 合法 API 复活。任一角色停用即整体拒绝（混合集合不含糊放行），消息沿域 400
-	// 缺失集合风格（「角色不存在: [逗号拼接]」同款）。NULL status 视作启用（照
-	// UsageStatusFromInt「非 0 一律 ENABLED」读路径兜底；DDL DEFAULT '1' 实际不可达）。
+	// 缺失集合风格。NULL status 视作启用（UsageStatusFromInt「非 0 一律 ENABLED」
+	// 读路径兜底；DDL DEFAULT '1' 实际不可达）。
 	var disabledIDs []string
 	for _, rid := range reqIDs {
 		if st := statusOf[rid]; st != nil && *st != 1 {
@@ -519,8 +513,8 @@ func (s *UserService) AssignRoles(ctx context.Context, userID int64, roleIDs []i
 			}
 		}
 	}
-	// 源命名错位：sys_user_role.username 列内容为展示名（realName 非空白优先，回退
-	// username）——等价源 SaTokenConfig.java:120-137 审计操作人同款语义。
+	// 列语义警示：sys_user_role.username 列内容为展示名（realName 非空白优先，回退
+	// username），勿修正列内容。
 	display := derefStr(u.RealName)
 	if strings.TrimSpace(display) == "" {
 		display = derefStr(u.Username)
@@ -575,9 +569,9 @@ func (s *UserService) GetRoles(ctx context.Context, userID int64) ([]dto.UserRol
 	return out, nil
 }
 
-// UpdateStatus 更新用户状态（源 updateStatus 仅 status 单列语义）：Patch 单业务列 +
-// **status==DISABLED 时 sm.KickoutUser 即刻踢存量会话**（安全增强：
-// 源不踢，停用用户持旧 token 继续操作是安全洞——缓解落点）；ENABLED 不动作。
+// UpdateStatus 更新用户状态：Patch 单业务列 +
+// **status==DISABLED 时 sm.KickoutUser 即刻踢存量会话**（停用用户持旧 token
+// 继续操作是安全洞——踢会话为缓解落点）；ENABLED 不动作。
 func (s *UserService) UpdateStatus(ctx context.Context, id int64, status types.UsageStatus) error {
 	if err := s.repo.Patch(ctx, id, map[string]any{"status": int8(status)}); err != nil {
 		if errors.Is(err, errcode.ErrNotFound) {
@@ -591,9 +585,9 @@ func (s *UserService) UpdateStatus(ctx context.Context, id int64, status types.U
 	return nil
 }
 
-// ResetPassword 重置密码（源 resetPassword 语义）：固定 123456 bcrypt 入库
-// + first_login=true 两列 Patch；无旧密码校验（源行为）；成功后即刻踢存量会话
-// （安全增强，缓解落点——密码可能已泄露期间旧会话不得存活）。
+// ResetPassword 重置密码：固定 123456 bcrypt 入库
+// + first_login=true 两列 Patch；无旧密码校验；成功后即刻踢存量会话
+// （缓解落点——密码可能已泄露期间旧会话不得存活）。
 func (s *UserService) ResetPassword(ctx context.Context, id int64) error {
 	if _, err := s.repo.FindByID(ctx, id); err != nil {
 		if errors.Is(err, errcode.ErrNotFound) {
@@ -617,10 +611,10 @@ func (s *UserService) ResetPassword(ctx context.Context, id int64) error {
 }
 
 // Delete 删除用户：builtin=true → errcode 单例 10601/409 **零删除调用**
-// 前置拦截（源 removeById 语义）；否则**预清模式**（修复裁决）：业务事务
+// 前置拦截；否则**预清模式**：业务事务
 // 提交前先撤销全部运行态授权——① sm.KickoutUser 踢存量会话 ② enf.ClearUser 清
 // casbin g 行——再 db.Transaction{ DeleteUserRolesByUserID + user Delete }（先删关联
-// 再删用户，源顺序，任一失败整体回滚）。
+// 再删用户，任一失败整体回滚）。
 //
 // 预清为何不可后置（原 post-commit 级联缺陷）：清理步骤放在事务提交后时，任一步失败
 // 即 500 且用户行已删——客户端重试 DELETE 命中 FindByID→404，踢会话/清策略永远无法

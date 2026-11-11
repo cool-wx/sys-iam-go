@@ -1,16 +1,15 @@
-// Excel 三键 upsert 导入（源 FaultInfoApplicationService.importExcel
-// 62-90 蓝本）：8 列契约严格解析 + 行数/表头双前置防线 + 整批单事务
-// （源 @Transactional 语义）+ ImportResult 契约（FEATURES.md:205）。
+// Excel 三键 upsert 导入：8 列契约严格解析 + 行数/表头双前置防线 + 整批单事务
+// + ImportResult 契约。
 //
-// 8 列契约（源 FaultInfo @ExcelProperty 声明序，锁定照抄不重排、
-// 禁容错重排——列序表 04-RESEARCH Implementation Guidance）：
+// 8 列契约（列序锁定不重排、
+// 禁容错重排）：
 //
 //	列 1 故障代码(code) / 列 2 故障变量(name，三键，空→skip) / 列 3 触发位
-//	(bit_index，空→-1 源字段初始值) / 列 4 报警类型(type，中文/int 双形态) /
+//	(bit_index，空→-1 字段初始值) / 列 4 报警类型(type，中文/int 双形态) /
 //	列 5 故障描述(detail) / 列 6 故障原因(reason) / 列 7 故障位置(location，
 //	三键，空→NULL) / 列 8 解决方法(fix)
 //
-// dict_data_id 无 @ExcelProperty：不进 Excel 不进导入（设计锁定）。
+// dict_data_id 不进 Excel 不进导入（设计锁定）。
 package service
 
 import (
@@ -40,8 +39,7 @@ const maxImportRows = 5000
 // faultImportHeaders 契约表头文案（列序即 8 列契约，逐一全等比较——禁容错）。
 var faultImportHeaders = []string{"故障代码", "故障变量", "触发位", "报警类型", "故障描述", "故障原因", "故障位置", "解决方法"}
 
-// strPtr 空单元格 → nil 存 NULL（源 EasyExcel/Fesod 注解读 String 字段空单元
-// 格得 null 的语义）；非空 → 指针。
+// strPtr 空单元格 → nil 存 NULL；非空 → 指针。
 func strPtr(s string) *string {
 	if s == "" {
 		return nil
@@ -52,17 +50,17 @@ func strPtr(s string) *string {
 // ImportExcel Excel 导入全链。防线顺序即解析顺序（设计纪律：
 // 行数上限与表头校验必须在解析用户数据前生效）：
 //
-//	(a) OpenReader + Rows("Sheet1") 流式行迭代器（源 ExcelHelper 默认 sheet 名；
+//	(a) OpenReader + Rows("Sheet1") 流式行迭代器（默认 sheet 名 Sheet1；
 //	    替代 GetRows 全量载入——行数防线在读取流阶段即生效，超限文件读到
 //	    上限立即中断读取，无全量缓冲面）
 //	(b) 表头严格匹配（首行）：前 8 列逐一全等 → 不符 400 整批拒绝
 //	(c) 行数上限（含表头计）：流式逐行计数，超限在读取阶段立即 400 整批拒绝
 //	(d) 逐行解析：len(row) > idx 边界检查（流式 Columns 同样跳过尾部空单元格、
-//	    行长度不一致是常态）；name 空 → skip 不计数（源 name==null skip）；
+//	    行长度不一致是常态）；name 空 → skip 不计数；
 //	    任一可解析列失败（触发位非数字等）→ 行错误上抛
 //	(e) 整批单事务：tx 变体 repo FindByThreeKeys 命中 → Patch 复用原行 id →
 //	    updateCount++；未命中 → Create → insertCount++；任一行 error 上抛即
-//	    全批无痕回滚（源 @Transactional 语义）
+//	    全批无痕回滚
 //	(f) 返回 ImportResult{insertCount, updateCount}
 func (s *FaultService) ImportExcel(ctx context.Context, r io.Reader) (*dto.ImportResult, error) {
 	// (a) 打开工作簿并取 Sheet1 流式行迭代器（行数防线前移到读取流阶段）
@@ -107,7 +105,7 @@ func (s *FaultService) ImportExcel(ctx context.Context, r io.Reader) (*dto.Impor
 			return nil, errcode.New(errcode.CodeInvalidParam, fmt.Sprintf("导入数据超过上限 %d 行", maxImportRows))
 		}
 		// cell 带边界取值：流式 Columns 尾部空单元格跳过，行长度不一致是常态——
-		// 越界一律取空串（04-RESEARCH 重点 6）
+		// 越界一律取空串
 		cell := func(idx int) string {
 			if len(row) > idx {
 				return row[idx]
@@ -116,10 +114,10 @@ func (s *FaultService) ImportExcel(ctx context.Context, r io.Reader) (*dto.Impor
 		}
 		name := cell(1)
 		if name == "" {
-			// 源 name==null skip 语义：空故障变量行跳过不计数
+			// 空故障变量行跳过不计数
 			continue
 		}
-		// 触发位：空单元格 → -1（源字段初始值）；非空必须可解析为整数
+		// 触发位：空单元格 → -1（字段初始值）；非空必须可解析为整数
 		bitIndex := -1
 		if raw := cell(2); raw != "" {
 			v, atoiErr := strconv.Atoi(raw)
@@ -138,8 +136,8 @@ func (s *FaultService) ImportExcel(ctx context.Context, r io.Reader) (*dto.Impor
 			Type:     &typeVal,
 			Detail:   strPtr(cell(4)),
 			Reason:   strPtr(cell(5)),
-			// location 空单元格 → nil 存 NULL（三键判重 eq 失效是源已接受行为，
-			// Q2 照源裁定——见 FaultInfoRepo.FindByThreeKeys 注释）
+			// location 空单元格 → nil 存 NULL（三键判重 eq 对 NULL 不命中，
+			// 见 FaultInfoRepo.FindByThreeKeys 注释）
 			Location: strPtr(cell(6)),
 			Fix:      strPtr(cell(7)),
 		})
@@ -152,8 +150,8 @@ func (s *FaultService) ImportExcel(ctx context.Context, r io.Reader) (*dto.Impor
 		return nil, errcode.New(errcode.CodeInvalidParam, "Excel 表头与模板不符")
 	}
 
-	// (e) 整批单事务（SkipDefaultTransaction=true 下唯一事务边界，照 RoleService
-	// 持 db 显式 Transaction 形态）：任一行 error 上抛即全批无痕回滚
+	// (e) 整批单事务（SkipDefaultTransaction=true 下唯一事务边界，db 显式
+	// Transaction）：任一行 error 上抛即全批无痕回滚
 	result := &dto.ImportResult{}
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		repo := repository.NewFaultInfoRepo(tx)

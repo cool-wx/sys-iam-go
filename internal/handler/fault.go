@@ -1,5 +1,5 @@
 // Package handler 故障域 HTTP handler（薄层三段式；List 走 paging.Parse 1/15
-// 全局默认——源 fault list 走 PageHelper 同 1/15；Import 为 multipart 上传）。
+// 全局默认；Import 为 multipart 上传）。
 package handler
 
 import (
@@ -68,8 +68,8 @@ func (h *FaultHandler) Get(c *gin.Context) {
 	resp.OK(c, data)
 }
 
-// List 处理 GET /api/v1/faults：paging.Parse 1/15 全局默认（源 PageHelper 同
-// 1/15）；code 可选 eq 直传过滤（idx_code 索引列）。
+// List 处理 GET /api/v1/faults：paging.Parse 1/15 全局默认；
+// code 可选 eq 直传过滤（idx_code 索引列）。
 func (h *FaultHandler) List(c *gin.Context) {
 	page, size := paging.Parse(c.Query("page"), c.Query("size"))
 	data, err := h.svc.List(c.Request.Context(), page, size, c.Query("code"))

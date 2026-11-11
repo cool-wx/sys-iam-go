@@ -142,7 +142,7 @@ func (e *Enforcer) SyncUserRoles(userID int64, roleCodes []string) error {
 
 // SyncRoleUsers 全量替换角色的 g 策略（角色轴的 SyncUserRoles 对偶）：
 // 角色恢复 ENABLED 时按 sys_user_role 关联重建 (userID, roleCode) g 行——
-// RemoveFilteredGroupingPolicy 的 fieldIndex=1 是 role 位（ClearRole 同款），
+// RemoveFilteredGroupingPolicy 的 fieldIndex=1 是 role 位（与 ClearRole 一致），
 // userIDs 空=只删不加。幂等全删全加（重复恢复无害）。
 func (e *Enforcer) SyncRoleUsers(roleCode string, userIDs []int64) error {
 	if _, err := e.inner.RemoveFilteredGroupingPolicy(1, roleCode); err != nil {
@@ -161,7 +161,7 @@ func (e *Enforcer) SyncRoleUsers(roleCode string, userIDs []int64) error {
 }
 
 // HasRole 报告用户在 enforcer g 层是否直接持有指定角色（g 层读原语）：
-// builtin 分配守卫的管理准入判据（service assignerIsSuperAdmin 封装）——判据源是
+// builtin 分配守卫的管理准入判据（service assignerIsSuperAdmin 封装）——判据在
 // enforcer 实时策略而非登录会话 roles 快照（「唯一判据在 enforcer g 层」纪律
 // 对管理操作准入的延伸）：快照是登录时装配的静态副本，super_admin 回收后存量会话
 // 未被踢仍含旧角色码且滚动续期永不过期，快照判据可被旧会话完全抵消；g 行经

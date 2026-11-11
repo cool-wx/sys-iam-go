@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// MaxBodyMB 全局请求体上限（MB 数，MiB 语义）——单一事实源：字节上限
+// MaxBodyMB 全局请求体上限（MB 数，MiB 语义）——唯一常量事实依据：字节上限
 // maxBodyBytes 与 handler 超限文案均由它派生，调整上限只改这一处，用户可见文案
 // 不会与真实上限漂移。按当前用户域 JSON 契约字段裕量设定；后续大 payload 域如
 // Excel 导入应另设独立上限，不复用全局值。
@@ -16,7 +16,7 @@ const MaxBodyMB int64 = 1
 // maxBodyBytes 请求体大小上限（字节）：由 MaxBodyMB 派生（编译期常量运算）。
 const maxBodyBytes int64 = MaxBodyMB << 20
 
-// MaxMultipartMB multipart 请求体上限（MB 数，MiB 语义）——单一事实源：
+// MaxMultipartMB multipart 请求体上限（MB 数，MiB 语义）——唯一常量事实依据：
 // 全局 BodyLimit 对 multipart 的兜底封顶与 upload/import 路由级 BodyLimitWithMB
 // 独立上限共用本常量，调整上限只改这一处，两层永不漂移。
 const MaxMultipartMB int64 = 20

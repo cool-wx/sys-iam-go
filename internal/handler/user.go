@@ -165,7 +165,7 @@ func (h *UserHandler) UpdateStatus(c *gin.Context) {
 }
 
 // ResetPassword 处理 PUT /api/v1/users/:id/reset-password：固定 123456 + 踢存量
-// 会话；无请求体（源 resetPwd 无旧密码校验）。
+// 会话；无请求体（无旧密码校验）。
 func (h *UserHandler) ResetPassword(c *gin.Context) {
 	id, ok := parseUserID(c)
 	if !ok {
@@ -179,7 +179,7 @@ func (h *UserHandler) ResetPassword(c *gin.Context) {
 }
 
 // Delete 处理 DELETE /api/v1/users/:id：builtin 守卫（409/10601 零删除调用）+
-// 先删 sys_user_role 关联再删用户（事务，源 removeById 顺序）。
+// 先删 sys_user_role 关联再删用户（事务）。
 func (h *UserHandler) Delete(c *gin.Context) {
 	id, ok := parseUserID(c)
 	if !ok {

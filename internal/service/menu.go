@@ -28,8 +28,8 @@ func NewMenuService(repo *repository.MenuRepo, pub event.Publisher) *MenuService
 }
 
 // Create 创建菜单：DTO→PO（服务端默认值 status=ENABLED、visible=true——对齐 DDL
-// default 与源 MP null-skip 语义）；parentId 非 nil 且非 0 时校验父存在并冗余
-// parentName（源 addMenu resolveParentName 语义）。审计字段（双时间/
+// default）；parentId 非 nil 且非 0 时校验父存在并冗余
+// parentName（服务端查库装配）。审计字段（双时间/
 // 四操作人/ID）由 PO 钩子服务端填充，不接受请求体任何同名客户端字段。
 func (s *MenuService) Create(ctx context.Context, req *dto.MenuCreateReq) (*dto.MenuResp, error) {
 	m := &po.MenuPO{
@@ -59,9 +59,9 @@ func (s *MenuService) Create(ctx context.Context, req *dto.MenuCreateReq) (*dto.
 			return nil, err
 		}
 		m.ParentID = &pid
-		m.ParentName = parent.Name // 服务端查库冗余，不信请求体（同源纪律）
+		m.ParentName = parent.Name // 服务端查库冗余，不信请求体
 	}
-	// parentId nil/0：parent_id/parent_name 保持 NULL（源语义）
+	// parentId nil/0：parent_id/parent_name 保持 NULL（根形态）
 	if err := s.repo.Create(ctx, m); err != nil {
 		return nil, err
 	}
@@ -70,20 +70,17 @@ func (s *MenuService) Create(ctx context.Context, req *dto.MenuCreateReq) (*dto.
 
 // Update 更新菜单（部分更新）：白名单 name/type/path/component/permission/
 // icon/sort/visible/status/remark（nil=不写库；空串=显式清空照写）；parentId 显式
-// 传入时联动父校验 + parentName 重冗余（源 editMenu 每次编辑执行 resolveParentName
-// 语义）；不显式传则不动父列。落库后回读返回最新契约。审计由 repo.Patch 显式并入。
+// 传入时联动父校验 + parentName 重冗余（每次编辑执行）；不显式传则不动父列。落库后回读返回最新契约。审计由 repo.Patch 显式并入。
 //
-// 改名同步（源 MenuApplicationService.editMenu 的 oldName 取值
-// 前置同构；契约修订：**不设**源条件 `menu.getName() != null &&
-// !menu.getName().equals(oldName)` 的新≠旧短路——主行已提交后重试同一请求时旧行
+// 改名同步（**不设**新≠旧短路条件——主行已提交后重试同一请求时旧行
 // 已是新名，新≠旧守卫恒假、事件永不重发——「重试幂等自愈」被证伪；显式带 name
 // 即发布，幂等 UPDATE 使同名重发退化为 no-op）：请求显式带 name 时先回读旧行
-// （行不存在提前拦为 404，照 Get 同款译域）；Patch 成功（单语句已提交——「提交后
+// （行不存在提前拦为 404）；Patch 成功（单语句已提交——「提交后
 // 发布」由代码顺序天然满足）之后发布 MenuNameChanged（显式带名门保留，
 // "仅改备注"不带 name 仍零发布，非无条件发布）；Publish 失败上抛 500（
 // 客户端重试同一请求必重发事件，幂等 UPDATE 自愈）。
 func (s *MenuService) Update(ctx context.Context, id int64, req *dto.MenuUpdateReq) (*dto.MenuResp, error) {
-	// 改名同步回读：仅当请求显式带菜单名时回读旧行（源 oldName 取值前置）；
+	// 改名同步回读：仅当请求显式带菜单名时回读旧行；
 	// 行不存在提前 404 拦截，Patch 与发布一个都不触发。
 	var old *po.MenuPO
 	if req.Name != nil {
@@ -107,12 +104,10 @@ func (s *MenuService) Update(ctx context.Context, id int64, req *dto.MenuUpdateR
 		pid := int64(*req.ParentID)
 		if pid == 0 {
 			// 显式移至根：parent_id 落 NULL + parent_name 清 NULL——根 = parent_id
-			// NULL 成为唯一形态（与 Create 根同形态；源自身 Create
-			// null / Update 0 不对称，此处为 Go 内一致性修正、显式偏离源）。存量
+			// NULL 成为唯一形态（与 Create 根同形态）。存量
 			// parent_id=0 行不迁移：tree.Build/ensureNotDescendant/resolveParent
 			// 对 nil/0 双形态兼容，读侧零回归。GORM Updates(map) 显式 nil 写 NULL
-			//（与同分支 parent_name 清 NULL 同款，源 MP null-skip 残留旧值的有意
-			// 修正）。
+			//（与同分支 parent_name 清 NULL 一致，显式置空防旧值残留）。
 			cols["parent_id"] = nil
 			cols["parent_name"] = nil
 		} else {
@@ -162,9 +157,9 @@ func (s *MenuService) Update(ctx context.Context, id int64, req *dto.MenuUpdateR
 		}
 		return nil, err
 	}
-	// 改名事件发布（Patch 返回 nil 即已提交；契约修订：显式带名即发布、
+	// 改名事件发布（Patch 返回 nil 即已提交；显式带名即发布、
 	// 不设新≠旧短路——重试自愈契约见上注）：oldName 取回读行值、NULL 兜底 ""
-	// （源 oldName != null ? oldName : "" 同款，仅载荷信息非 UPDATE 条件）。
+	// （仅载荷信息非 UPDATE 条件）。
 	if old != nil && req.Name != nil {
 		oldName := ""
 		if old.Name != nil {
@@ -183,7 +178,7 @@ func (s *MenuService) Update(ctx context.Context, id int64, req *dto.MenuUpdateR
 	return s.Get(ctx, id)
 }
 
-// Get 菜单详情：未命中译为 404/10300「菜单不存在: {id}」（源 editMenu 消息原文；
+// Get 菜单详情：未命中译为 404/10300「菜单不存在: {id}」（固定文案；
 // code/HTTP 契约全库统一）。
 func (s *MenuService) Get(ctx context.Context, id int64) (*dto.MenuResp, error) {
 	m, err := s.repo.FindByID(ctx, id)
@@ -196,7 +191,7 @@ func (s *MenuService) Get(ctx context.Context, id int64) (*dto.MenuResp, error) 
 	return dto.ToMenuResp(m), nil
 }
 
-// List 菜单全量列表（无分页——树与源 list 语义；ORDER BY sort ASC 由 repo 承担）。
+// List 菜单全量列表（无分页——树查询需要完整数据集；ORDER BY sort ASC 由 repo 承担）。
 func (s *MenuService) List(ctx context.Context) ([]*dto.MenuResp, error) {
 	items, err := s.repo.List(ctx)
 	if err != nil {
@@ -246,9 +241,8 @@ func (s *MenuService) Tree(ctx context.Context) ([]*dto.MenuTreeResp, error) {
 	return out, nil
 }
 
-// Delete 删除菜单：直接物理删。与源一致**不加子菜单/角色引用检查**（源缺口按源
-// 保留：MenuApplicationService.removeById 直接删——删除带子节点的菜单仍成功，
-// 孤儿子节点经树查询孤儿提升语义仍可见）。
+// Delete 删除菜单：直接物理删。**不校验子菜单/角色引用**——删除带子节点的菜单
+// 仍成功，孤儿子节点经树查询孤儿提升语义仍可见。
 func (s *MenuService) Delete(ctx context.Context, id int64) error {
 	return s.repo.Delete(ctx, id)
 }
@@ -274,7 +268,7 @@ func (s *MenuService) ensureNotDescendant(ctx context.Context, pid, id int64) er
 	return nil
 }
 
-// resolveParent 父校验（源 resolveParentName 逐字语义）：父不存在或父 name 为
+// resolveParent 父校验：父不存在或父 name 为
 // NULL 均报 400「父菜单不存在: {pid}」；parentName 只信服务端查库值。
 func (s *MenuService) resolveParent(ctx context.Context, pid int64) (*po.MenuPO, error) {
 	parent, err := s.repo.FindByID(ctx, pid)
@@ -285,7 +279,7 @@ func (s *MenuService) resolveParent(ctx context.Context, pid int64) (*po.MenuPO,
 		return nil, err
 	}
 	if parent.Name == nil {
-		// 源：parent == null || parent.getName() == null 同样拒绝
+		// 父 name 为 NULL 与父不存在同样拒绝
 		return nil, errcode.New(errcode.CodeInvalidParam, fmt.Sprintf("父菜单不存在: %d", pid))
 	}
 	return parent, nil

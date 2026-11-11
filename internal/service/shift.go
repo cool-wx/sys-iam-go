@@ -1,4 +1,4 @@
-// Package service 排班域业务逻辑：CRUD（全量查询无分页——源行为直译；
+// Package service 排班域业务逻辑：CRUD（全量查询无分页；
 // start_time/end_time HH:MM:SS 字符串直传，无 1062 分支，sys_shift
 // 无唯一索引）。
 package service
@@ -24,8 +24,8 @@ func NewShiftService(repo *repository.ShiftRepo) *ShiftService {
 	return &ShiftService{repo: repo}
 }
 
-// Create 创建排班：status 不收客户端值，服务端默认 1 正常（对齐 DDL default 与
-// 源 MP null-skip 语义；对齐 dict/fileCategory 域 Create 形态）。审计字段
+// Create 创建排班：status 不收客户端值，服务端默认 1 正常（对齐 DDL default；
+// 对齐 dict/fileCategory 域 Create 形态）。审计字段
 // 由 PO 钩子服务端填充。
 func (s *ShiftService) Create(ctx context.Context, req *dto.ShiftCreateReq) (*dto.ShiftResp, error) {
 	m := &po.ShiftPO{
@@ -87,7 +87,7 @@ func (s *ShiftService) Get(ctx context.Context, id int64) (*dto.ShiftResp, error
 	return dto.ToShiftResp(m), nil
 }
 
-// List 排班全量列表——源 list 无分页行为直译，勿统一为分页
+// List 排班全量列表——此接口不分页，返回全量列表，勿统一为分页
 // （repo ORDER BY shift_code ASC, id ASC）。
 func (s *ShiftService) List(ctx context.Context) ([]*dto.ShiftResp, error) {
 	items, err := s.repo.List(ctx)
@@ -101,7 +101,7 @@ func (s *ShiftService) List(ctx context.Context) ([]*dto.ShiftResp, error) {
 	return out, nil
 }
 
-// Delete 删除排班：直接物理删（源 deleteShift 语义）。
+// Delete 删除排班：直接物理删。
 func (s *ShiftService) Delete(ctx context.Context, id int64) error {
 	return s.repo.Delete(ctx, id)
 }

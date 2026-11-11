@@ -80,7 +80,7 @@ func (h *MenuHandler) Get(c *gin.Context) {
 	resp.OK(c, data)
 }
 
-// List 处理 GET /api/v1/menus：全量列表（无分页——树与源 list 语义）→ envelope。
+// List 处理 GET /api/v1/menus：全量列表（无分页——树查询需要完整数据集）→ envelope。
 func (h *MenuHandler) List(c *gin.Context) {
 	data, err := h.svc.List(c.Request.Context())
 	if err != nil {
