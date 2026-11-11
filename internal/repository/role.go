@@ -62,7 +62,7 @@ func (r *RoleRepo) Patch(ctx context.Context, id int64, cols map[string]any) err
 	return nil
 }
 
-// Delete 物理删除（硬删除语义，P4）；由 service 层 db.Transaction 四连删调用
+// Delete 物理删除（硬删除语义）；由 service 层 db.Transaction 四连删调用
 // （user_role → role_menu → role_dept → role，任一失败整体回滚）。恒带 Where 防 Type 白名单外调用。
 func (r *RoleRepo) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&po.RolePO{}).Error
@@ -71,7 +71,7 @@ func (r *RoleRepo) Delete(ctx context.Context, id int64) error {
 // List 角色分页条件查询：roleName LIKE（**先 strings.TrimSpace**——源
 // RoleRepositoryImpl.selectPage 特例）+ **ORDER BY id ASC**（非其他域的
 // create_time DESC，源特例 RoleRepositoryImpl.java:28-34；id 递增本身即稳定序）。
-// 条件放进闭包 q() 保证 Count 与 Find 一致防 total 漂移（P15）。
+// 条件放进闭包 q() 保证 Count 与 Find 一致防 total 漂移。
 func (r *RoleRepo) List(ctx context.Context, page, size int, roleName string) ([]po.RolePO, int64, error) {
 	trimmed := strings.TrimSpace(roleName)
 	q := func() *gorm.DB {

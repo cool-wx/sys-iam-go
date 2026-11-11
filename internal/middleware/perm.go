@@ -26,7 +26,7 @@ import (
 // super_admin 豁免不在中间件判断——model matcher 首位短路已覆盖（唯一
 // 判据在 enforcer g 层：撤销 super_admin g 行后豁免下一请求立即失效）。
 //
-// enforcer 故障分支必须 slog.Error 留痕：授权链故障是 IAM 的 P0 事件，
+// enforcer 故障分支必须 slog.Error 留痕：授权链故障是 IAM 的最高严重级事件，
 // 表现为全站无差别 500（每条请求都过 RequirePerm），AccessLog 只有 status 行——
 // 无根因日志则 casbin/gorm-adapter/DB 故障完全不可诊断。日志键仅 sub（userID 十进
 // 制串）/perm（权限串）/error（根因）三键，不含 token/请求体等敏感值。

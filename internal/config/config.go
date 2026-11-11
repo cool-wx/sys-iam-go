@@ -17,7 +17,7 @@ import (
 	"github.com/knadh/koanf/v2"
 )
 
-// 默认值（配置文件缺失/键缺省时使用，工控机取值见研究 P14）。
+// 默认值（配置文件缺失/键缺省时使用，取值为工控机部署适配值）。
 const (
 	DefaultPort            = 8080
 	DefaultDSN             = "root:dckj@yf175@tcp(127.0.0.1:3306)/sys_iam?charset=utf8mb4&parseTime=True&loc=Asia%2FShanghai"

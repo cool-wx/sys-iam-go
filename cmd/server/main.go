@@ -11,7 +11,7 @@ import (
 	"strings"
 	"syscall"
 
-	_ "time/tzdata" // 内嵌时区库（P2：工控机无 /usr/share/zoneinfo 防漂移）
+	_ "time/tzdata" // 内嵌时区库（工控机无 /usr/share/zoneinfo 也可解析，防时间漂移）
 
 	"github.com/cool-wx/sys-iam-go/internal/app"
 	"github.com/cool-wx/sys-iam-go/internal/config"
@@ -74,7 +74,7 @@ func main() {
 		}
 		return
 	case <-ctx.Done():
-		// SIGINT/SIGTERM → 摘流 → 15s 排空 → 关连接 → 正常退出（P16）
+		// SIGINT/SIGTERM → 摘流 → 15s 排空 → 关连接 → 正常退出
 		application.Stop()
 	}
 }

@@ -62,7 +62,7 @@ func (r *MenuRepo) Patch(ctx context.Context, id int64, cols map[string]any) err
 	return nil
 }
 
-// Delete 物理删除（硬删除语义，P4）。与源一致**不加子菜单/角色引用检查**
+// Delete 物理删除（硬删除语义）。与源一致**不加子菜单/角色引用检查**
 // （源缺口按源保留：MenuApplicationService.removeById 直接删——删除带子节点的
 // 菜单仍成功，孤儿子节点经 tree.Build 孤儿提升语义在树查询中可见）。
 // 不校验存在性：删除不存在的 id 静默成功（源 removeById 语义）。

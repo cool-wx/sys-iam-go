@@ -130,7 +130,7 @@ func (s *ApiKeyService) UpdateStatus(ctx context.Context, id int64, status types
 }
 
 // List API Key 分页列表：repo 分页查询 → PO→DTO 转换 → paging.PageData envelope
-// （排序与钳位由 repo/paging 承担，P15）。管理面可见明文 key（源语义）。
+// （排序与钳位由 repo/paging 承担）。管理面可见明文 key（源语义）。
 func (s *ApiKeyService) List(ctx context.Context, page, size int) (*paging.PageData[dto.ApiKeyResp], error) {
 	keys, total, err := s.apiKeyRepo.List(ctx, page, size)
 	if err != nil {

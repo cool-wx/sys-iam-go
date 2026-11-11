@@ -1,5 +1,5 @@
 // Package app 聚合应用依赖与生命周期：装配（config→GORM→路由）→ Run 阻塞服务 →
-// Stop 摘流+排空+关连接（供 main 信号路径与关停测试复用，P16/P5 范式）。
+// Stop 摘流+排空+关连接（供 main 信号路径与关停测试复用）。
 package app
 
 import (
@@ -28,7 +28,7 @@ import (
 	"github.com/cool-wx/sys-iam-go/internal/storage"
 )
 
-// 优雅关停排空预算（P16；systemd TimeoutStopSec 须大于此值，Pattern 5）。
+// 优雅关停排空预算（systemd TimeoutStopSec 须大于此值）。
 const shutdownTimeout = 15 * time.Second
 
 // App 应用聚合：engine、db、rdb、health、config、ologW（操作日志异步写通道）。
@@ -50,7 +50,7 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	db, err := gorm.Open(mysql.Open(cfg.MySQL.DSN), &gorm.Config{
 		Logger:                 gormlogger.Default.LogMode(gormlogger.Warn),
 		SkipDefaultTransaction: true, // service 层显式 Transaction，关隐式事务
-		TranslateError:         true, // MySQL 1062 → gorm.ErrDuplicatedKey（P4）
+		TranslateError:         true, // MySQL 1062 → gorm.ErrDuplicatedKey
 		// 不配置 AutoMigrate —— schema 沿用源库（CLAUDE.md 锁定）
 	})
 	if err != nil {

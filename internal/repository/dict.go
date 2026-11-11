@@ -66,7 +66,7 @@ func (r *DictTypeRepo) Patch(ctx context.Context, id int64, cols map[string]any)
 	return nil
 }
 
-// Delete 物理删除（硬删除语义，P4）。不校验存在性：删除不存在的 id 静默成功
+// Delete 物理删除（硬删除语义）。不校验存在性：删除不存在的 id 静默成功
 // （源 deleteDictType 语义）。与源一致**不加字典数据引用检查**——删除类型后
 // 其下 dict_data 成为孤儿（源缺口按源保留）。
 func (r *DictTypeRepo) Delete(ctx context.Context, id int64) error {
@@ -155,7 +155,7 @@ func (r *DictDataRepo) Patch(ctx context.Context, id int64, cols map[string]any)
 	return nil
 }
 
-// Delete 物理删除（硬删除语义，P4）。不校验存在性：删除不存在的 id 静默成功
+// Delete 物理删除（硬删除语义）。不校验存在性：删除不存在的 id 静默成功
 // （源 deleteDictData 语义）。
 func (r *DictDataRepo) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&po.DictDataPO{}).Error

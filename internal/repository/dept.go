@@ -59,7 +59,7 @@ func (r *DeptRepo) Patch(ctx context.Context, id int64, cols map[string]any) err
 	return nil
 }
 
-// Delete 物理删除（硬删除语义，P4）。与源一致**不加子部门/用户引用检查**
+// Delete 物理删除（硬删除语义）。与源一致**不加子部门/用户引用检查**
 // （源缺口按源保留：DeptApplicationService.removeById 直接删）。不校验存在性。
 func (r *DeptRepo) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&po.DeptPO{}).Error

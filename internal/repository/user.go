@@ -69,8 +69,8 @@ func (r *UserRepo) Patch(ctx context.Context, id int64, cols map[string]any) err
 	return nil
 }
 
-// List 分页查询：Count 与记录查询经同一闭包构造（条件集天然一致，防 total 漂移，
-// P15）；datascope.Filter 统一在闭包内 Apply——**total 与行集出自同一过滤闭包**
+// List 分页查询：Count 与记录查询经同一闭包构造（条件集天然一致，防 total 漂移）；
+// datascope.Filter 统一在闭包内 Apply——**total 与行集出自同一过滤闭包**
 // （dataScope 档位同时约束 Count 与 Find，列表页 total 不漂移）；
 // 排序 create_time DESC, id DESC——稳定 tiebreaker 保证同秒插入时
 // 翻页不漂移；排序串为代码常量，无 ORDER 注入面。
@@ -132,7 +132,7 @@ func (r *UserRepo) FindByID(ctx context.Context, id int64) (*po.UserPO, error) {
 	return &u, nil
 }
 
-// Delete 物理删除（硬删除语义，P4）；由 service 层 db.Transaction 调用（先删
+// Delete 物理删除（硬删除语义）；由 service 层 db.Transaction 调用（先删
 // sys_user_role 关联再删用户，源 removeById 顺序）。恒带 Where 防 Type 白名单外调用。
 func (r *UserRepo) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&po.UserPO{}).Error

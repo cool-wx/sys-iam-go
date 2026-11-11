@@ -4,8 +4,8 @@ package po
 import "time"
 
 // BaseWithOperator 审计列内嵌（等价源 BaseAggregate + BaseUserEntity）。
-// 全部指针原生类型——无自定义类型进 PO（P1 根治 Valuer/Scanner 陷阱）；
-// 无 DeletedAt（硬删除语义，P4）。
+// 全部指针原生类型——无自定义类型进 PO（规避 Valuer/Scanner 陷阱）；
+// 无 DeletedAt（硬删除语义）。
 type BaseWithOperator struct {
 	CreateByID   *int64     `gorm:"column:create_by_id"`
 	CreateByName *string    `gorm:"column:create_by_name"`

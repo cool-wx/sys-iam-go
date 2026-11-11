@@ -71,7 +71,7 @@ func (s *RoleService) Create(ctx context.Context, req *dto.RoleCreateReq) (*dto.
 	b := false
 	role.Builtin = &b
 	if err := s.roleRepo.Create(ctx, role); err != nil {
-		// TranslateError 开启后 MySQL 1062 → gorm.ErrDuplicatedKey（P4）
+		// TranslateError 开启后 MySQL 1062 → gorm.ErrDuplicatedKey
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			return nil, errcode.New(errcode.CodeInvalidParam, "角色编码已存在")
 		}

@@ -92,7 +92,7 @@ func (r *ApiKeyRepo) Patch(ctx context.Context, id int64, cols map[string]any) e
 	return nil
 }
 
-// List 分页查询（Count + Find 两查询防 total 漂移，P15）；排序 create_time DESC,
+// List 分页查询（Count + Find 两查询防 total 漂移）；排序 create_time DESC,
 // id DESC（稳定 tiebreaker，与 user 域一致）；当前无过滤条件（源 selectPage 无
 // 附加条件）。offset<0 钳 0。
 func (r *ApiKeyRepo) List(ctx context.Context, page, size int) ([]po.ApiKeyPO, int64, error) {
@@ -117,7 +117,7 @@ func (r *ApiKeyRepo) List(ctx context.Context, page, size int) ([]po.ApiKeyPO, i
 	return keys, total, nil
 }
 
-// Delete 物理删除（硬删除语义，P4）；恒带 Where 防 Type 白名单外调用。
+// Delete 物理删除（硬删除语义）；恒带 Where 防 Type 白名单外调用。
 func (r *ApiKeyRepo) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&po.ApiKeyPO{}).Error
 }

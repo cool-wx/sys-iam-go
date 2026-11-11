@@ -138,7 +138,7 @@ func (s *UserService) Create(ctx context.Context, req *dto.UserCreateReq) (*dto.
 	}
 
 	if err := s.repo.Create(ctx, u); err != nil {
-		// TranslateError 开启后 MySQL 1062 → gorm.ErrDuplicatedKey（P4）
+		// TranslateError 开启后 MySQL 1062 → gorm.ErrDuplicatedKey
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			return nil, errcode.New(errcode.CodeInvalidParam, "用户名已存在")
 		}
