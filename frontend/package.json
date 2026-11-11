@@ -1,0 +1,35 @@
+{
+  "name": "craft-twin-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^5.6.0",
+    "@ant-design/v5-patch-for-react-19": "^1.0.3",
+    "@stomp/stompjs": "^7.3.0",
+    "antd": "^5.26.0",
+    "axios": "^1.20.0",
+    "dompurify": "^3.2.0",
+    "echarts": "^6.1.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router": "^7.9.0",
+    "sockjs-client": "^1.6.1",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.0",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.5.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "jsdom": "^30.1.1",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1"
+  }
+}
