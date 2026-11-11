@@ -110,3 +110,9 @@ blocked: 0
 - 添加测试账号：uat_super(990001→super_admin)/uat_admin(990002→admin)/uat_basic(990003→basic)，密码 Uat#2026，remark 标记「UAT 测试账号-自动添加」
 - 修正存量数据缺口：sys_role id=1（super_admin）data_scope 1→5（经 PUT /api/v1/roles/1，datascope 代码注释指定的现场修正路径；update_by=uat_super 留审计）
 - 闭环清理：uat_tmp_user 已删除无残留；服务进程已停止
+
+### 会话后调整（2026-11-11，用户指示）
+
+- 测试账号收敛为三个：super(id=1，复用内置账号，密码重置为 1)/admin(id=2110258817435746305，复用内置账号，密码重置为 1)/user(id=990003，原 uat_basic 改名，密码 1)；原 uat_super(990001)/uat_admin(990002) 已删除（关联一并清理），Redis 测试会话 7 key 已清
+- 三账号登录验证通过（super→super_admin、admin→admin、user→basic），错误密码 401
+- 顺带发现（未修，待裁决）：登录响应体 user.roles 恒为 []（completeLogin 用 ToUserResp 不回填，roles 仅进会话载荷）；GET /users/:id 详情接口 roles 装配正常，会话授权链路正常
