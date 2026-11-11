@@ -2,14 +2,16 @@
  * 布局壳：Sider 菜单（路由聚合器 PAGES 按 group 分组生成，hasPerm 过滤无权限项）——
  * 手风琴模式：分组为可展开 submenu，受控 openKeys 保证同一时刻最多一个一级分组展开。
  * + Header（折叠钮 / 系统名 / 当前用户昵称 / 退出登录）+ Content 渲染子路由。
- * 刷新后 zustand store 清空——兜底调 menuPermissions() 从 menus/tree 重派生权限表
- * （Go 后端无用户信息端点；派生仅 UX 显隐层，安全边界在后端 RequirePerm）。
+ * 刷新后 zustand store 清空——昵称经 sessionStorage 用户快照回填（Go 后端无用户信息
+ * 端点），权限表经 menuPermissions() 从 menus/tree 重派生（仅 UX 显隐层，
+ * 安全边界在后端 RequirePerm）。
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { App, Button, Layout as AntLayout, Menu, Space } from 'antd'
 import { LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons'
 import { Outlet, useLocation, useNavigate } from 'react-router'
 import { useAuthStore } from '../stores/authStore.js'
+import { getUserSnapshot } from '../stores/tokenStorage.js'
 import { hasPerm } from '../utils/perm.js'
 import { menuPermissions } from '../api/iam.js'
 import { PAGES } from './routes.jsx'
@@ -39,19 +41,32 @@ export default function Layout() {
   const loginSuccess = useAuthStore((s) => s.loginSuccess)
   const logout = useAuthStore((s) => s.logout)
 
-  // 刷新后重派生权限表（user 为空才拉；失败静默——http 拦截器 401 双路径兜底跳登录）
+  // 会话恢复第一步（user 为空时）：昵称经 sessionStorage 用户快照回填（非敏感展示字段，
+  // 登出与 401 双路径清除）。权限表为空数组占位，随后由下方派生 effect 重拉补齐。
   useEffect(() => {
     if (user) return
+    const snapshot = getUserSnapshot()
+    if (snapshot) loginSuccess(snapshot, null)
+  }, [user, loginSuccess])
+
+  // 会话恢复第二步：权限表重派生（每次挂载重拉，不落存储防陈旧放大）。派生完成时与
+  // 此刻 store 中的 user 合并一次性写入——「先回填昵称再派生」若分两次 state 写入，
+  // user/permissions 引用变化会触发本 effect cleanup 取消在途请求，派生永不落地。
+  // derivedOnce 防零权限用户（或无 system:menu:list 被 403）的空数组新引用重复拉取。
+  const permsDerivedOnce = useRef(false)
+  useEffect(() => {
+    if (permsDerivedOnce.current || permissions.length) return
+    permsDerivedOnce.current = true
     let cancelled = false
     menuPermissions()
       .then((perms) => {
-        if (!cancelled) loginSuccess(null, perms || [])
+        if (!cancelled) loginSuccess(useAuthStore.getState().user, perms || [])
       })
       .catch(() => {})
     return () => {
       cancelled = true
     }
-  }, [user, loginSuccess])
+  }, [permissions, loginSuccess])
 
   // 菜单：PAGES 过滤无权限项后按 group 分组（分组= submenu 标题中文，叶子 key=路由 path）
   const menuItems = useMemo(() => {

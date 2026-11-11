@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 /**
- * 文件管理页组件测试（jsdom）——F-03「系统管理→文件管理」接 sys-iam /file 的五条关键行为：
- * ① 无 system:file:list 权限 → 整页不发起任何请求（分类树端点同挂 FILE_LIST）；
+ * 文件管理页组件测试（jsdom）——「系统管理→文件管理」接 /api/v1/files 的五条关键行为：
+ * ① 无 system:file:list 权限 → 整页不发起任何请求（分类树端点同挂 file list 档）；
  * ② 有权限 → 加载分类树 + 文件列表并渲染行（文件名/中文可读大小/分页总数）；
  * ③ 选中分类节点 → 列表按 categoryId 重查；
- * ④ 上传成功 → FormData 带选中分类 categoryId 与描述 description，且刷新列表；
- * ⑤ 下载点击发起 downloadFile(id)；删除经确认后 deleteFile(id) 并刷新。
+ * ④ 上传成功 → FormData 带选中分类 categoryId（无描述键——Go 上传链路无该参数），且刷新列表；
+ * ⑤ 下载点击发起 downloadFile(id) 且文件名取自行 fileName；删除经确认后 deleteFile(id) 并刷新。
  *
  * iam 模块整体 mock（axios 层与拦截器不在此测）；渲染包一层 antd <App>——
  * App.useApp() 在 <App> 之外拿到的是空对象（antd AppContext 默认 {message:{}}），
@@ -64,10 +64,12 @@ const ALL_PERMS = [
 const FAKE_TREE = [{ id: 5, categoryName: '工艺文档', children: [{ id: 6, categoryName: '图纸' }] }]
 
 // 文件列表 fake：行 categoryName 取「归档区」而非树节点名——树与表格若渲染同名文本，
-// getByText 会命中多个节点导致断言歧义，取相异名称保证断言唯一
+// getByText 会命中多个节点导致断言歧义，取相异名称保证断言唯一。
+// 行数据不含 description：Go 上传链路无该参数（FileInfoResp.description 恒 null），
+// 页面无「描述」列
 const FAKE_FILES = {
-  code: 200,
-  message: '成功',
+  code: 0,
+  message: 'ok',
   total: 2,
   data: [
     {
@@ -77,7 +79,6 @@ const FAKE_FILES = {
       fileSize: 2048,
       categoryId: 5,
       categoryName: '归档区',
-      description: 'SOP',
     },
     {
       id: 102,
@@ -86,7 +87,6 @@ const FAKE_FILES = {
       fileSize: 3145728,
       categoryId: 6,
       categoryName: '归档区',
-      description: null,
     },
   ],
 }
@@ -106,11 +106,10 @@ describe('FilePage', () => {
     fileCategoryTreeMock
       .mockReset()
       .mockResolvedValue({ code: 200, data: FAKE_TREE, message: '成功' })
-    uploadFileMock.mockReset().mockResolvedValue({ code: 200, data: {}, message: '成功' })
-    // 下载响应按 248 实测形态：octet-stream + 正确 body 字节，**无 Content-Disposition**
-    // （经网关 8080 与直连 sys-iam 38081 均无——sys-iam 后端自身丢掉该头，非网关剥离）。
+    uploadFileMock.mockReset().mockResolvedValue({ code: 0, data: {}, message: 'ok' })
+    // 下载响应：octet-stream + 正确 body 字节。Go 后端带 RFC 5987 Content-Disposition，
     // 此处故意投喂一个**与行数据不同名**的头：断言文件名唯一取自行 fileName，
-    // 实现若回头依赖该头即红（2026-10-08 契约订正）。
+    // 实现若回头依赖该头即红。
     downloadFileMock.mockReset().mockResolvedValue({
       data: new Blob(['bytes'], { type: 'application/octet-stream' }),
       headers: { 'content-disposition': 'attachment; filename="后端头名.pdf"' },
@@ -162,14 +161,13 @@ describe('FilePage', () => {
     )
   })
 
-  it('④ 上传成功 → FormData 带选中分类与描述，且刷新列表', async () => {
+  it('④ 上传成功 → FormData 带选中分类（无描述键——Go 上传链路无该参数），且刷新列表', async () => {
     const user = userEvent.setup()
     const { container } = renderPage()
     await waitFor(() => expect(screen.getByText('作业指导书.pdf')).toBeInTheDocument())
 
-    // 先选分类（上传需带 categoryId）+ 填描述
+    // 先选分类（上传需带 categoryId）
     await user.click(screen.getByText('图纸'))
-    await user.type(screen.getByPlaceholderText(/上传描述/), '图纸附件')
     const callsBefore = listFilesMock.mock.calls.length
 
     const input = container.querySelector('input[type="file"]')
@@ -182,7 +180,8 @@ describe('FilePage', () => {
     const fd = uploadFileMock.mock.calls[0][0]
     expect(fd).toBeInstanceOf(FormData)
     expect(fd.get('categoryId')).toBe('6')
-    expect(fd.get('description')).toBe('图纸附件')
+    expect(fd.get('description')).toBeNull()
+    expect(screen.queryByPlaceholderText(/上传描述/)).toBeNull()
     expect(fd.get('file')).toBeInstanceOf(File)
     expect(fd.get('file').name).toBe('新图纸.txt')
 

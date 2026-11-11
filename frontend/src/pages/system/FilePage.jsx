@@ -1,23 +1,22 @@
 /**
- * 文件管理页（域6 第 6 个业务页）——接 sys-iam FileController / FileCategoryController。
+ * 文件管理页——接 Go 后端 /api/v1/files 与 /api/v1/file-categories（router.go 路由面）。
  *
- * 背景：craft-twin 原「设备管理→文档库」（twin:device-doc:*）已整块移除（F-02），
- * 文档管理统一走 sys-iam 既有 /file 接口，页面挂「系统管理」组（F-03）。
+ * 契约（internal/handler/file.go 与 internal/model/dto/file.go 实测）：
+ * - GET /files?category_id=&page=&size= → data={items,total,...}（分页信封，
+ *   api 层归一为 {data, total}；query 参数名 snake_case，页面状态变量仍名 categoryId）
+ *   FileInfo 字段：categoryId/categoryName/fileName/fileType/fileSize(字节)；
+ *   后端上传链路无 description 参数（FileInfoResp.description 恒 null），本页不设描述输入与列
+ * - POST /files/upload multipart（file 必填 + category_id?）→ data=FileInfo
+ *   （api 层把 FormData 的 categoryId 键改名 category_id 后透传——handler PostForm("category_id")）
+ * - GET /files/download/:id → octet-stream 附件（无信封；http 拦截器按 responseType:'blob'
+ *   旁路解包，返回完整 resp——读 resp.data 为 blob 即可；响应带 Content-Disposition
+ *   （RFC 5987），但页面文件名仍取行数据 fileName，不依赖响应头）
+ * - DELETE /files/:id
+ * - 分类：GET tree（自引用 children）/ POST / PUT（实体直传）/ DELETE :id
+ * - 权限标识与后端 RequirePerm 常量逐字对齐（perms.go FILE_*）；
+ *   分类树端点同挂 file list 档，故无 list 权限时整页不发起任何请求
  *
- * 契约（sys-iam 源码实测 2026-10-08；网关 `Path=/api/system/** → lb://sys-iam` + StripPrefix=2，
- * http baseURL='/api' 已含前一段，故此处写 /system/file/...）：
- * - GET /system/file/list?categoryId=&page=&size= → data=FileInfo[] + 顶层 total（分页）
- *   FileInfo 字段：categoryId/categoryName/fileName/filePath/fileType/fileSize(字节)/description
- * - POST /system/file/upload multipart（file 必填 + categoryId?/description?）→ data=FileInfo
- * - GET /system/file/download/{id} → octet-stream 附件（**无 R 信封**；http 拦截器按
- *   responseType:'blob' 旁路 R 解包，返回完整 resp——读 resp.data 为 blob 即可；
- *   **响应无 Content-Disposition 头**（2026-10-08 实测），文件名取行数据 fileName）
- * - DELETE /system/file/delete/{id}
- * - 分类：GET tree（自引用 children）/ POST add / PUT edit（实体直传）/ DELETE delete/{id}
- * - 权限标识与后端 @SaCheckPermission 逐字对齐（SystemPermissions.FILE_*）；
- *   分类树端点同挂 FILE_LIST，故无 list 权限时整页不发起任何请求
- *
- * 判据一致性（F-01 同源教训）：sys-iam 后端不做文件类型/大小白名单，前端**不得**自行加限制
+ * 判据一致性：Go 后端不做文件类型/大小白名单，前端**不得**自行加限制
  * ——前后端判据不一致本身就是缺陷类。此处仅在 beforeUpload 拦空文件。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -137,7 +136,6 @@ export default function FilePage() {
   const [treeLoading, setTreeLoading] = useState(false)
 
   // —— 右侧上传工具条 ——
-  const [description, setDescription] = useState('')
   const [uploading, setUploading] = useState(false)
 
   // —— 分类表单弹窗 ——
@@ -194,10 +192,8 @@ export default function FilePage() {
       const fd = new FormData()
       fd.append('file', file)
       if (categoryId != null) fd.append('categoryId', String(categoryId))
-      if (description) fd.append('description', description)
       await uploadFile(fd)
       message.success('文件上传成功')
-      setDescription('')
       tableRef.current?.refresh()
       onSuccess?.(file)
     } catch (e) {
@@ -212,10 +208,8 @@ export default function FilePage() {
     try {
       const resp = await downloadFile(row.id)
       const blob = resp?.data instanceof Blob ? resp.data : new Blob([resp?.data ?? ''])
-      // 文件名唯一来源 = 行数据 fileName：2026-10-08 实测（248 环境，经网关 8080 与直连
-      // sys-iam 38081 两次验证）下载响应**无 Content-Disposition 头**（FileController 源码
-      // 虽写了该头，真实响应里不出现——文件名含中文，疑为 Tomcat/Spring 对非 ISO-8859-1
-      // 头值的处理所致；响应头只有 Content-Type/Length），故不得依赖它取名。
+      // 文件名取行数据 fileName（Go 下载响应虽带 RFC 5987 Content-Disposition，
+      // 页面不解析响应头取名——口径单一、行为与列表所见一致）
       triggerBlobDownload(blob, row.fileName || 'download')
     } catch {
       // 错误提示已由 http 拦截器统一弹出
@@ -291,7 +285,6 @@ export default function FilePage() {
     { title: '类型', dataIndex: 'fileType', width: 160, render: (v) => v || '-' },
     { title: '大小', dataIndex: 'fileSize', width: 100, render: (v) => formatSize(v) },
     { title: '分类', dataIndex: 'categoryName', width: 160, render: (v) => v || '未分类' },
-    { title: '描述', dataIndex: 'description', ellipsis: true, render: (v) => v || '-' },
     {
       title: '操作',
       key: 'actions',
@@ -377,13 +370,6 @@ export default function FilePage() {
 
       <Col xs={24} md={16} lg={18}>
         <Space style={{ marginBottom: 12 }} wrap>
-          <Input
-            style={{ width: 220 }}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="上传描述（选填，随本次上传提交）"
-            allowClear
-          />
           <Upload showUploadList={false} beforeUpload={beforeUpload} customRequest={customRequest}>
             <PermButton perm={PERM.upload} type="primary" icon={<UploadOutlined />} loading={uploading}>
               上传文件

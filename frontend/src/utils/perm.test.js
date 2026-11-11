@@ -18,7 +18,7 @@ describe('perm', () => {
     clearPermissions()
   })
 
-  it('① 空集（未登录/未拉 userInfo）hasPerm 恒 false', () => {
+  it('① 空集（未登录/权限未派生）hasPerm 恒 false', () => {
     setPermissions(undefined)
     expect(hasPerm('system:user:list')).toBe(false)
     setPermissions(null)

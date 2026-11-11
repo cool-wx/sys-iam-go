@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 /**
- * 用户管理页组件测试（jsdom）——261014-kg7「系统内置」+ 角色多选：
+ * 用户管理页组件测试（jsdom）——「系统内置」+ 角色多选 + 角色装配子资源：
  * ① 列表渲染「系统内置」列；内置行删除按钮禁用（后端硬拦截的体验层前置）；
- * ② 新增用户 → 表单含角色多选与系统内置开关；提交后 addUser 收到 roleIds 数字数组 + builtin=true；
+ * ② 新增用户 → 表单含角色多选与系统内置开关；提交后 addUser 收到 roleIds 数字数组 + builtin=true
+ *   （附加键直传，后端白名单忽略），且补调 assignUserRoles(新 id, 所选 roleIds)
+ *   与 editUser({id, builtin:true})（Go 契约：创建请求体无生效的 roleIds/builtin 键）；
  * ③ 编辑用户 → 角色与内置标志回显；提交后 editUser 收到 roleIds + builtin。
  *
  * iam 模块整体 mock（axios 层与拦截器不在此测）；渲染包一层 antd <App>——
@@ -20,6 +22,7 @@ const {
   listRolesMock,
   addUserMock,
   editUserMock,
+  assignUserRolesMock,
   deleteUserMock,
   toggleStatusMock,
   resetPwdMock,
@@ -29,6 +32,7 @@ const {
   listRolesMock: vi.fn(),
   addUserMock: vi.fn(),
   editUserMock: vi.fn(),
+  assignUserRolesMock: vi.fn(),
   deleteUserMock: vi.fn(),
   toggleStatusMock: vi.fn(),
   resetPwdMock: vi.fn(),
@@ -40,6 +44,7 @@ vi.mock('../../api/iam.js', () => ({
   listRoles: listRolesMock,
   addUser: addUserMock,
   editUser: editUserMock,
+  assignUserRoles: assignUserRolesMock,
   deleteUser: deleteUserMock,
   toggleStatus: toggleStatusMock,
   resetPwd: resetPwdMock,
@@ -120,13 +125,14 @@ describe('UserPage', () => {
       'system:user:resetPwd',
     ])
     listUsersMock.mockReset().mockResolvedValue(FAKE_USERS)
-    deptTreeMock.mockReset().mockResolvedValue({ code: 200, data: FAKE_DEPT_TREE, message: '成功' })
-    listRolesMock.mockReset().mockResolvedValue({ code: 200, data: [ROLE_BASIC], total: 1, message: '成功' })
-    addUserMock.mockReset().mockResolvedValue({ code: 200, data: 99, message: '成功' })
-    editUserMock.mockReset().mockResolvedValue({ code: 200, data: null, message: '成功' })
-    deleteUserMock.mockReset().mockResolvedValue({ code: 200, data: null, message: '成功' })
-    toggleStatusMock.mockReset().mockResolvedValue({ code: 200, data: null, message: '成功' })
-    resetPwdMock.mockReset().mockResolvedValue({ code: 200, data: null, message: '成功' })
+    deptTreeMock.mockReset().mockResolvedValue({ code: 0, data: FAKE_DEPT_TREE, message: 'ok' })
+    listRolesMock.mockReset().mockResolvedValue({ code: 0, data: [ROLE_BASIC], total: 1, message: 'ok' })
+    addUserMock.mockReset().mockResolvedValue({ code: 0, data: 99, message: 'ok' })
+    editUserMock.mockReset().mockResolvedValue({ code: 0, data: null, message: 'ok' })
+    assignUserRolesMock.mockReset().mockResolvedValue({ code: 0, data: null, message: 'ok' })
+    deleteUserMock.mockReset().mockResolvedValue({ code: 0, data: null, message: 'ok' })
+    toggleStatusMock.mockReset().mockResolvedValue({ code: 0, data: null, message: 'ok' })
+    resetPwdMock.mockReset().mockResolvedValue({ code: 0, data: null, message: 'ok' })
   })
 
   it('① 列表渲染系统内置列；内置行删除按钮禁用、普通行可删', async () => {
@@ -142,7 +148,7 @@ describe('UserPage', () => {
     expect(deleteButtons[1]).toBeDisabled() // super（内置）
   })
 
-  it('② 新增用户 → 选角色 + 打开内置开关 → addUser 收到 roleIds 与 builtin', async () => {
+  it('② 新增用户 → 选角色 + 打开内置开关 → addUser 直传 roleIds/builtin，并补调角色装配与内置落实', async () => {
     const user = userEvent.setup()
     renderPage()
     await waitFor(() => expect(screen.getByText('bob')).toBeInTheDocument())
@@ -168,6 +174,13 @@ describe('UserPage', () => {
     expect(addUserMock).toHaveBeenCalledWith(
       expect.objectContaining({ username: 'carol', roleIds: [2], builtin: true }),
     )
+    // Go 契约补充装配：创建请求体的 roleIds/builtin 键被白名单忽略——
+    // 角色经子资源 PUT /users/:id/roles（新 id=99 + 所选 roleIds）；
+    // 内置标志经 PUT /users/:id {builtin:true} 落实
+    await waitFor(() => expect(assignUserRolesMock).toHaveBeenCalledTimes(1))
+    expect(assignUserRolesMock).toHaveBeenCalledWith(99, [2])
+    await waitFor(() => expect(editUserMock).toHaveBeenCalledTimes(1))
+    expect(editUserMock).toHaveBeenCalledWith({ id: 99, builtin: true })
   })
 
   it('③ 编辑内置用户 → 角色与内置标志回显 → editUser 收到 roleIds 与 builtin', async () => {

@@ -1,12 +1,14 @@
 /**
- * 用户管理页（域6 第一个业务 CRUD 页）。
+ * 用户管理页。
  *
- * 契约（UserController 源码实测）：
- * - GET /system/user/list?page=&size= → data=UserVo[] + 顶层 total
- * - UserVo 字段：username/realName/deptName/status(枚举 name: ENABLED|DISABLED)/roles
- * - 写端点：POST add {username,password,realName?,phone?,email?} / PUT edit {id,...} /
- *   PUT status {id,status} / PUT resetPwd/{id} / DELETE delete/{id}
- * - 权限标识与后端 SystemPermissions 常量逐字对齐（system:user:list/query/add/edit/remove/resetPwd）
+ * 契约（Go 后端 /api/v1/users，internal/handler/user.go + internal/model/dto/user.go 实测）：
+ * - GET /users?page=&size= → data={items,total,...}（分页信封，api 层归一 {data, total}）
+ * - UserResp 字段：username/realName/deptName/status(枚举 name: ENABLED|DISABLED)/roles/builtin
+ * - 写端点：POST /users {username!,password!,realName!,...} / PUT /users/:id {realName?,...,
+ *   builtin?} / PUT /users/:id/status {status} / PUT /users/:id/reset-password / DELETE /users/:id
+ * - 角色装配走子资源 PUT /users/:id/roles {roleIds}（创建/编辑请求体无生效的 roleIds 键——
+ *   主请求成功后按需补调，见 submitModal）；builtin 编辑直传生效、创建补调落实
+ * - 权限标识与后端 RequirePerm 常量逐字对齐（perms.go USER_*：list/query/add/edit/remove/resetPwd）
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { App, Button, Form, Input, Modal, Popconfirm, Select, Space, Switch, Tag } from 'antd'
@@ -15,6 +17,7 @@ import CrudTable from '../../components/CrudTable.jsx'
 import PermButton from '../../components/PermButton.jsx'
 import {
   addUser,
+  assignUserRoles,
   deptTree,
   deleteUser,
   editUser,
@@ -97,15 +100,51 @@ export default function UserPage() {
     }, 0)
   }
 
+  /** 行数据 roles → 排序后的 roleId 数字数组（id 出网为带引号字符串，统一转数字比较） */
+  const roleIdsOf = (row) =>
+    (row?.roles || []).map((r) => Number(r.roleId)).sort((a, b) => a - b)
+
   const submitModal = async () => {
     const values = await form.validateFields()
     setSubmitting(true)
     try {
       if (editing) {
         await editUser({ id: editing.id, ...values })
+        // 角色装配子资源：roleIds 相对行数据变化时补调（主请求体 roleIds 键被后端
+        // 白名单忽略，PUT /users/:id/roles 才是生效通道）；失败弹错不阻断（主编辑已成功）
+        const prevIds = roleIdsOf(editing)
+        const nextIds = (values.roleIds || []).map(Number).sort((a, b) => a - b)
+        const changed =
+          prevIds.length !== nextIds.length ||
+          prevIds.some((id, i) => id !== nextIds[i])
+        if (changed) {
+          try {
+            await assignUserRoles(editing.id, values.roleIds || [])
+          } catch {
+            message.error('用户已保存，但角色分配失败，请在编辑中重试')
+          }
+        }
         message.success('修改用户成功')
       } else {
-        await addUser(values)
+        const r = await addUser(values)
+        const newId = r?.data
+        // 创建补充装配（Go UserCreateReq 无生效的 roleIds/builtin 键，未知键静默忽略——
+        // 选了角色补调角色子资源；内置标志经 PUT /users/:id {builtin} 落实）。
+        // 两路补充失败各自弹错不阻断（用户已创建成功）
+        if (Array.isArray(values.roleIds) && values.roleIds.length) {
+          try {
+            await assignUserRoles(newId, values.roleIds)
+          } catch {
+            message.error('用户已创建，但角色分配失败，请在编辑中重试')
+          }
+        }
+        if (values.builtin) {
+          try {
+            await editUser({ id: newId, builtin: true })
+          } catch {
+            message.error('用户已创建，但内置标志设置失败，请在编辑中重试')
+          }
+        }
         message.success('新增用户成功')
       }
       setModalOpen(false)
