@@ -1,6 +1,5 @@
-// sys_dict_type/sys_dict_data 数据访问（照 repository/menu.go + user.go List 模板；
-// List 分页闭包无 dataScope——本阶段零 dataScope 应用，闭包内不得出现
-// filter.Apply）。
+// sys_dict_type/sys_dict_data 数据访问（List 分页闭包无 dataScope——
+// 闭包内不得出现 filter.Apply）。
 package repository
 
 import (
@@ -66,16 +65,15 @@ func (r *DictTypeRepo) Patch(ctx context.Context, id int64, cols map[string]any)
 	return nil
 }
 
-// Delete 物理删除（硬删除语义）。不校验存在性：删除不存在的 id 静默成功
-// （源 deleteDictType 语义）。与源一致**不加字典数据引用检查**——删除类型后
-// 其下 dict_data 成为孤儿（源缺口按源保留）。
+// Delete 物理删除（硬删除语义）。不校验存在性：删除不存在的 id 静默成功。
+// 不校验字典数据引用——删除类型后其下 dict_data 成为孤儿行，属有意行为。
 func (r *DictTypeRepo) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&po.DictTypePO{}).Error
 }
 
-// List 分页查询（Count 与查询同一闭包防 total 漂移——user.go List 先例）；
+// List 分页查询（Count 与查询同一闭包防 total 漂移）；
 // 无 dataScope（闭包内无 filter.Apply）；ORDER BY create_time DESC, id DESC
-// （源 PageHelper orderByDesc(createTime) + id tiebreaker 稳定序）。
+// （id tiebreaker 稳定序）。
 func (r *DictTypeRepo) List(ctx context.Context, page, size int) ([]po.DictTypePO, int64, error) {
 	q := func() *gorm.DB {
 		return r.db.WithContext(ctx).Model(&po.DictTypePO{})
@@ -155,14 +153,13 @@ func (r *DictDataRepo) Patch(ctx context.Context, id int64, cols map[string]any)
 	return nil
 }
 
-// Delete 物理删除（硬删除语义）。不校验存在性：删除不存在的 id 静默成功
-// （源 deleteDictData 语义）。
+// Delete 物理删除（硬删除语义）。不校验存在性：删除不存在的 id 静默成功。
 func (r *DictDataRepo) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&po.DictDataPO{}).Error
 }
 
 // List 分页查询；dictTypeID 非零时 Where dict_type_id = ?（可选过滤分支，
-// 源 list?dictTypeId= 语义——不传返回全量分页）。
+// 不传返回全量分页）。
 func (r *DictDataRepo) List(ctx context.Context, page, size int, dictTypeID int64) ([]po.DictDataPO, int64, error) {
 	q := func() *gorm.DB {
 		query := r.db.WithContext(ctx).Model(&po.DictDataPO{})

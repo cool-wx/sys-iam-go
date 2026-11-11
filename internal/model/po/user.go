@@ -37,7 +37,7 @@ func (UserPO) TableName() string {
 }
 
 // BeforeCreate 生成雪花 ID（若未预置）+ 填充双时间 + 从 ctx identity 填充四操作人列。
-// 无 identity 上下文时操作人列保持 NULL（等价源 AutoFillHandler "系统行为无操作人"）。
+// 无 identity 上下文时操作人列保持 NULL（系统行为无操作人）。
 func (u *UserPO) BeforeCreate(tx *gorm.DB) error {
 	if u.ID == 0 {
 		u.ID = int64(ids.NewID())

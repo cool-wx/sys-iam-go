@@ -1,4 +1,4 @@
-// sys_config 数据访问（照 repository/dict.go 模板；FindByKey 供 key 读取）。
+// sys_config 数据访问（FindByKey 供 key 读取）。
 package repository
 
 import (
@@ -59,14 +59,13 @@ func (r *SysConfigRepo) Patch(ctx context.Context, id int64, cols map[string]any
 	return nil
 }
 
-// Delete 物理删除（硬删除语义）。不校验存在性：删除不存在的 id 静默成功
-// （源 deleteConfig 语义）。
+// Delete 物理删除（硬删除语义）。不校验存在性：删除不存在的 id 静默成功。
 func (r *SysConfigRepo) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&po.SysConfigPO{}).Error
 }
 
 // List 分页查询（Count 与查询同一闭包防 total 漂移）；无条件过滤（无 dataScope
-// ——本阶段零应用）；ORDER BY create_time DESC, id DESC（源列序惯例）。
+// ——本域未接入行级数据权限过滤）；ORDER BY create_time DESC, id DESC。
 func (r *SysConfigRepo) List(ctx context.Context, page, size int) ([]po.SysConfigPO, int64, error) {
 	q := func() *gorm.DB {
 		return r.db.WithContext(ctx).Model(&po.SysConfigPO{})
@@ -103,8 +102,7 @@ func (r *SysConfigRepo) FindByID(ctx context.Context, id int64) (*po.SysConfigPO
 }
 
 // FindByKey 按 config_key 精确查询（uk_config_key 保证至多一行）；未命中返回
-// ErrNotFound（10300）——getByKey 语义（源返回 configValue 字符串，
-// 不存在由 service 层翻译「配置不存在: {key}」）。
+// ErrNotFound（10300），「配置不存在: {key}」文案由 service 层翻译。
 func (r *SysConfigRepo) FindByKey(ctx context.Context, key string) (*po.SysConfigPO, error) {
 	var m po.SysConfigPO
 	err := r.db.WithContext(ctx).Where("config_key = ?", key).First(&m).Error

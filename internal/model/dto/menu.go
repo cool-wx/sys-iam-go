@@ -22,8 +22,8 @@ type MenuCreateReq struct {
 }
 
 // MenuUpdateReq 更新菜单请求：全指针字段，nil=未提供（不写库），空串=显式清空。
-// parentId 显式传入时联动父校验 + parentName 重冗余（源 editMenu resolveParentName
-// 语义）；不显式传则不动父。白名单收敛于本结构键集；status 经 UsageStatus
+// parentId 显式传入时联动父校验 + parentName 重冗余（服务端查库装配）；
+// 不显式传则不动父。白名单收敛于本结构键集；status 经 UsageStatus
 // 严格解析——非空未知值 400/10401（收紧：此前的「未知兜底 ENABLED 落库」会把
 // 拼错的停用值静默反转回启用），null/缺失落 nil 指针由更新分支承接（不写库）。
 type MenuUpdateReq struct {
@@ -41,7 +41,7 @@ type MenuUpdateReq struct {
 }
 
 // MenuResp 菜单响应契约。
-// 全部键无 omitempty——未赋值字段以 null 键输出而非键缺失（源 JacksonConfig 契约）；
+// 全部键无 omitempty——未赋值字段以 null 键输出而非键缺失；
 // type 经 types.MenuType name|int 双形态序列化；无凭据类字段。
 type MenuResp struct {
 	ID           ids.ID               `json:"id"`

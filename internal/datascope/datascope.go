@@ -4,7 +4,7 @@
 // internal 定位（依赖 po 内部类型）；table 参数化设计使各业务域可直接复用
 // （无 user 域特化耦合——调用方传自己的表名常量）。
 //
-// 档位值域（沿源 sys_role.data_scope）——**数字越大越宽**：
+// 档位值域（对齐 sys_role.data_scope 列）——**数字越大越宽**：
 //
 //	1 本人（create_by_id = uid）→ 2 本部门（dept_id = user.deptId）→
 //	3 本部门及以下（dept_id IN 子树 ID 集）→ 4 指定部门（dept_id IN
@@ -12,8 +12,7 @@
 //
 // 多角色档位聚合取 max(data_scope)（取宽）；无有效角色 → ModeSelf 最窄档
 // fail-closed（绝不默认全量）。注意：「取 min 数值
-// 即最宽档（数字越小权限越宽）」为 pattern-mapper 笔误，与本包值域定义直接矛盾，
-// 已经裁决记录否决——以本包值域定义为准。
+// 即最宽档（数字越小权限越宽）」是错误解读，与本包值域定义直接矛盾，勿采用。
 //
 // 安全纪律：过滤列名硬编码（table 参数为代码常量调用，仅
 // create_by_id/dept_id 两列白名单），全部值占位符参数化，无任何字符串拼接 SQL 面；
@@ -26,7 +25,7 @@ import (
 	"github.com/cool-wx/sys-iam-go/internal/model/po"
 )
 
-// Mode 数据权限档位（源 sys_role.data_scope 值域 1..5；数字越大越宽）。
+// Mode 数据权限档位（值域 1..5；数字越大越宽）。
 type Mode int8
 
 const (
@@ -124,7 +123,7 @@ func CollectSubtreeIDs(depts []po.DeptPO, rootID int64) []int64 {
 	for i := range depts {
 		d := &depts[i]
 		if d.ParentID == nil || *d.ParentID == 0 {
-			continue // 根节点不是任何节点的子节点（0 亦按根处理，源语义）
+			continue // 根节点不是任何节点的子节点（0 亦按根处理）
 		}
 		childrenOf[*d.ParentID] = append(childrenOf[*d.ParentID], d.ID)
 	}

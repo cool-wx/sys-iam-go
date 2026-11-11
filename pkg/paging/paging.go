@@ -1,5 +1,5 @@
 // Package paging 定义全库统一的分页横切件：参数钳位与分页 envelope 数据结构
-// （等价源 PageHelper 缺省 1/15、<1 钳位语义；分页形状为后续所有列表域模板：
+// （缺省 1/15、<1 钳位；分页形状为后续所有列表域模板：
 // data 内 {items,total,page,size}，顶层无 total）。
 package paging
 
@@ -8,7 +8,7 @@ import (
 	"strconv"
 )
 
-// 钳位常量：缺省页码 1 / 页大小 15（源 PageHelper 缺省值）；页大小上限 100
+// 钳位常量：缺省页码 1 / 页大小 15；页大小上限 100
 // （DoS 防护，配合连接池 MaxOpenConns 兜底）；页码上限 maxPage——极端大
 // 页码使 (page-1)*size 有符号溢出为负，GORM 对非正 Offset 静默省略 OFFSET 子句，
 // 会静默返回第 1 页数据，故钳位到固定上限（其上自然空页）。
@@ -26,7 +26,7 @@ func Parse(page, size string) (pageOut, sizeOut int) {
 }
 
 // ParseWithDefaults 特例分页钳位：钳位逻辑与 Parse 完全一致，仅缺省值参数化——
-// 供源 DTO 字段默认值 ≠ 1/15 全局值的域使用（唯一调用方 Olog：源 LogQuery 默认
+// 供分页缺省值 ≠ 1/15 全局值的域使用（唯一调用方 Olog：默认
 // 1/10 特例）。既有 Parse 全局 1/15 行为零变化（不得改缺省）。
 func ParseWithDefaults(page, size string, defPage, defSize int) (pageOut, sizeOut int) {
 	pageOut = clamp(page, defPage)
@@ -40,7 +40,7 @@ func ParseWithDefaults(page, size string, defPage, defSize int) (pageOut, sizeOu
 	return pageOut, sizeOut
 }
 
-// clamp 解析非负整数参数：空串/非法/小于 1 → 默认值（源 PageHelper 自动纠偏语义）。
+// clamp 解析非负整数参数：空串/非法/小于 1 → 默认值（自动纠偏）。
 func clamp(s string, dft int) int {
 	if s == "" {
 		return dft

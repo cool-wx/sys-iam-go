@@ -166,7 +166,7 @@ func (r *RelationRepo) FindRolePerms(ctx context.Context) ([]RolePermRule, error
 	return out, nil
 }
 
-// FindMenuIDsByRoleID 返回角色已分配的 menuId 列表（源 getRoleMenuIds 等价）；
+// FindMenuIDsByRoleID 返回角色已分配的 menuId 列表；
 // 未分配返回空切片（恒非 nil）。id 升序输出保证稳定。
 func (r *RelationRepo) FindMenuIDsByRoleID(ctx context.Context, roleID int64) (menuIDs []int64, err error) {
 	err = r.db.WithContext(ctx).Model(&po.RoleMenuPO{}).
@@ -189,13 +189,13 @@ func (r *RelationRepo) DeleteRoleMenus(ctx context.Context, roleID int64) (err e
 }
 
 // DeleteUserRolesByRoleID 删除角色在 sys_user_role 的全部关联
-// （role 删除四连删的第一步，源 RoleApplicationService.removeById 顺序）。
+// （role 删除四连删的第一步）。
 func (r *RelationRepo) DeleteUserRolesByRoleID(ctx context.Context, roleID int64) (err error) {
 	return r.db.WithContext(ctx).Where("role_id = ?", roleID).Delete(&po.UserRolePO{}).Error
 }
 
 // BatchCreateRoleMenus 批量插入角色-菜单关联（assignMenus 全删重建的后半步）；
-// 行内 role_name/menu_name 冗余列由 service 层装配（源 RoleMenu.create 语义）。
+// 行内 role_name/menu_name 冗余列由 service 层装配。
 func (r *RelationRepo) BatchCreateRoleMenus(ctx context.Context, rows []po.RoleMenuPO) (err error) {
 	if len(rows) == 0 {
 		return nil
@@ -204,15 +204,16 @@ func (r *RelationRepo) BatchCreateRoleMenus(ctx context.Context, rows []po.RoleM
 }
 
 // DeleteUserRolesByUserID 删除用户的全部角色关联（AssignRoles 全删重建的前半步 /
-// user 删除事务的第一步——源 removeById 先删关联再删用户顺序）；userID 经参数化
+// user 删除事务的第一步——先删关联再删用户）；userID 经参数化
 // 占位符传入。可接事务 tx（NewRelationRepo(tx)）。
 func (r *RelationRepo) DeleteUserRolesByUserID(ctx context.Context, userID int64) (err error) {
 	return r.db.WithContext(ctx).Where("user_id = ?", userID).Delete(&po.UserRolePO{}).Error
 }
 
 // BatchCreateUserRoles 批量插入用户-角色关联（AssignRoles 全删重建的后半步）；
-// 行内 username/role_name 冗余列由 service 层装配（源 UserRole 冗余写语义——
-// username 列实存 realName 优先回退 username 的值，命名与内容不符原样移植）。
+// 行内 username/role_name 冗余列由 service 层装配——
+// username 列实存 realName 优先回退 username 的值，命名与内容不符，
+// 系既有库列约定，勿修正。
 func (r *RelationRepo) BatchCreateUserRoles(ctx context.Context, rows []po.UserRolePO) (err error) {
 	if len(rows) == 0 {
 		return nil

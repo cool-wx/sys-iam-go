@@ -12,8 +12,8 @@ import (
 // FaultInfoPO sys_fault_info 表映射（17 列，列名对齐真实 DDL，snake_case）。
 // bit_index/type 的 DB DEFAULT -1/3 仅为 DDL 兜底——GORM nil 指针显式写 NULL 会
 // 绕过列默认，服务端默认值由 service 层承担。dict_data_id 不进 Excel
-// 导入（源 @ExcelProperty 无此列），仅 CRUD 路径可写。三键
-// name+bit_index+location 无唯一索引——判重由应用层查询承担（照源 eq 语义）。
+// 导入，仅 CRUD 路径可写。三键
+// name+bit_index+location 无唯一索引——判重由应用层查询承担（eq 直传语义）。
 type FaultInfoPO struct {
 	BaseWithOperator
 

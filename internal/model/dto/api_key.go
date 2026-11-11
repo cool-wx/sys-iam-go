@@ -6,10 +6,10 @@ import (
 	"github.com/cool-wx/sys-iam-go/pkg/types"
 )
 
-// ApiKeyCreateReq 创建 API Key 请求（源 addApiKey 语义）：
+// ApiKeyCreateReq 创建 API Key 请求：
 // userId 可选（nil=不关联用户，username 冗余为空）；expireTime 可选（nil=永不过期）。
 // 不含 apiKey/status 键——key 由服务端生成（32 hex，一次性随响应返回）、status
-// 恒默认 ENABLED（源 ApiKey.create 语义）。不得定义任何审计字段键。
+// 恒默认 ENABLED。不得定义任何审计字段键。
 type ApiKeyCreateReq struct {
 	UserID     *ids.ID              `json:"userId"`
 	ExpireTime *types.LocalDateTime `json:"expireTime"`
@@ -17,15 +17,15 @@ type ApiKeyCreateReq struct {
 }
 
 // ApiKeyUpdateStatusReq 更新 API Key 状态请求：仅 status 单列
-// 语义（源 editApiKey 仅更新 status——停用立即生效：FindByKey 登录过滤恒带
+// 语义——停用立即生效（FindByKey 登录过滤恒带
 // status=ENABLED）。required 拦截缺失键。
 type ApiKeyUpdateStatusReq struct {
 	Status *types.UsageStatus `json:"status" binding:"required"`
 }
 
-// ApiKeyResp API Key 响应契约（13 列照 UserResp/RoleResp 形态，全部键无 omitempty
-// ——源 JacksonConfig 契约）。**ApiKey 明文出网**：仅 create 响应一次性返回与
-// 管理面 list/get 可见（源语义；明文存储本身为源 schema 语义，威胁评审接受）。
+// ApiKeyResp API Key 响应契约（13 列，全部键无 omitempty
+// ——未赋值字段以 null 键输出）。**ApiKey 明文出网**：仅 create 响应一次性返回与
+// 管理面 list/get 可见（明文存储本身为既有 schema 约定，威胁评审接受）。
 // 任何写路径不得重新生成或覆写既有 key（本 DTO 无写入路径，key 仅在
 // service Create 生成）。
 type ApiKeyResp struct {

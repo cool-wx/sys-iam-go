@@ -13,7 +13,7 @@ import (
 )
 
 // ID 雪花 ID 契约类型：MarshalJSON 输出带引号十进制字符串；UnmarshalJSON
-// 接受带引号字符串与裸数字双形态（源 Jackson Long 双兼容语义），"null"→0。
+// 接受带引号字符串与裸数字双形态（前后端数字精度兼容），"null"→0。
 type ID int64
 
 // MarshalJSON 序列化为带引号的十进制字符串。

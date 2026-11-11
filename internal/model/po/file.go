@@ -1,7 +1,7 @@
 // file.go File 域两个 PO：FileInfoPO（sys_file）与 FileCategoryPO（sys_file_category）。
-// 表名实证为 sys_file 非 sys_file_info（04-RESEARCH 重点 1 DDL 直读）——FileInfo
-// 是源 Java 实体类名，Go 版按真实表名命名映射。列集与本机 SHOW CREATE TABLE
-// 逐列对齐（scripts/ddl/sys_file.sql / sys_file_category.sql 同源）。
+// 表名实证为 sys_file 非 sys_file_info（DDL 直读）——Go 版按真实表名命名映射。
+// 列集与本机 SHOW CREATE TABLE 逐列对齐（scripts/ddl/sys_file.sql /
+// sys_file_category.sql）。
 package po
 
 import (
@@ -37,7 +37,7 @@ func (FileInfoPO) TableName() string {
 }
 
 // BeforeCreate 生成雪花 ID（若未预置）+ 填充双时间 + 从 ctx identity 填充四操作人列。
-// 无 identity 上下文时操作人列保持 NULL（等价源 AutoFillHandler "系统行为无操作人"）。
+// 无 identity 上下文时操作人列保持 NULL（系统行为无操作人）。
 func (f *FileInfoPO) BeforeCreate(tx *gorm.DB) error {
 	if f.ID == 0 {
 		f.ID = int64(ids.NewID())
@@ -55,7 +55,7 @@ func (f *FileInfoPO) BeforeCreate(tx *gorm.DB) error {
 }
 
 // FileCategoryPO sys_file_category 表映射（15 列）。树列 parent_id（NULL=根；
-// 0 亦按根处理，源 buildTree 语义）+ parent_name 冗余列（add/edit 服务端查库写）。
+// 0 亦按根处理）+ parent_name 冗余列（add/edit 服务端查库写）。
 type FileCategoryPO struct {
 	BaseWithOperator
 

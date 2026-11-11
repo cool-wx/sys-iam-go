@@ -1,5 +1,5 @@
-// sys_file 数据访问（照 repository/menu.go 模板；List 为分页闭包——源 /file list
-// 是分页 1/15 + categoryId 可选过滤 + create_time 倒序；无 dataScope）。
+// sys_file 数据访问（List 为分页闭包——分页 1/15 + categoryId 可选过滤 +
+// create_time 倒序；无 dataScope）。
 package repository
 
 import (
@@ -59,8 +59,8 @@ func (r *FileInfoRepo) Patch(ctx context.Context, id int64, cols map[string]any)
 	return nil
 }
 
-// Delete 物理删除（硬删除语义）。不校验存在性：删除不存在的 id 静默成功
-// （源 removeById 语义）；存储侧对象删除由 service 层先行处理（宽容语义）。
+// Delete 物理删除（硬删除语义）。不校验存在性：删除不存在的 id 静默成功；
+// 存储侧对象删除由 service 层先行处理（宽容语义）。
 func (r *FileInfoRepo) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&po.FileInfoPO{}).Error
 }
@@ -78,8 +78,7 @@ func (r *FileInfoRepo) FindByID(ctx context.Context, id int64) (*po.FileInfoPO, 
 	return &f, nil
 }
 
-// FindByCategoryAndHash 上传判重查询（源 FileInfoRepositoryImpl:29-37
-// 蓝本逐字语义）：categoryId 非 nil → WHERE category_id = ?，nil → WHERE
+// FindByCategoryAndHash 上传判重查询：categoryId 非 nil → WHERE category_id = ?，nil → WHERE
 // category_id IS NULL——双分支缺一不可：唯一索引对 NULL 视为互不相等，未分类
 // 上传的判重全靠 IS NULL 分支（否则未分类可无限重复上传同内容）。恒带
 // AND file_hash = ? + LIMIT 1。未命中返回 (nil, nil)——"无重复"非错误。
@@ -101,9 +100,9 @@ func (r *FileInfoRepo) FindByCategoryAndHash(ctx context.Context, categoryID *in
 	return &f, nil
 }
 
-// List 分页列表（源 /file list 语义直译）：page/size 已由 handler 层 paging.Parse
-// 钳位；categoryID 非 nil 时可选过滤；ORDER BY create_time DESC, id DESC（源排序，
-// id ASC tiebreaker 保证同秒稳定序）。无 dataScope（本阶段零应用）。
+// List 分页列表：page/size 已由 handler 层 paging.Parse
+// 钳位；categoryID 非 nil 时可选过滤；ORDER BY create_time DESC, id DESC
+// （id ASC tiebreaker 保证同秒稳定序）。无 dataScope（本域未接入行级数据权限过滤）。
 func (r *FileInfoRepo) List(ctx context.Context, page, size int, categoryID *int64) ([]po.FileInfoPO, int64, error) {
 	q := func() *gorm.DB {
 		query := r.db.WithContext(ctx).Model(&po.FileInfoPO{})

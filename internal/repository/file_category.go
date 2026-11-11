@@ -1,5 +1,4 @@
-// sys_file_category 数据访问（与 repository/dept.go 同构；List 无分页全量——树
-// 与源 /fileCategory list 语义）。
+// sys_file_category 数据访问；List 无分页全量——树查询需要完整数据集。
 package repository
 
 import (
@@ -57,16 +56,15 @@ func (r *FileCategoryRepo) Patch(ctx context.Context, id int64, cols map[string]
 	return nil
 }
 
-// Delete 物理删除（硬删除语义）。与源一致**不加子分类/文件引用检查**
-// （源缺口按源保留：FileCategoryApplicationService.removeById 直接删——删除带
-// 子节点的分类仍成功，孤儿子分类经 tree.Build 孤儿提升语义在树查询中可见）。
-// 不校验存在性：删除不存在的 id 静默成功（源 removeById 语义）。
+// Delete 物理删除（硬删除语义）。不校验子分类/文件引用，直接删除——删除带
+// 子节点的分类仍成功，孤儿子分类经 tree.Build 孤儿提升语义在树查询中可见。
+// 不校验存在性：删除不存在的 id 静默成功。
 func (r *FileCategoryRepo) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&po.FileCategoryPO{}).Error
 }
 
-// List 全量查询，ORDER BY sort ASC, id ASC（源 FileCategoryRepositoryImpl list
-// orderByAsc(sort)；id ASC tiebreaker 保证稳定序）。无分页：树查询与源 list 语义。
+// List 全量查询，ORDER BY sort ASC, id ASC（id ASC tiebreaker 保证稳定序）。
+// 无分页：树查询需要完整数据集。
 func (r *FileCategoryRepo) List(ctx context.Context) ([]po.FileCategoryPO, error) {
 	var cats []po.FileCategoryPO
 	err := r.db.WithContext(ctx).Model(&po.FileCategoryPO{}).

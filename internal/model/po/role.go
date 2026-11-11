@@ -17,7 +17,7 @@ type RolePO struct {
 	ID       int64  `gorm:"column:id;primaryKey"`
 	RoleName string `gorm:"column:role_name"`
 	RoleCode string `gorm:"column:role_code"`
-	// DataScope 数据权限档位（源 create 默认 1；存量 super_admin 行为 NULL——指针列
+	// DataScope 数据权限档位（新建默认 1；存量 super_admin 行为 NULL——指针列
 	// 精确保留 NULL 与非 NULL 差异）。
 	DataScope *int8 `gorm:"column:data_scope"`
 	Status    *int8 `gorm:"column:status"`
@@ -30,7 +30,7 @@ func (RolePO) TableName() string {
 }
 
 // BeforeCreate 生成雪花 ID（若未预置）+ 填充双时间 + 从 ctx identity 填充四操作人列。
-// 无 identity 上下文时操作人列保持 NULL（等价源 AutoFillHandler "系统行为无操作人"）。
+// 无 identity 上下文时操作人列保持 NULL（系统行为无操作人）。
 func (r *RolePO) BeforeCreate(tx *gorm.DB) error {
 	if r.ID == 0 {
 		r.ID = int64(ids.NewID())

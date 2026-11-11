@@ -1,4 +1,4 @@
-// sys_dept 数据访问（与 repository/menu.go 同构；List 无分页全量——树与源 list 语义）。
+// sys_dept 数据访问；List 无分页全量——树查询需要完整数据集。
 package repository
 
 import (
@@ -59,14 +59,14 @@ func (r *DeptRepo) Patch(ctx context.Context, id int64, cols map[string]any) err
 	return nil
 }
 
-// Delete 物理删除（硬删除语义）。与源一致**不加子部门/用户引用检查**
-// （源缺口按源保留：DeptApplicationService.removeById 直接删）。不校验存在性。
+// Delete 物理删除（硬删除语义）。不校验子部门/用户引用，直接删除。
+// 不校验存在性。
 func (r *DeptRepo) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&po.DeptPO{}).Error
 }
 
-// List 全量查询，ORDER BY sort ASC, id ASC（源 DeptRepositoryImpl list
-// orderByAsc(sort)；id ASC tiebreaker 保证稳定序）。无分页：树查询与源 list 语义。
+// List 全量查询，ORDER BY sort ASC, id ASC（id ASC tiebreaker 保证稳定序）。
+// 无分页：树查询需要完整数据集。
 func (r *DeptRepo) List(ctx context.Context) ([]po.DeptPO, error) {
 	var depts []po.DeptPO
 	err := r.db.WithContext(ctx).Model(&po.DeptPO{}).

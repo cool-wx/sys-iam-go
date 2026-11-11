@@ -7,7 +7,7 @@ import (
 )
 
 // RoleCreateReq 创建角色请求。roleName/roleCode 必填由 binding 校验拦截；
-// dataScope/remark 可选（nil → 服务端默认 dataScope=1，源 Role.create 语义；
+// dataScope/remark 可选（nil → 服务端默认 dataScope=1；
 // status 恒默认 ENABLED，创建请求不含 status 键）。不得定义任何审计字段键。
 // builtin 键保留仅用于拒绝检测（builtin=true 显式 400——builtin 只能由
 // seed/迁移流程设定，防 role:add 制造"永生角色"绕过删除守卫）；服务端恒落 false。
@@ -21,8 +21,8 @@ type RoleCreateReq struct {
 	Remark    *string `json:"remark"`
 }
 
-// RoleUpdateReq 更新角色请求：全指针字段，nil=未提供（不写库）——源 withEdit
-// 逐字段 null-skip 语义。builtin 不在本结构键集（不可经 edit 翻转——否则
+// RoleUpdateReq 更新角色请求：全指针字段，nil=未提供（不写库，逐字段
+// null-skip）。builtin 不在本结构键集（不可经 edit 翻转——否则
 // role:edit 持有者可先翻转 builtin=false 再删除 super_admin，builtin 删除守卫
 // 被整体绕行；请求体 builtin 键被忽略，恒不进 UPDATE）。dataScope 域校验 1..5
 // （同 Create）。role_code 不在本结构键集（角色编码为引用锚点，Go API 契约
@@ -34,9 +34,9 @@ type RoleUpdateReq struct {
 	Remark    *string            `json:"remark"`
 }
 
-// RoleResp 角色响应契约（13 列照 UserResp 形态；dataScope int8 原样——存量
+// RoleResp 角色响应契约（13 列；dataScope int8 原样——存量
 // super_admin 行 data_scope=NULL 以 null 输出）。全部键无 omitempty
-// （源 JacksonConfig 契约）；无凭据类字段。
+// （未赋值字段以 null 键输出）；无凭据类字段。
 type RoleResp struct {
 	ID           ids.ID               `json:"id"`
 	RoleName     *string              `json:"roleName"`

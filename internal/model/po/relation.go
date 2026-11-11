@@ -70,8 +70,8 @@ func (rm *RoleMenuPO) BeforeCreate(tx *gorm.DB) error {
 }
 
 // RoleDeptPO sys_role_dept 表映射（8 列，与 sys_role_menu 完全同构——
-// 裁决方案 A：dataScope 档位 4「指定部门」集合存储，源系统无此概念属增量
-// 扩展例外族）。同 RoleMenuPO：关联表无审计人四列，不内嵌 BaseWithOperator。
+// dataScope 档位 4「指定部门」集合存储，本库为数据权限扩展新增的表）。
+// 同 RoleMenuPO：关联表无审计人四列，不内嵌 BaseWithOperator。
 type RoleDeptPO struct {
 	ID       int64  `gorm:"column:id;primaryKey"`
 	RoleID   int64  `gorm:"column:role_id"`

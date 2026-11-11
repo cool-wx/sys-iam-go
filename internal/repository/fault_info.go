@@ -1,4 +1,4 @@
-// sys_fault_info 数据访问（照 repository/menu.go 模板；list 分页 + code 索引列
+// sys_fault_info 数据访问（list 分页 + code 索引列
 // eq 直传过滤 + 三键判重查询）。
 package repository
 
@@ -64,8 +64,8 @@ func (r *FaultInfoRepo) Patch(ctx context.Context, id int64, cols map[string]any
 	return nil
 }
 
-// Delete 物理删除（硬删除语义）。与源一致不校验存在性：删除不存在的 id
-// 静默成功（源 removeById 语义）。
+// Delete 物理删除（硬删除语义）。不校验存在性：删除不存在的 id
+// 静默成功。
 func (r *FaultInfoRepo) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&po.FaultInfoPO{}).Error
 }
@@ -83,24 +83,22 @@ func (r *FaultInfoRepo) FindByID(ctx context.Context, id int64) (*po.FaultInfoPO
 	return &f, nil
 }
 
-// FindByThreeKeys 三键判重查询（源 FaultInfoRepositoryImpl:58-63
-// `eq(name).eq(bitIndex).eq(location)` 蓝本逐字语义）：三列 eq 直传参数，LIMIT 1。
+// FindByThreeKeys 三键判重查询：三列 eq 直传参数，LIMIT 1。
 // 未命中返回 (nil, nil)——"无重复"非错误。
 //
-// ── 照源裁定（设计锁定，勿「顺手修复」）──
+// ── NULL 边界语义（设计锁定，勿「顺手修复」）──
 // location 为 nil 时 database/sql 把指针绑定为 NULL，生成 `location = NULL`
-// 恒为 false——带 NULL 位置的行永远判不中重复、反复 INSERT。这是源系统已接受
-// 的既有行为（研究期 Open Question Q2 已拍板照源 eq 语义保守移植：本机
-// sys_fault_info 0 行无存量影响；04-RESEARCH 重点 1 三键查询 NULL 边界陷阱）。
-// **禁止**改成 file 域式 IS NULL 双分支（FindByCategoryAndHash）——那是对源
-// 行为的有意偏离；语义锁定由 TestFaultImportLocationNullNoDedup 断言
+// 恒为 false——带 NULL 位置的行永远判不中重复、反复 INSERT。这是既定的
+// eq 直传语义（当前库存量数据为零，无存量影响）。
+// **禁止**改成 file 域式 IS NULL 双分支（FindByCategoryAndHash）——判重键
+// 语义已按三键 eq 锁定；语义锁定由 TestFaultImportLocationNullNoDedup 断言
 // （同三键 NULL 位置二次导入 → 两行）。
 func (r *FaultInfoRepo) FindByThreeKeys(ctx context.Context, name string, bitIndex *int, location *string) (*po.FaultInfoPO, error) {
 	var f po.FaultInfoPO
 	err := r.db.WithContext(ctx).Model(&po.FaultInfoPO{}).
 		Where("name = ?", name).
 		Where("bit_index = ?", bitIndex).
-		Where("location = ?", location). // nil *string 绑定 NULL → location = NULL 恒不中（Q2 照源，见上注）
+		Where("location = ?", location). // nil *string 绑定 NULL → location = NULL 恒不中（见 FindByThreeKeys 上注）
 		Limit(1).
 		First(&f).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -112,11 +110,11 @@ func (r *FaultInfoRepo) FindByThreeKeys(ctx context.Context, name string, bitInd
 	return &f, nil
 }
 
-// List 分页列表（源 /faultInfo list 语义）：page/size 已由 handler 层
-// paging.Parse 钳位（1/15 全局默认——源 PageHelper 同 1/15）；code 非空时
-// idx_code 索引列 eq 直传过滤（无 like 模糊——源 list 无特殊条件研究未记录
-// 则不发明）；ORDER BY create_time DESC, id DESC（id tiebreaker 同秒稳定序）。
-// 无 dataScope（本阶段零应用）。
+// List 分页列表：page/size 已由 handler 层
+// paging.Parse 钳位（1/15 全局默认）；code 非空时
+// idx_code 索引列 eq 直传过滤（无 like 模糊，无其他附加条件）；
+// ORDER BY create_time DESC, id DESC（id tiebreaker 同秒稳定序）。
+// 无 dataScope（本域未接入行级数据权限过滤）。
 func (r *FaultInfoRepo) List(ctx context.Context, page, size int, code string) ([]po.FaultInfoPO, int64, error) {
 	q := func() *gorm.DB {
 		query := r.db.WithContext(ctx).Model(&po.FaultInfoPO{})

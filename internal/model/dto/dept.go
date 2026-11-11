@@ -17,8 +17,8 @@ type DeptCreateReq struct {
 }
 
 // DeptUpdateReq 更新部门请求：全指针字段，nil=未提供（不写库），空串=显式清空。
-// parentId 显式传入时联动父校验 + parentName 重冗余（源 editDept resolveParentName
-// 同构语义）；白名单收敛于本结构键集。
+// parentId 显式传入时联动父校验 + parentName 重冗余（服务端查库装配）；
+// 白名单收敛于本结构键集。
 type DeptUpdateReq struct {
 	DeptName *string            `json:"deptName"`
 	ParentID *ids.ID            `json:"parentId"`
@@ -27,7 +27,7 @@ type DeptUpdateReq struct {
 	Remark   *string            `json:"remark"`
 }
 
-// DeptResp 部门响应契约。全部键无 omitempty（源 JacksonConfig 契约）；
+// DeptResp 部门响应契约。全部键无 omitempty（未赋值字段以 null 键输出）；
 // 无凭据类字段。
 type DeptResp struct {
 	ID           ids.ID               `json:"id"`

@@ -8,7 +8,7 @@ import (
 	"github.com/cool-wx/sys-iam-go/internal/model/po"
 )
 
-// OlogListFilter 操作日志列表过滤条件（三 like 模糊——源 LogQuery 字段语义：
+// OlogListFilter 操作日志列表过滤条件（三 like 模糊——
 // module/operation/realName 全 like；空串=不过滤）。
 type OlogListFilter struct {
 	Module    string
@@ -37,9 +37,9 @@ func (r *OperationLogRepo) InsertBatch(ctx context.Context, entries []po.Operati
 }
 
 // List 分页查询：Count 与记录查询经同一闭包构造（条件集天然一致，防 total 漂移）。
-// 无 dataScope（本阶段零应用——闭包结构照 user.go List 去掉 filter.Apply）。
+// 无 dataScope（本域未接入行级数据权限过滤，闭包内不调用 filter.Apply）。
 // 三条件 like 模糊（值经占位符参数化，% 拼接在参数侧不进 SQL 文本）；
-// 排序 create_time DESC, id DESC（源 orderByDesc createTime + 稳定 tiebreaker）；
+// 排序 create_time DESC, id DESC（id DESC 稳定 tiebreaker）；
 // 排序串为代码常量，无 ORDER 注入面。
 // page/size 已由 paging.ParseWithDefaults 钳位（≥1 且 page ≤ maxPage）；Offset
 // 计算后仍防负（双保险）。

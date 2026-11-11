@@ -1,6 +1,5 @@
-// sys_role 数据访问（照 repository/user.go 模板；List 为全库唯一 ORDER BY id ASC
-// 特例——源 RoleRepositoryImpl.selectPage orderByAsc(id)，勿套用其他域的
-// create_time DESC 模板，02-RESEARCH 1.3 源特例实证）。
+// sys_role 数据访问（List 为全库唯一 ORDER BY id ASC
+// 特例——勿套用其他域的 create_time DESC 排序）。
 package repository
 
 import (
@@ -68,9 +67,8 @@ func (r *RoleRepo) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&po.RolePO{}).Error
 }
 
-// List 角色分页条件查询：roleName LIKE（**先 strings.TrimSpace**——源
-// RoleRepositoryImpl.selectPage 特例）+ **ORDER BY id ASC**（非其他域的
-// create_time DESC，源特例 RoleRepositoryImpl.java:28-34；id 递增本身即稳定序）。
+// List 角色分页条件查询：roleName LIKE（**先 strings.TrimSpace**）+
+// **ORDER BY id ASC**（非其他域的 create_time DESC 排序；id 递增本身即稳定序）。
 // 条件放进闭包 q() 保证 Count 与 Find 一致防 total 漂移。
 func (r *RoleRepo) List(ctx context.Context, page, size int, roleName string) ([]po.RolePO, int64, error) {
 	trimmed := strings.TrimSpace(roleName)
@@ -113,7 +111,7 @@ func (r *RoleRepo) FindByID(ctx context.Context, id int64) (*po.RolePO, error) {
 }
 
 // FindByIDs 批量按主键查询（WHERE id IN ?）；供用户角色装配等需全量
-// 场景使用（源 RoleApplicationService.listByIds 等价）。缺失 id 自然缺席结果集。
+// 场景使用。缺失 id 自然缺席结果集。
 func (r *RoleRepo) FindByIDs(ctx context.Context, ids []int64) ([]po.RolePO, error) {
 	if len(ids) == 0 {
 		return nil, nil

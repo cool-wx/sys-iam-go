@@ -24,7 +24,7 @@ type ConfigUpdateReq struct {
 	Remark      *string `json:"remark"`
 }
 
-// ConfigResp 系统配置响应契约。全部键无 omitempty（源 JacksonConfig 契约）。
+// ConfigResp 系统配置响应契约。全部键无 omitempty（未赋值字段以 null 键输出）。
 type ConfigResp struct {
 	ID           ids.ID               `json:"id"`
 	ConfigKey    *string              `json:"configKey"`

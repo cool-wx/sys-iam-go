@@ -3,7 +3,7 @@ package po
 
 import "time"
 
-// BaseWithOperator 审计列内嵌（等价源 BaseAggregate + BaseUserEntity）。
+// BaseWithOperator 审计列内嵌，供需要操作人审计的 PO 复用。
 // 全部指针原生类型——无自定义类型进 PO（规避 Valuer/Scanner 陷阱）；
 // 无 DeletedAt（硬删除语义）。
 type BaseWithOperator struct {

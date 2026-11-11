@@ -1,5 +1,5 @@
-// sys_shift 数据访问（照 repository/menu.go 模板；List 全量无分页——
-// 源 list 无分页行为直译，勿统一为分页）。
+// sys_shift 数据访问（List 全量无分页——此接口不分页、返回全量列表，
+// 勿统一为分页）。
 package repository
 
 import (
@@ -56,14 +56,13 @@ func (r *ShiftRepo) Patch(ctx context.Context, id int64, cols map[string]any) er
 	return nil
 }
 
-// Delete 物理删除（硬删除语义）。不校验存在性：删除不存在的 id 静默成功
-// （源 deleteShift 语义）。
+// Delete 物理删除（硬删除语义）。不校验存在性：删除不存在的 id 静默成功。
 func (r *ShiftRepo) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&po.ShiftPO{}).Error
 }
 
-// List 全量查询（无分页——源 list 无分页行为直译，勿统一为分页），
-// ORDER BY shift_code ASC, id ASC（源列序 + id tiebreaker 稳定序）。
+// List 全量查询（无分页——返回全量列表，勿统一为分页），
+// ORDER BY shift_code ASC, id ASC（id tiebreaker 稳定序）。
 func (r *ShiftRepo) List(ctx context.Context) ([]po.ShiftPO, error) {
 	var items []po.ShiftPO
 	err := r.db.WithContext(ctx).Model(&po.ShiftPO{}).

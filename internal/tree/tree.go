@@ -1,14 +1,12 @@
-// Package tree 泛型树构建器：孤儿提升为根——源系统服务层 buildTree 语义的唯一
-// 实现点（DeptApplicationService.java:89-107 / MenuApplicationService.java:97-115 /
-// AuthApplicationService.java:185-203 三处一致的语义；实体静态 buildTree 是孤儿
-// 丢弃语义且全仓库零调用的死代码——勿仿，02-RESEARCH 1.4 死代码警告）。
+// Package tree 泛型树构建器：孤儿提升为根——menu/dept/auth 三域树装配语义的
+// 唯一实现点（父 id 为 nil 或 0 归根、父 id 索引未命中提升为根，均由本包承担）。
 // menu 与 dept 两域共用本函数（menu/dept service List → Build → TreeResp）。
 //
-// 语义（照源逐字）：
-//   - parentIDOf 返回 nil 或 0 → 归入 roots（源 `pid == null || pid == 0L`）；
+// 语义：
+//   - parentIDOf 返回 nil 或 0 → 归入 roots；
 //   - parentIDOf 指向 items 中不存在的 id（节点索引 map 未命中）→ 提升为根
-//     （孤儿提升，验收语义；源 `map.get(pid) == null → roots.add(dept)`）；
-//   - 环引用双方 parent 均命中索引 → 均不归根、不可达、静默不产出（源同语义）；
+//     （孤儿提升）；
+//   - 环引用双方 parent 均命中索引 → 均不归根、不可达、静默不产出；
 //     无递归父链遍历、仅从根向下装配，天然不死循环（children 分组 map
 //     不命中即归 roots 的天然免疫性）；
 //   - 子节点顺序与输入序一致（repo 按 sort ASC 供给——输入序即展示序）；
@@ -26,8 +24,8 @@ package tree
 //     字段赋值点）；对叶子节点以空切片调用一次，供归一化空数组。
 //
 // 实现：一次遍历建节点索引 map[int64]*T + children 分组 map[int64][]int
-// （parentIDOf 返回 nil 或 0 或索引未命中 → 归入 roots，与源单遍 forEach 收集
-// 等价）；随后仅从根索引后序递归装配——子树先完整组装再经 attach 挂进父节点，
+// （parentIDOf 返回 nil 或 0 或索引未命中 → 归入 roots，单遍收集）；
+// 随后仅从根索引后序递归装配——子树先完整组装再经 attach 挂进父节点，
 // attach 拿到的是含孙代的值拷贝。环引用节点不在任何根的子树内，永不进入递归。
 func Build[T any](items []T, idOf func(T) int64, parentIDOf func(T) *int64, attach func(node *T, children []T)) []T {
 	nodes := make([]T, len(items))
@@ -47,7 +45,7 @@ func Build[T any](items []T, idOf func(T) int64, parentIDOf func(T) *int64, atta
 			continue
 		}
 		if _, ok := index[*pid]; !ok {
-			// 孤儿提升为根（源服务层语义：map 未命中 → roots.add）
+			// 孤儿提升为根（map 未命中 → roots.add）
 			rootIdx = append(rootIdx, i)
 			continue
 		}

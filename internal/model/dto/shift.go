@@ -30,7 +30,7 @@ type ShiftUpdateReq struct {
 	Remark    *string            `json:"remark"`
 }
 
-// ShiftResp 排班响应契约。全部键无 omitempty（源 JacksonConfig 契约）；status
+// ShiftResp 排班响应契约。全部键无 omitempty（未赋值字段以 null 键输出）；status
 // 为 UsageStatus 枚举形态（出网 "ENABLED"/"DISABLED"，对齐全库纪律）。
 type ShiftResp struct {
 	ID           ids.ID               `json:"id"`

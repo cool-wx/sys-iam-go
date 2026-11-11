@@ -27,7 +27,7 @@ func (DictTypePO) TableName() string {
 }
 
 // BeforeCreate 生成雪花 ID（若未预置）+ 填充双时间 + 从 ctx identity 填充四操作人列。
-// 无 identity 上下文时操作人列保持 NULL（等价源 AutoFillHandler "系统行为无操作人"）。
+// 无 identity 上下文时操作人列保持 NULL（系统行为无操作人）。
 // 与 MenuPO.BeforeCreate 同构（模板逐字复用，五域先例）。
 func (d *DictTypePO) BeforeCreate(tx *gorm.DB) error {
 	if d.ID == 0 {
@@ -47,7 +47,7 @@ func (d *DictTypePO) BeforeCreate(tx *gorm.DB) error {
 
 // DictDataPO sys_dict_data 表映射（13 列，列名对齐真实 DDL，snake_case）。
 // dict_type_name 为服务端冗余列——add/edit 校验类型存在后由 service 写入类型的
-// dict_name（源语义，不信请求体同名字段）。dict_type_id 业务上
+// dict_name（服务端查库装配，不信请求体同名字段）。dict_type_id 业务上
 // 必有值（create 前置类型存在性校验），故非指针。
 type DictDataPO struct {
 	BaseWithOperator

@@ -1,5 +1,5 @@
-// Package dto File 域响应/请求契约：文件分类（树形，与 dept 同构）+ 文件信息
-// （分页列表 + 上传/下载/删除链载体）。全部键无 omitempty（源 JacksonConfig 契约）；
+// Package dto File 域响应/请求契约：文件分类（树形）+ 文件信息
+// （分页列表 + 上传/下载/删除链载体）。全部键无 omitempty（未赋值字段以 null 键输出）；
 // 不得定义任何审计字段键（审计由 PO 钩子服务端填充）。
 package dto
 
@@ -23,8 +23,8 @@ type FileCategoryCreateReq struct {
 }
 
 // FileCategoryUpdateReq 更新文件分类请求：全指针字段，nil=未提供（不写库），
-// 空串=显式清空。parentId 显式传入时联动父校验 + parentName 重冗余（源 edit
-// resolveParentName 同构语义）；白名单收敛于本结构键集。
+// 空串=显式清空。parentId 显式传入时联动父校验 + parentName 重冗余（服务端查库装配）；
+// 白名单收敛于本结构键集。
 type FileCategoryUpdateReq struct {
 	CategoryName *string            `json:"categoryName"`
 	ParentID     *ids.ID            `json:"parentId"`

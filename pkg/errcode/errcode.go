@@ -10,7 +10,7 @@ const (
 	CodeInvalidParam    = 10400 // 参数无效（含"记录已存在"）
 	CodeValidation      = 10401 // 参数校验失败
 	CodeBadCredentials  = 10501 // 用户名或密码错误
-	// 认证增量：全部 HTTP 401（源消息可区分，独立错误码保持 errcode 语义清晰）。
+	// 认证增量：全部 HTTP 401（各错误场景消息可区分，独立错误码保持 errcode 语义清晰）。
 	CodeUserDisabled       = 10502 // 用户已被禁用
 	CodeApiKeyInvalid      = 10503 // API Key 无效或已过期
 	CodeApiKeyNoUser       = 10504 // API Key 未关联用户

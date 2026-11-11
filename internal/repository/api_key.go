@@ -23,7 +23,7 @@ func NewApiKeyRepo(db *gorm.DB) *ApiKeyRepo {
 	return &ApiKeyRepo{db: db}
 }
 
-// FindByKey 登录查询（等价源 ApiKeyRepositoryImpl.getByApiKey）：key 精确匹配 +
+// FindByKey 登录查询：key 精确匹配 +
 // ENABLED + 未过期（expire_time IS NULL 或 > NOW()）；查不到返回 (nil, nil)——
 // 无效/停用/过期在 service 层统一译为 ErrApiKeyInvalid（10503）。
 // 这是**唯一**登录取 key 路径：停用/过期 key 恒不可登录。
@@ -62,9 +62,8 @@ func (r *ApiKeyRepo) FindByID(ctx context.Context, id int64) (*po.ApiKeyPO, erro
 
 // Patch 更新白名单列（存在性判定同 user repo：0 行变更回读 Count 确认，
 // 仅当行确实不存在才返回 ErrNotFound）。审计（update_time/update_by 两列）在此
-// 显式并入，不接受客户端同名键。service 层仅传 status 单列（源
-// editApiKey 单列语义——**任何写路径不得覆写 api_key/username/user_id/expire_time
-// 既有值**）。
+// 显式并入，不接受客户端同名键。service 层仅传 status 单列——**任何写路径
+// 不得覆写 api_key/username/user_id/expire_time 既有值**。
 func (r *ApiKeyRepo) Patch(ctx context.Context, id int64, cols map[string]any) error {
 	if cols == nil {
 		cols = map[string]any{}
@@ -93,8 +92,7 @@ func (r *ApiKeyRepo) Patch(ctx context.Context, id int64, cols map[string]any) e
 }
 
 // List 分页查询（Count + Find 两查询防 total 漂移）；排序 create_time DESC,
-// id DESC（稳定 tiebreaker，与 user 域一致）；当前无过滤条件（源 selectPage 无
-// 附加条件）。offset<0 钳 0。
+// id DESC（稳定 tiebreaker，与 user 域一致）；当前无过滤条件。offset<0 钳 0。
 func (r *ApiKeyRepo) List(ctx context.Context, page, size int) ([]po.ApiKeyPO, int64, error) {
 	q := func() *gorm.DB {
 		return r.db.WithContext(ctx).Model(&po.ApiKeyPO{})

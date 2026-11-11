@@ -1,4 +1,4 @@
-// sys_menu 数据访问（照 repository/user.go 模板；List 无分页全量——树与源 list 语义）。
+// sys_menu 数据访问（List 无分页全量——树查询需要完整数据集）。
 package repository
 
 import (
@@ -62,17 +62,15 @@ func (r *MenuRepo) Patch(ctx context.Context, id int64, cols map[string]any) err
 	return nil
 }
 
-// Delete 物理删除（硬删除语义）。与源一致**不加子菜单/角色引用检查**
-// （源缺口按源保留：MenuApplicationService.removeById 直接删——删除带子节点的
-// 菜单仍成功，孤儿子节点经 tree.Build 孤儿提升语义在树查询中可见）。
-// 不校验存在性：删除不存在的 id 静默成功（源 removeById 语义）。
+// Delete 物理删除（硬删除语义）。不校验子菜单/角色引用，直接删除——删除带子节点的
+// 菜单仍成功，孤儿子节点经 tree.Build 孤儿提升语义在树查询中可见。
+// 不校验存在性：删除不存在的 id 静默成功。
 func (r *MenuRepo) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&po.MenuPO{}).Error
 }
 
-// List 全量查询，ORDER BY sort ASC, id ASC（源 MenuRepositoryImpl list
-// orderByAsc(sort)；id ASC tiebreaker 保证同 sort 稳定序）。
-// 无分页：树查询与源 list 语义（前端一次性拉全量建树）。
+// List 全量查询，ORDER BY sort ASC, id ASC（id ASC tiebreaker 保证同 sort 稳定序）。
+// 无分页：树查询需要完整数据集（前端一次性拉全量建树）。
 func (r *MenuRepo) List(ctx context.Context) ([]po.MenuPO, error) {
 	var menus []po.MenuPO
 	err := r.db.WithContext(ctx).Model(&po.MenuPO{}).

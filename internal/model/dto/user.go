@@ -29,7 +29,7 @@ type UserCreateReq struct {
 // "冗余不可伪造"truth；请求体 deptName 键被忽略，恒不进 UPDATE。
 type UpdateUserReq struct {
 	// RealName 例外于本结构「空串=显式清空」总则：空白值服务端拒绝（
-	// 真名是 26 条冗余列的同步源不可清空，见 service.validateRealName）。
+	// 真名是 26 条冗余列的同步数据来源，不可清空，见 service.validateRealName）。
 	RealName *string       `json:"realName"`
 	Phone    *string       `json:"phone"`
 	Email    *string       `json:"email"`
@@ -41,8 +41,8 @@ type UpdateUserReq struct {
 }
 
 // UserResp 用户响应契约。
-// 不定义 password/extToken 键（源 @JsonProperty WRITE_ONLY 语义，永不序列化出网）；
-// 全部键无 omitempty——未赋值字段以 null 键输出而非键缺失（源 JacksonConfig 契约）；
+// 不定义 password/extToken 键（永不序列化出网）；
+// 全部键无 omitempty——未赋值字段以 null 键输出而非键缺失；
 // roles 装配由 service 层两查询完成（防 N+1），ToUserResp 初始化为空切片
 // ——空角色输出 [] 非 null（对齐 PageData 契约）。
 type UserResp struct {
@@ -69,7 +69,7 @@ type UserResp struct {
 	Remark       *string              `json:"remark"`
 }
 
-// UserRoleRef 用户关联角色引用（UserVo.roles 元素，源 UserVo.java:24-48 字段集）。
+// UserRoleRef 用户关联角色引用（UserResp.roles 元素）。
 type UserRoleRef struct {
 	RoleID   ids.ID `json:"roleId"`
 	RoleName string `json:"roleName"`

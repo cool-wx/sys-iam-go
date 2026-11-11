@@ -37,8 +37,8 @@ type FaultUpdateReq struct {
 	Remark     *string          `json:"remark"`
 }
 
-// FaultResp 故障信息响应契约。type 经 types.FaultType name|int 双形态序列化
-// （照 menu_type Resp 惯例）；全部键无 omitempty（源 JacksonConfig 契约）。
+// FaultResp 故障信息响应契约。type 经 types.FaultType name|int 双形态序列化；
+// 全部键无 omitempty（未赋值字段以 null 键输出）。
 type FaultResp struct {
 	ID           ids.ID               `json:"id"`
 	Code         *string              `json:"code"`
@@ -60,7 +60,7 @@ type FaultResp struct {
 }
 
 // ToFaultResp PO→DTO 手写转换（int64 ID→契约 ID 类型；type 经 FaultTypeFromInt
-// 兜底 UNKNOWN——源 fromValue 读侧语义）。
+// 兜底 UNKNOWN）。
 func ToFaultResp(m *po.FaultInfoPO) *FaultResp {
 	r := &FaultResp{
 		ID:           ids.ID(m.ID),
@@ -99,7 +99,7 @@ func ToFaultResp(m *po.FaultInfoPO) *FaultResp {
 	return r
 }
 
-// ImportResult Excel 导入结果契约（源 ImportResult DTO，FEATURES.md:205）：
+// ImportResult Excel 导入结果契约：
 // JSON 键 insertCount/updateCount。
 type ImportResult struct {
 	InsertCount int `json:"insertCount"`

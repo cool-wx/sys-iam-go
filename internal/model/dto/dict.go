@@ -7,7 +7,7 @@ import (
 )
 
 // DictTypeCreateReq 创建字典类型请求。指针字段 nil=未提供；dictName/dictType 必填
-// 由 binding 校验拦截；status 不接受客户端传入（服务端默认 1 正常，同源纪律）。
+// 由 binding 校验拦截；status 不接受客户端传入（服务端默认 1 正常）。
 // 不得定义任何审计字段键。
 type DictTypeCreateReq struct {
 	DictName *string `json:"dictName" binding:"required"`
@@ -26,7 +26,7 @@ type DictTypeUpdateReq struct {
 }
 
 // DictTypeResp 字典类型响应契约。全部键无 omitempty——未赋值字段以 null 键输出
-// 而非键缺失（源 JacksonConfig 契约）；无凭据类字段。
+// 而非键缺失；无凭据类字段。
 type DictTypeResp struct {
 	ID           ids.ID               `json:"id"`
 	DictName     *string              `json:"dictName"`
@@ -75,7 +75,7 @@ func ToDictTypeResp(m *po.DictTypePO) *DictTypeResp {
 }
 
 // DictDataCreateReq 创建字典数据请求。dictTypeId 必填（service 前置类型存在性校验，
-// 缺失返回 404「字典类型不存在: {id}」源消息原文）；label/value/sort 可选；
+// 缺失返回 404「字典类型不存在: {id}」固定文案）；label/value/sort 可选；
 // dictTypeName 不接受客户端传入——服务端查库冗余写入。
 type DictDataCreateReq struct {
 	DictTypeID *ids.ID `json:"dictTypeId" binding:"required"`
@@ -86,7 +86,7 @@ type DictDataCreateReq struct {
 }
 
 // DictDataUpdateReq 更新字典数据请求：全指针字段，nil=未提供（不写库）。
-// dictTypeId 显式传入时联动类型校验 + dictTypeName 重冗余（源 editDictData 语义）；
+// dictTypeId 显式传入时联动类型校验 + dictTypeName 重冗余（服务端查库装配）；
 // 不显式传则不动类型列。白名单收敛于本结构键集。
 type DictDataUpdateReq struct {
 	DictTypeID *ids.ID `json:"dictTypeId"`
@@ -96,7 +96,7 @@ type DictDataUpdateReq struct {
 	Remark     *string `json:"remark"`
 }
 
-// DictDataResp 字典数据响应契约。全部键无 omitempty（源 JacksonConfig 契约）。
+// DictDataResp 字典数据响应契约。全部键无 omitempty（未赋值字段以 null 键输出）。
 type DictDataResp struct {
 	ID           ids.ID               `json:"id"`
 	DictTypeID   *ids.ID              `json:"dictTypeId"`
