@@ -5,7 +5,7 @@ status: completed
 stopped_at: Phase 05 complete — all phases complete
 last_updated: "2026-11-11T07:00:17.976Z"
 last_activity: 2026-11-11
-last_activity_desc: Phase 05 complete
+last_activity_desc: Completed quick task 261111-kyn
 state_head: 9c4afa78c04c376bbd25c5e5468cc657bc6552c6
 progress:
   total_phases: 5
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-02, Phase 5 transition)
 Phase: 05
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-11-11 - Completed quick task 261111-g22: 溯源注释清理（117 文件删「源 XXX」引用/对照词族/Java 生态名词，四道 grep 门归零 404/98/23/94→0，零代码改动）
+Last activity: 2026-11-11 - Completed quick task 261111-kyn: RelationRepo 并入 relation_user_role.go，删除 relation.go 壳文件（结构体/构造器逐字搬移、doc 注释零改写，编译/vet/gofmt 全绿，零调用方改动）
 
 Progress: [██████████] 100%
 
@@ -152,6 +152,7 @@ None yet.
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 261111-kyn | RelationRepo 并入 relation_user_role.go，删除 relation.go 壳文件：结构体/构造器 doc 注释逐字搬移、gorm import 三段式落位、导航句改写安放，编译/vet/gofmt 全绿，零调用方改动，零行为变更 | 2026-11-11 | 6ba8a76 | [261111-kyn-internal-repository-relation-go-relation](./quick/261111-kyn-internal-repository-relation-go-relation/) |
 | 261111-g22 | 溯源注释清理：117 文件删「源 XXX」引用、对照词族（等价源/直译/同款/照 X 模板/消息原文）与 Java 生态名词（Sa-Token/Hutool/Jackson 等），四道 grep 门归零（基线 404/98/23/94→0），错误文案/时间格式/bcrypt/错位列警示/无分页契约全保留，零代码改动 | 2026-11-11 | 1602d03, eee0842, 47d35cf | [261111-g22-getxxx](./quick/261111-g22-getxxx/) |
 | 261111-f4f | 注释规范化清理：29 文件 42 处删「P 加数字」阶段编号与 Pattern/范式名引用，改写为功能化描述，三道 grep 门归零（基线 30/5/7→0），零代码逻辑改动 | 2026-11-11 | 5db3629, 4f72f04 | [261111-f4f-p16-p5](./quick/261111-f4f-p16-p5/) |
 | 261110-mec | 数据库表清理对齐 GORM Models：补建 sys_role_dept/casbin_rule（各 8 列），DROP 94 张未用表（动态清单+双安全门），库达 17 表终态，零代码改动 | 2026-11-10 | —（纯 DDL 零代码改动） | [261110-mec-audit-db-tables-vs-gorm-models-drop-unus](./quick/261110-mec-audit-db-tables-vs-gorm-models-drop-unus/) |
